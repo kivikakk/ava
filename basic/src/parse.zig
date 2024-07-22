@@ -2,7 +2,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
-const tokenize = @import("token.zig").tokenize;
+const token = @import("token.zig");
+const WithRange = token.WithRange;
 
 pub const Imm = union(enum) {
     number: isize,
@@ -11,7 +12,7 @@ pub const Imm = union(enum) {
 pub const Node = struct {
     value: union(enum) {
         call: struct {
-            name: []const u8,
+            name: WithRange([]const u8),
             args: []const Imm,
         },
     },
@@ -23,14 +24,14 @@ pub const Error = error{
 
 const State = union(enum) {
     init,
-    label: []const u8,
+    label: WithRange([]const u8),
 };
 
 pub fn parse(allocator: std.mem.Allocator, s: []const u8) ![]Node {
     var nx = std.ArrayList(Node).init(allocator);
     errdefer nx.deinit();
 
-    const tx = try tokenize(allocator, s);
+    const tx = try token.tokenize(allocator, s);
     defer allocator.free(tx);
 
     var state: State = .init;
@@ -39,13 +40,13 @@ pub fn parse(allocator: std.mem.Allocator, s: []const u8) ![]Node {
         const t = tx[i];
         switch (state) {
             .init => {
-                switch (t) {
-                    .label => |l| state = .{ .label = l },
+                switch (t.payload) {
+                    .label => |l| state = .{ .label = WithRange([]const u8).init(l, t.range) },
                     else => return Error.UnexpectedToken,
                 }
             },
             .label => |l| {
-                switch (t) {
+                switch (t.payload) {
                     .linefeed, .semicolon => {
                         try nx.append(.{
                             .value = .{ .call = .{
@@ -70,7 +71,13 @@ test "parses a nullary statement without line-number" {
     try testing.expectEqualDeep(nx, &[_]Node{
         .{
             .value = .{ .call = .{
-                .name = "PRINT",
+                .name = .{
+                    .payload = "PRINT",
+                    .range = .{
+                        .start = .{ .row = 1, .col = 1 },
+                        .end = .{ .row = 1, .col = 5 },
+                    },
+                },
                 .args = &.{},
             } },
         },

@@ -2,8 +2,46 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
-// Any references belong to the input string.
-pub const Token = union(enum) {
+pub const Loc = struct {
+    row: usize,
+    col: usize,
+
+    fn back(self: Loc) Loc {
+        std.debug.assert(self.col > 1);
+        return .{ .row = self.row, .col = self.col - 1 };
+    }
+};
+
+pub const Range = struct {
+    start: Loc,
+    end: Loc,
+};
+
+pub fn WithRange(comptime T: type) type {
+    return struct {
+        const Self = @This();
+
+        payload: T,
+        range: Range,
+
+        pub fn init(t: T, range: Range) Self {
+            return .{
+                .payload = t,
+                .range = range,
+            };
+        }
+
+        pub fn initRange(t: T, start: struct { usize, usize }, end: struct { usize, usize }) Self {
+            return init(t, .{
+                .start = .{ .row = start[0], .col = start[1] },
+                .end = .{ .row = end[0], .col = end[1] },
+            });
+        }
+    };
+}
+
+const TokenPayload =
+    union(enum) {
     number: i64,
     label: []const u8,
     string: []const u8,
@@ -39,19 +77,27 @@ pub const Token = union(enum) {
     kw_wend,
 };
 
+// Any references belong to the input string.
+pub const Token = WithRange(TokenPayload);
+
 pub const Error = error{
     UnexpectedChar,
     UnexpectedEnd,
 };
 
-const State = union(enum) {
-    init: void,
-    number: usize,
-    bareword: usize,
-    string: usize,
+const LocOffset = struct {
+    loc: Loc,
+    offset: usize,
 };
 
-fn tokenizeBareword(bw: []const u8) Token {
+const State = union(enum) {
+    init,
+    number: LocOffset,
+    bareword: LocOffset,
+    string: LocOffset,
+};
+
+fn classifyBareword(bw: []const u8) TokenPayload {
     if (std.ascii.eqlIgnoreCase(bw, "if")) {
         return .kw_if;
     } else if (std.ascii.eqlIgnoreCase(bw, "then")) {
@@ -97,99 +143,129 @@ fn tokenizeBareword(bw: []const u8) Token {
     }
 }
 
-pub fn tokenize(allocator: Allocator, s: []const u8) (Allocator.Error || std.fmt.ParseIntError || Error)![]Token {
-    var tx = std.ArrayList(Token).init(allocator);
-    errdefer tx.deinit();
+const Tokenizer = struct {
+    loc: Loc = .{ .row = 1, .col = 1 },
 
-    var state: State = .init;
-    var i: usize = 0;
-    while (i < s.len) : (i += 1) {
-        const c = s[i];
+    fn attach(payload: TokenPayload, start: Loc, end: Loc) Token {
+        return .{
+            .payload = payload,
+            .range = .{
+                .start = start,
+                .end = end,
+            },
+        };
+    }
+
+    fn feed(self: *Tokenizer, allocator: Allocator, s: []const u8) ![]Token {
+        var tx = std.ArrayList(Token).init(allocator);
+        errdefer tx.deinit();
+
+        var state: State = .init;
+        var i: usize = 0;
+        var rewind = false;
+        while (i < s.len) : ({
+            if (rewind) {
+                rewind = false;
+            } else {
+                if (s[i] == '\n') {
+                    self.loc.row += 1;
+                    self.loc.col = 1;
+                } else {
+                    self.loc.col += 1;
+                }
+                i += 1;
+            }
+        }) {
+            const c = s[i];
+
+            switch (state) {
+                .init => {
+                    if (c >= '0' and c <= '9') {
+                        state = .{ .number = .{ .loc = self.loc, .offset = i } };
+                    } else if ((c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z')) {
+                        state = .{ .bareword = .{ .loc = self.loc, .offset = i } };
+                    } else if (c == '"') {
+                        state = .{ .string = .{ .loc = self.loc, .offset = i } };
+                    } else if (c == ' ') {
+                        // nop
+                    } else if (c == '\n') {
+                        try tx.append(attach(.linefeed, self.loc, self.loc));
+                    } else if (c == ',') {
+                        try tx.append(attach(.comma, self.loc, self.loc));
+                    } else if (c == ';') {
+                        try tx.append(attach(.semicolon, self.loc, self.loc));
+                    } else if (c == '=') {
+                        try tx.append(attach(.equals, self.loc, self.loc));
+                    } else if (c == '+') {
+                        try tx.append(attach(.plus, self.loc, self.loc));
+                    } else if (c == '-') {
+                        try tx.append(attach(.minus, self.loc, self.loc));
+                    } else if (c == '*') {
+                        try tx.append(attach(.asterisk, self.loc, self.loc));
+                    } else if (c == '/') {
+                        try tx.append(attach(.fslash, self.loc, self.loc));
+                    } else if (c == '(') {
+                        try tx.append(attach(.pareno, self.loc, self.loc));
+                    } else if (c == ')') {
+                        try tx.append(attach(.parenc, self.loc, self.loc));
+                    } else {
+                        return Error.UnexpectedChar;
+                    }
+                },
+                .number => |start| {
+                    if (c >= '0' and c <= '9') {
+                        // nop
+                    } else if ((c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z')) {
+                        return Error.UnexpectedChar;
+                    } else {
+                        try tx.append(attach(.{
+                            .number = try std.fmt.parseInt(isize, s[start.offset..i], 10),
+                        }, start.loc, self.loc.back()));
+                        state = .init;
+                        rewind = true;
+                    }
+                },
+                .bareword => |start| {
+                    if (c >= '0' and c <= '9') {
+                        // nop
+                    } else if ((c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z')) {
+                        // nop
+                    } else if (c == '$' or c == '%' or c == '&') {
+                        try tx.append(attach(.{ .label = s[start.offset .. i + 1] }, start.loc, self.loc));
+                        state = .init;
+                    } else {
+                        try tx.append(attach(classifyBareword(s[start.offset..i]), start.loc, self.loc.back()));
+                        state = .init;
+                        rewind = true;
+                    }
+                },
+                .string => |start| {
+                    if (c == '"') {
+                        try tx.append(attach(.{ .string = s[start.offset .. i + 1] }, start.loc, self.loc));
+                        state = .init;
+                    } else {
+                        // nop
+                    }
+                },
+            }
+        }
 
         switch (state) {
-            .init => {
-                if (c >= '0' and c <= '9') {
-                    state = .{ .number = i };
-                } else if ((c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z')) {
-                    state = .{ .bareword = i };
-                } else if (c == '"') {
-                    state = .{ .string = i };
-                } else if (c == ' ') {
-                    // nop
-                } else if (c == '\n') {
-                    try tx.append(.linefeed);
-                } else if (c == ',') {
-                    try tx.append(.comma);
-                } else if (c == ';') {
-                    try tx.append(.semicolon);
-                } else if (c == '=') {
-                    try tx.append(.equals);
-                } else if (c == '+') {
-                    try tx.append(.plus);
-                } else if (c == '-') {
-                    try tx.append(.minus);
-                } else if (c == '*') {
-                    try tx.append(.asterisk);
-                } else if (c == '/') {
-                    try tx.append(.fslash);
-                } else if (c == '(') {
-                    try tx.append(.pareno);
-                } else if (c == ')') {
-                    try tx.append(.parenc);
-                } else {
-                    return Error.UnexpectedChar;
-                }
-            },
-            .number => |start| {
-                if (c >= '0' and c <= '9') {
-                    // nop
-                } else if ((c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z')) {
-                    return Error.UnexpectedChar;
-                } else {
-                    try tx.append(.{
-                        .number = try std.fmt.parseInt(isize, s[start..i], 10),
-                    });
-                    state = .init;
-                    // rewind
-                    i -= 1;
-                }
-            },
-            .bareword => |start| {
-                if (c >= '0' and c <= '9') {
-                    // nop
-                } else if ((c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z')) {
-                    // nop
-                } else if (c == '$' or c == '%' or c == '&') {
-                    try tx.append(.{ .label = s[start .. i + 1] });
-                    state = .init;
-                } else {
-                    try tx.append(tokenizeBareword(s[start..i]));
-                    state = .init;
-                    // rewind
-                    i -= 1;
-                }
-            },
-            .string => |start| {
-                if (c == '"') {
-                    try tx.append(.{ .string = s[start .. i + 1] });
-                    state = .init;
-                } else {
-                    // nop
-                }
-            },
+            .init => {},
+            .number => |start| try tx.append(attach(.{
+                .number = try std.fmt.parseInt(isize, s[start.offset..], 10),
+            }, start.loc, self.loc.back())),
+            .bareword => |start| try tx.append(attach(classifyBareword(s[start.offset..]), start.loc, self.loc.back())),
+            .string => return Error.UnexpectedEnd,
         }
-    }
 
-    switch (state) {
-        .init => {},
-        .number => |start| try tx.append(.{
-            .number = try std.fmt.parseInt(isize, s[start..], 10),
-        }),
-        .bareword => |start| try tx.append(tokenizeBareword(s[start..])),
-        .string => return Error.UnexpectedEnd,
+        return tx.toOwnedSlice();
     }
+};
 
-    return tx.toOwnedSlice();
+pub fn tokenize(allocator: Allocator, s: []const u8) ![]Token {
+    var t = Tokenizer{};
+    return t.feed(allocator, s);
 }
 
 test "tokenizes basics" {
@@ -200,16 +276,16 @@ test "tokenizes basics" {
     defer testing.allocator.free(tx);
 
     try testing.expectEqualDeep(&[_]Token{
-        .{ .number = 10 },
-        .kw_if,
-        .kw_then,
-        .kw_end,
-        .linefeed,
-        .{ .label = "tere" },
-        .{ .label = "maailm%" },
-        .comma,
-        .{ .label = "ava$" },
-        .equals,
-        .{ .label = "siin&" },
+        Token.initRange(.{ .number = 10 }, .{ 1, 1 }, .{ 1, 2 }),
+        Token.initRange(.kw_if, .{ 1, 4 }, .{ 1, 5 }),
+        Token.initRange(.kw_then, .{ 1, 7 }, .{ 1, 10 }),
+        Token.initRange(.kw_end, .{ 1, 12 }, .{ 1, 14 }),
+        Token.initRange(.linefeed, .{ 1, 15 }, .{ 1, 15 }),
+        Token.initRange(.{ .label = "tere" }, .{ 2, 3 }, .{ 2, 6 }),
+        Token.initRange(.{ .label = "maailm%" }, .{ 2, 8 }, .{ 2, 14 }),
+        Token.initRange(.comma, .{ 2, 15 }, .{ 2, 15 }),
+        Token.initRange(.{ .label = "ava$" }, .{ 2, 17 }, .{ 2, 20 }),
+        Token.initRange(.equals, .{ 2, 22 }, .{ 2, 22 }),
+        Token.initRange(.{ .label = "siin&" }, .{ 2, 24 }, .{ 2, 28 }),
     }, tx);
 }
