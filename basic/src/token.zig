@@ -44,7 +44,8 @@ const TokenPayload =
     union(enum) {
     number: i64,
     label: []const u8,
-    string: []const u8,
+    string: []const u8, // XXX: uninterpreted.
+    jumplabel: []const u8,
     linefeed,
     comma,
     semicolon,
@@ -233,6 +234,9 @@ const Tokenizer = struct {
                     } else if (c == '$' or c == '%' or c == '&') {
                         try tx.append(attach(.{ .label = s[start.offset .. i + 1] }, start.loc, self.loc));
                         state = .init;
+                    } else if (c == ':') {
+                        try tx.append(attach(.{ .jumplabel = s[start.offset..i] }, start.loc, self.loc));
+                        state = .init;
                     } else {
                         try tx.append(attach(classifyBareword(s[start.offset..i]), start.loc, self.loc.back()));
                         state = .init;
@@ -272,6 +276,7 @@ test "tokenizes basics" {
     const tx = try tokenize(testing.allocator,
         \\10 if Then END
         \\  tere maailm%, ava$ = siin&
+        \\Awawa:
     );
     defer testing.allocator.free(tx);
 
@@ -287,5 +292,7 @@ test "tokenizes basics" {
         Token.initRange(.{ .label = "ava$" }, .{ 2, 17 }, .{ 2, 20 }),
         Token.initRange(.equals, .{ 2, 22 }, .{ 2, 22 }),
         Token.initRange(.{ .label = "siin&" }, .{ 2, 24 }, .{ 2, 28 }),
+        Token.initRange(.linefeed, .{ 2, 29 }, .{ 2, 29 }),
+        Token.initRange(.{ .jumplabel = "Awawa" }, .{ 3, 1 }, .{ 3, 6 }),
     }, tx);
 }
