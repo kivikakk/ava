@@ -14,16 +14,21 @@ pub const Expr = union(enum) {
 pub const Stmt = union(enum) {
     const Self = @This();
 
+    remark: WithRange([]const u8),
     call: struct {
         name: WithRange([]const u8),
         args: []const WithRange(Expr),
     },
-    remark: WithRange([]const u8),
+    let: struct {
+        lhs: WithRange([]const u8),
+        rhs: WithRange(Expr),
+    },
 
     pub fn deinit(self: Self, allocator: Allocator) void {
         switch (self) {
-            .call => |c| allocator.free(c.args),
             .remark => {},
+            .call => |c| allocator.free(c.args),
+            .let => {},
         }
     }
 };
@@ -86,9 +91,14 @@ const Parser = struct {
         if (t.payload == tt) {
             self.nti += 1;
             const payload = @field(t.payload, @tagName(tt));
-            return WithRange(std.meta.TagPayload(token.TokenPayload, tt)).init(payload, t.range);
+            return WithRange(std.meta.TagPayload(token.TokenPayload, tt))
+                .init(payload, t.range);
         }
         return null;
+    }
+
+    fn expect(self: *Self, comptime tt: token.TokenTag) !WithRange(std.meta.TagPayload(token.TokenPayload, tt)) {
+        return self.accept(tt) orelse Error.UnexpectedToken;
     }
 
     fn acceptEnd(self: *Self) bool {
@@ -128,7 +138,8 @@ const Parser = struct {
         try ex.append(e);
 
         while (self.accept(.comma) != null) {
-            const e2 = self.acceptExpr() orelse return Error.UnexpectedToken;
+            const e2 = self.acceptExpr() orelse
+                return Error.UnexpectedToken;
             try ex.append(e2);
         }
 
@@ -142,7 +153,7 @@ const Parser = struct {
         if (self.eoi())
             return null;
 
-        if (self.accept(.linefeed)) |_|
+        if (self.accept(.linefeed) != null or self.accept(.remark) != null)
             return self.parseOne();
 
         if (self.accept(.label)) |l| {
@@ -159,6 +170,26 @@ const Parser = struct {
                     .args = ex,
                 } };
             }
+
+            if (self.accept(.equals) != null) {
+                const rhs = self.acceptExpr() orelse return Error.UnexpectedToken;
+                return .{ .let = .{
+                    .lhs = l,
+                    .rhs = rhs,
+                } };
+            }
+
+            return Error.UnexpectedToken;
+        }
+
+        if (self.accept(.kw_let) != null) {
+            const lhs = try self.expect(.label);
+            _ = try self.expect(.equals);
+            const rhs = self.acceptExpr() orelse return Error.UnexpectedToken;
+            return .{ .let = .{
+                .lhs = lhs,
+                .rhs = rhs,
+            } };
         }
 
         return Error.UnexpectedToken;
@@ -168,9 +199,8 @@ const Parser = struct {
         var sx = std.ArrayList(Stmt).init(self.allocator);
         errdefer sx.deinit();
 
-        while (try self.parseOne()) |s| {
+        while (try self.parseOne()) |s|
             try sx.append(s);
-        }
 
         return sx.toOwnedSlice();
     }
@@ -181,8 +211,11 @@ pub fn parse(allocator: Allocator, inp: []const u8) ![]Stmt {
     defer p.deinit();
 
     return p.parseAll() catch |err| {
-        // TODO: show last/next token
-        // std.debug.print("last token: {any}\n", .{p.t});
+        if (p.nt()) |t| {
+            std.debug.print("last token: {any}\n", .{t});
+        } else {
+            std.debug.print("reached EOF\n", .{});
+        }
         return err;
     };
 }
