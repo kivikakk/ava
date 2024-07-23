@@ -7,6 +7,7 @@ const WithRange = token.WithRange;
 
 pub const Expr = union(enum) {
     imm_number: isize,
+    imm_string: []const u8,
     label: []const u8,
 };
 
@@ -17,14 +18,18 @@ pub const Stmt = union(enum) {
         name: WithRange([]const u8),
         args: []const WithRange(Expr),
     },
+    remark: WithRange([]const u8),
 
     pub fn deinit(self: Self, allocator: Allocator) void {
         switch (self) {
             .call => |c| allocator.free(c.args),
+            .remark => {},
         }
     }
 };
 
+// XXX: Line/Stmt distinction existed for lineno. We may want to collapse
+// it if nothing else appears.
 pub const Line = union(enum) {
     const Self = @This();
 
@@ -64,16 +69,18 @@ const State = union(enum) {
 const Parser = struct {
     const Self = @This();
 
+    t: token.Token = undefined,
+
     fn attach(self: *Self, stmt: Stmt) Line {
         _ = self;
         return .{ .stmt = stmt };
     }
 
-    fn parse(self: *Self, allocator: Allocator, s: []const u8) ![]Line {
+    fn parse(self: *Self, allocator: Allocator, inp: []const u8) ![]Line {
         var lx = std.ArrayList(Line).init(allocator);
         errdefer lx.deinit();
 
-        const tx = try token.tokenize(allocator, s);
+        const tx = try token.tokenize(allocator, inp);
         defer allocator.free(tx);
 
         var state: State = .init;
@@ -82,6 +89,15 @@ const Parser = struct {
         var i: usize = 0;
         while (i < tx.len) : (i += 1) {
             const t = tx[i];
+            self.t = t;
+
+            if (t.payload == .remark) {
+                try lx.append(self.attach(.{
+                    .remark = WithRange([]const u8).init(t.payload.remark, t.range),
+                }));
+                continue;
+            }
+
             switch (state) {
                 .init => {
                     switch (t.payload) {
@@ -128,6 +144,15 @@ const Parser = struct {
                             });
                             c.comma_next = true;
                         },
+                        .string => |s| {
+                            if (c.comma_next)
+                                return Error.UnexpectedToken;
+                            try c.args.append(.{
+                                .payload = .{ .imm_string = s },
+                                .range = t.range,
+                            });
+                            c.comma_next = true;
+                        },
                         else => return Error.UnexpectedToken,
                     }
                 },
@@ -153,14 +178,24 @@ const Parser = struct {
     }
 };
 
-pub fn parse(allocator: Allocator, s: []const u8) ![]Line {
+pub fn parse(allocator: Allocator, inp: []const u8) ![]Line {
     var p = Parser{};
-    return p.parse(allocator, s);
+    if (p.parse(allocator, inp)) |lx| {
+        return lx;
+    } else |err| {
+        std.debug.print("last token: {any}\n", .{p.t});
+        return err;
+    }
+}
+
+pub fn freeLines(allocator: Allocator, lx: []Line) void {
+    for (lx) |l| l.deinit(allocator);
+    allocator.free(lx);
 }
 
 test "parses a nullary statement" {
     const lx = try parse(testing.allocator, "PRINT\n");
-    defer testing.allocator.free(lx);
+    defer freeLines(testing.allocator, lx);
 
     try testing.expectEqualDeep(lx, &[_]Line{
         .{ .stmt = .{
@@ -174,7 +209,7 @@ test "parses a nullary statement" {
 
 test "parses a nullary statement without linefeed" {
     const lx = try parse(testing.allocator, "PRINT");
-    defer testing.allocator.free(lx);
+    defer freeLines(testing.allocator, lx);
 
     try testing.expectEqualDeep(lx, &[_]Line{
         .{ .stmt = .{
@@ -188,10 +223,7 @@ test "parses a nullary statement without linefeed" {
 
 test "parses a unary statement" {
     const lx = try parse(testing.allocator, "\n PRINT 42\n");
-    defer {
-        for (lx) |l| l.deinit(testing.allocator);
-        testing.allocator.free(lx);
-    }
+    defer freeLines(testing.allocator, lx);
 
     try testing.expectEqualDeep(lx, &[_]Line{
         .{ .stmt = .{
@@ -207,10 +239,7 @@ test "parses a unary statement" {
 
 test "parses a binary statement" {
     const lx = try parse(testing.allocator, "PRINT X$, Y%\n");
-    defer {
-        for (lx) |l| l.deinit(testing.allocator);
-        testing.allocator.free(lx);
-    }
+    defer freeLines(testing.allocator, lx);
 
     try testing.expectEqualDeep(lx, &[_]Line{
         .{ .stmt = .{
@@ -223,4 +252,12 @@ test "parses a binary statement" {
             },
         } },
     });
+}
+
+test "testpp/01.bas" {
+    const inp = try std.fs.cwd().readFileAlloc(testing.allocator, "src/testpp/01.bas", 1048576);
+    defer testing.allocator.free(inp);
+
+    const lx = try parse(testing.allocator, inp);
+    defer freeLines(testing.allocator, lx);
 }

@@ -37,13 +37,27 @@ pub fn WithRange(comptime T: type) type {
                 .end = .{ .row = end[0], .col = end[1] },
             });
         }
+
+        pub fn format(self: Self, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+            _ = fmt;
+            _ = options;
+            try std.fmt.format(writer, "<{d}:{d}-{d}:{d}> {any}", .{
+                self.range.start.row,
+                self.range.start.col,
+                self.range.end.row,
+                self.range.end.col,
+                self.payload,
+            });
+        }
     };
 }
 
-const TokenPayload =
-    union(enum) {
+const TokenPayload = union(enum) {
+    const Self = @This();
+
     number: i64,
     label: []const u8,
+    remark: []const u8,
     string: []const u8, // XXX: uninterpreted.
     jumplabel: []const u8,
     fileno: usize, // XXX: doesn't support variable
@@ -77,6 +91,51 @@ const TokenPayload =
     kw_while,
     kw_until,
     kw_wend,
+    kw_let,
+
+    pub fn format(self: Self, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = fmt;
+        _ = options;
+        switch (self) {
+            .number => |n| try std.fmt.format(writer, "Number({d})", .{n}),
+            .label => |l| try std.fmt.format(writer, "Label({s})", .{l}),
+            .remark => |r| try std.fmt.format(writer, "Remark({s})", .{r}),
+            .string => |s| try std.fmt.format(writer, "String({s})", .{s}),
+            .jumplabel => |jl| try std.fmt.format(writer, "Jumplabel({s})", .{jl}),
+            .fileno => |n| try std.fmt.format(writer, "Fileno({d})", .{n}),
+            .linefeed => try std.fmt.format(writer, "Linefeed", .{}),
+            .comma => try std.fmt.format(writer, "Comma", .{}),
+            .semicolon => try std.fmt.format(writer, "Semicolon", .{}),
+            .equals => try std.fmt.format(writer, "Equals", .{}),
+            .plus => try std.fmt.format(writer, "Plus", .{}),
+            .minus => try std.fmt.format(writer, "Minus", .{}),
+            .asterisk => try std.fmt.format(writer, "Asterisk", .{}),
+            .fslash => try std.fmt.format(writer, "Fslash", .{}),
+            .pareno => try std.fmt.format(writer, "Pareno", .{}),
+            .parenc => try std.fmt.format(writer, "Parenc", .{}),
+            .kw_if => try std.fmt.format(writer, "IF", .{}),
+            .kw_then => try std.fmt.format(writer, "THEN", .{}),
+            .kw_elseif => try std.fmt.format(writer, "ELSEIF", .{}),
+            .kw_else => try std.fmt.format(writer, "ELSE", .{}),
+            .kw_end => try std.fmt.format(writer, "END", .{}),
+            .kw_goto => try std.fmt.format(writer, "GOTO", .{}),
+            .kw_for => try std.fmt.format(writer, "FOR", .{}),
+            .kw_to => try std.fmt.format(writer, "TO", .{}),
+            .kw_step => try std.fmt.format(writer, "STEP", .{}),
+            .kw_next => try std.fmt.format(writer, "NEXT", .{}),
+            .kw_dim => try std.fmt.format(writer, "DIM", .{}),
+            .kw_as => try std.fmt.format(writer, "AS", .{}),
+            .kw_gosub => try std.fmt.format(writer, "GOSUB", .{}),
+            .kw_return => try std.fmt.format(writer, "RETURN", .{}),
+            .kw_stop => try std.fmt.format(writer, "STOP", .{}),
+            .kw_do => try std.fmt.format(writer, "DO", .{}),
+            .kw_loop => try std.fmt.format(writer, "LOOP", .{}),
+            .kw_while => try std.fmt.format(writer, "WHILE", .{}),
+            .kw_until => try std.fmt.format(writer, "UNTIL", .{}),
+            .kw_wend => try std.fmt.format(writer, "WEND", .{}),
+            .kw_let => try std.fmt.format(writer, "LET", .{}),
+        }
+    }
 };
 
 // Any references belong to the input string.
@@ -98,6 +157,7 @@ const State = union(enum) {
     bareword: LocOffset,
     string: LocOffset,
     fileno: LocOffset,
+    remark: LocOffset,
 };
 
 fn classifyBareword(bw: []const u8) TokenPayload {
@@ -141,6 +201,8 @@ fn classifyBareword(bw: []const u8) TokenPayload {
         return .kw_until;
     } else if (std.ascii.eqlIgnoreCase(bw, "wend")) {
         return .kw_wend;
+    } else if (std.ascii.eqlIgnoreCase(bw, "let")) {
+        return .kw_let;
     } else {
         return .{ .label = bw };
     }
@@ -159,18 +221,18 @@ const Tokenizer = struct {
         };
     }
 
-    fn feed(self: *Tokenizer, allocator: Allocator, s: []const u8) ![]Token {
+    fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
         var tx = std.ArrayList(Token).init(allocator);
         errdefer tx.deinit();
 
         var state: State = .init;
         var i: usize = 0;
         var rewind = false;
-        while (i < s.len) : ({
+        while (i < inp.len) : ({
             if (rewind) {
                 rewind = false;
             } else {
-                if (s[i] == '\n') {
+                if (inp[i] == '\n') {
                     self.loc.row += 1;
                     self.loc.col = 1;
                 } else {
@@ -179,7 +241,7 @@ const Tokenizer = struct {
                 i += 1;
             }
         }) {
-            const c = s[i];
+            const c = inp[i];
 
             switch (state) {
                 .init => {
@@ -193,6 +255,8 @@ const Tokenizer = struct {
                         // nop
                     } else if (c == '\n') {
                         try tx.append(attach(.linefeed, self.loc, self.loc));
+                    } else if (c == '\'') {
+                        state = .{ .remark = .{ .loc = self.loc, .offset = i } };
                     } else if (c == ',') {
                         try tx.append(attach(.comma, self.loc, self.loc));
                     } else if (c == ';') {
@@ -224,7 +288,7 @@ const Tokenizer = struct {
                         return Error.UnexpectedChar;
                     } else {
                         try tx.append(attach(.{
-                            .number = try std.fmt.parseInt(isize, s[start.offset..i], 10),
+                            .number = try std.fmt.parseInt(isize, inp[start.offset..i], 10),
                         }, start.loc, self.loc.back()));
                         state = .init;
                         rewind = true;
@@ -236,20 +300,20 @@ const Tokenizer = struct {
                     } else if ((c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z')) {
                         // nop
                     } else if (c == '$' or c == '%' or c == '&') {
-                        try tx.append(attach(.{ .label = s[start.offset .. i + 1] }, start.loc, self.loc));
+                        try tx.append(attach(.{ .label = inp[start.offset .. i + 1] }, start.loc, self.loc));
                         state = .init;
                     } else if (c == ':') {
-                        try tx.append(attach(.{ .jumplabel = s[start.offset..i] }, start.loc, self.loc));
+                        try tx.append(attach(.{ .jumplabel = inp[start.offset..i] }, start.loc, self.loc));
                         state = .init;
                     } else {
-                        try tx.append(attach(classifyBareword(s[start.offset..i]), start.loc, self.loc.back()));
+                        try tx.append(attach(classifyBareword(inp[start.offset..i]), start.loc, self.loc.back()));
                         state = .init;
                         rewind = true;
                     }
                 },
                 .string => |start| {
                     if (c == '"') {
-                        try tx.append(attach(.{ .string = s[start.offset .. i + 1] }, start.loc, self.loc));
+                        try tx.append(attach(.{ .string = inp[start.offset .. i + 1] }, start.loc, self.loc));
                         state = .init;
                     } else {
                         // nop
@@ -260,10 +324,21 @@ const Tokenizer = struct {
                         // nop
                     } else {
                         try tx.append(attach(.{
-                            .fileno = try std.fmt.parseInt(usize, s[start.offset + 1 .. i], 10),
+                            .fileno = try std.fmt.parseInt(usize, inp[start.offset + 1 .. i], 10),
                         }, start.loc, self.loc.back()));
                         state = .init;
                         rewind = true;
+                    }
+                },
+                .remark => |start| {
+                    if (c == '\n') {
+                        try tx.append(attach(.{
+                            .remark = inp[start.offset + 1 .. i],
+                        }, start.loc, self.loc.back()));
+                        state = .init;
+                        rewind = true;
+                    } else {
+                        // nop
                     }
                 },
             }
@@ -272,12 +347,15 @@ const Tokenizer = struct {
         switch (state) {
             .init => {},
             .number => |start| try tx.append(attach(.{
-                .number = try std.fmt.parseInt(isize, s[start.offset..], 10),
+                .number = try std.fmt.parseInt(isize, inp[start.offset..], 10),
             }, start.loc, self.loc.back())),
-            .bareword => |start| try tx.append(attach(classifyBareword(s[start.offset..]), start.loc, self.loc.back())),
+            .bareword => |start| try tx.append(attach(classifyBareword(inp[start.offset..]), start.loc, self.loc.back())),
             .string => return Error.UnexpectedEnd,
             .fileno => |start| try tx.append(attach(.{
-                .fileno = try std.fmt.parseInt(usize, s[start.offset + 1 ..], 10),
+                .fileno = try std.fmt.parseInt(usize, inp[start.offset + 1 ..], 10),
+            }, start.loc, self.loc.back())),
+            .remark => |start| try tx.append(attach(.{
+                .remark = inp[start.offset..],
             }, start.loc, self.loc.back())),
         }
 
@@ -285,22 +363,22 @@ const Tokenizer = struct {
     }
 };
 
-pub fn tokenize(allocator: Allocator, s: []const u8) ![]Token {
+pub fn tokenize(allocator: Allocator, inp: []const u8) ![]Token {
     var t = Tokenizer{};
-    return t.feed(allocator, s);
+    return t.feed(allocator, inp);
 }
 
 test "tokenizes basics" {
     const tx = try tokenize(testing.allocator,
-        \\10 if Then END
-        \\  tere maailm%, ava$ = siin&
+        \\if 10 Then END
+        \\  tere maailm%, ava$ = siin& 'okok
         \\Awawa: #7
     );
     defer testing.allocator.free(tx);
 
     try testing.expectEqualDeep(&[_]Token{
-        Token.initRange(.{ .number = 10 }, .{ 1, 1 }, .{ 1, 2 }),
-        Token.initRange(.kw_if, .{ 1, 4 }, .{ 1, 5 }),
+        Token.initRange(.kw_if, .{ 1, 1 }, .{ 1, 2 }),
+        Token.initRange(.{ .number = 10 }, .{ 1, 4 }, .{ 1, 5 }),
         Token.initRange(.kw_then, .{ 1, 7 }, .{ 1, 10 }),
         Token.initRange(.kw_end, .{ 1, 12 }, .{ 1, 14 }),
         Token.initRange(.linefeed, .{ 1, 15 }, .{ 1, 15 }),
@@ -310,7 +388,8 @@ test "tokenizes basics" {
         Token.initRange(.{ .label = "ava$" }, .{ 2, 17 }, .{ 2, 20 }),
         Token.initRange(.equals, .{ 2, 22 }, .{ 2, 22 }),
         Token.initRange(.{ .label = "siin&" }, .{ 2, 24 }, .{ 2, 28 }),
-        Token.initRange(.linefeed, .{ 2, 29 }, .{ 2, 29 }),
+        Token.initRange(.{ .remark = "okok" }, .{ 2, 30 }, .{ 2, 34 }),
+        Token.initRange(.linefeed, .{ 2, 35 }, .{ 2, 35 }),
         Token.initRange(.{ .jumplabel = "Awawa" }, .{ 3, 1 }, .{ 3, 6 }),
         Token.initRange(.{ .fileno = 7 }, .{ 3, 8 }, .{ 3, 9 }),
     }, tx);
