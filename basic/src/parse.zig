@@ -28,15 +28,10 @@ pub const Stmt = union(enum) {
 pub const Line = union(enum) {
     const Self = @This();
 
-    lineno: struct {
-        number: WithRange(usize),
-        stmt: Stmt,
-    },
     stmt: Stmt,
 
     pub fn deinit(self: Self, allocator: Allocator) void {
         switch (self) {
-            .lineno => |ln| ln.stmt.deinit(allocator),
             .stmt => |s| s.deinit(allocator),
         }
     }
@@ -69,18 +64,9 @@ const State = union(enum) {
 const Parser = struct {
     const Self = @This();
 
-    lineno: ?WithRange(usize) = null,
-
     fn attach(self: *Self, stmt: Stmt) Line {
-        defer self.lineno = null;
-        if (self.lineno) |lineno| {
-            return .{ .lineno = .{
-                .number = lineno,
-                .stmt = stmt,
-            } };
-        } else {
-            return .{ .stmt = stmt };
-        }
+        _ = self;
+        return .{ .stmt = stmt };
     }
 
     fn parse(self: *Self, allocator: Allocator, s: []const u8) ![]Line {
@@ -104,13 +90,6 @@ const Parser = struct {
                             .args = std.ArrayList(WithRange(Expr)).init(allocator),
                             .comma_next = false,
                         } },
-                        .number => |n| {
-                            if (self.lineno != null)
-                                return Error.UnexpectedToken;
-                            if (n < 0)
-                                return Error.OutOfRange;
-                            self.lineno = WithRange(usize).init(@intCast(n), t.range);
-                        },
                         .linefeed => {},
                         else => return Error.UnexpectedToken,
                     }
@@ -118,7 +97,6 @@ const Parser = struct {
                 .call => |*c| {
                     switch (t.payload) {
                         .linefeed, .semicolon => {
-                            // XXX: semicolon + lineno = ?
                             try lx.append(self.attach(.{
                                 .call = .{
                                     .name = c.label,
@@ -180,7 +158,7 @@ pub fn parse(allocator: Allocator, s: []const u8) ![]Line {
     return p.parse(allocator, s);
 }
 
-test "parses a nullary statement without line-number" {
+test "parses a nullary statement" {
     const lx = try parse(testing.allocator, "PRINT\n");
     defer testing.allocator.free(lx);
 
@@ -194,7 +172,7 @@ test "parses a nullary statement without line-number" {
     });
 }
 
-test "parses a nullary statement without line-number, without linefeed" {
+test "parses a nullary statement without linefeed" {
     const lx = try parse(testing.allocator, "PRINT");
     defer testing.allocator.free(lx);
 
@@ -208,7 +186,7 @@ test "parses a nullary statement without line-number, without linefeed" {
     });
 }
 
-test "parses a unary statement without line-number" {
+test "parses a unary statement" {
     const lx = try parse(testing.allocator, "\n PRINT 42\n");
     defer {
         for (lx) |l| l.deinit(testing.allocator);
@@ -227,7 +205,7 @@ test "parses a unary statement without line-number" {
     });
 }
 
-test "parses a binary statement without line-number" {
+test "parses a binary statement" {
     const lx = try parse(testing.allocator, "PRINT X$, Y%\n");
     defer {
         for (lx) |l| l.deinit(testing.allocator);
@@ -245,22 +223,4 @@ test "parses a binary statement without line-number" {
             },
         } },
     });
-}
-
-test "parses a nullary statement with line-number" {
-    const lx = try parse(testing.allocator, "10 PRINT");
-    defer {
-        for (lx) |l| l.deinit(testing.allocator);
-        testing.allocator.free(lx);
-    }
-
-    try testing.expectEqualDeep(lx, &[_]Line{.{ .lineno = .{
-        .number = WithRange(usize).initRange(10, .{ 1, 1 }, .{ 1, 2 }),
-        .stmt = .{
-            .call = .{
-                .name = WithRange([]const u8).initRange("PRINT", .{ 1, 4 }, .{ 1, 8 }),
-                .args = &.{},
-            },
-        },
-    } }});
 }
