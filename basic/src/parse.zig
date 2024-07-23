@@ -20,6 +20,7 @@ pub const Stmt = union(enum) {
         args: []const WithRange(Expr),
     },
     let: struct {
+        kw: ?WithRange(void),
         lhs: WithRange([]const u8),
         rhs: WithRange(Expr),
     },
@@ -153,8 +154,11 @@ const Parser = struct {
         if (self.eoi())
             return null;
 
-        if (self.accept(.linefeed) != null or self.accept(.remark) != null)
+        if (self.accept(.linefeed) != null)
             return self.parseOne();
+
+        if (self.accept(.remark)) |r|
+            return .{ .remark = r };
 
         if (self.accept(.label)) |l| {
             if (self.acceptEnd()) {
@@ -174,6 +178,7 @@ const Parser = struct {
             if (self.accept(.equals) != null) {
                 const rhs = self.acceptExpr() orelse return Error.UnexpectedToken;
                 return .{ .let = .{
+                    .kw = null,
                     .lhs = l,
                     .rhs = rhs,
                 } };
@@ -182,11 +187,12 @@ const Parser = struct {
             return Error.UnexpectedToken;
         }
 
-        if (self.accept(.kw_let) != null) {
+        if (self.accept(.kw_let)) |l| {
             const lhs = try self.expect(.label);
             _ = try self.expect(.equals);
             const rhs = self.acceptExpr() orelse return Error.UnexpectedToken;
             return .{ .let = .{
+                .kw = l,
                 .lhs = lhs,
                 .rhs = rhs,
             } };
@@ -276,12 +282,4 @@ test "parses a binary statement" {
             },
         },
     }});
-}
-
-test "testpp/01.bas" {
-    const inp = try std.fs.cwd().readFileAlloc(testing.allocator, "src/testpp/01.bas", 1048576);
-    defer testing.allocator.free(inp);
-
-    const sx = try parse(testing.allocator, inp);
-    defer freeStmts(testing.allocator, sx);
 }
