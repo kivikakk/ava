@@ -52,7 +52,7 @@ pub fn WithRange(comptime T: type) type {
     };
 }
 
-const TokenPayload = union(enum) {
+pub const TokenPayload = union(enum) {
     const Self = @This();
 
     number: i64,
@@ -137,6 +137,8 @@ const TokenPayload = union(enum) {
         }
     }
 };
+
+pub const TokenTag = std.meta.Tag(TokenPayload);
 
 // Any references belong to the input string.
 pub const Token = WithRange(TokenPayload);
