@@ -5,8 +5,9 @@ const testing = std.testing;
 const token = @import("token.zig");
 const WithRange = token.WithRange;
 
-pub const Imm = union(enum) {
-    number: isize,
+pub const Expr = union(enum) {
+    imm_number: isize,
+    label: []const u8,
 };
 
 pub const Node = union(enum) {
@@ -14,7 +15,7 @@ pub const Node = union(enum) {
 
     call: struct {
         name: WithRange([]const u8),
-        args: []const WithRange(Imm),
+        args: []const WithRange(Expr),
     },
 
     pub fn deinit(self: Self, allocator: Allocator) void {
@@ -28,13 +29,14 @@ pub const Node = union(enum) {
 
 pub const Error = error{
     UnexpectedToken,
+    UnexpectedEnd,
 };
 
 const State = union(enum) {
     init,
     call: struct {
         label: WithRange([]const u8),
-        args: std.ArrayList(WithRange(Imm)),
+        args: std.ArrayList(WithRange(Expr)),
         comma_next: bool,
     },
 
@@ -66,7 +68,7 @@ pub fn parse(allocator: Allocator, s: []const u8) ![]Node {
                 switch (t.payload) {
                     .label => |l| state = .{ .call = .{
                         .label = WithRange([]const u8).init(l, t.range),
-                        .args = std.ArrayList(WithRange(Imm)).init(allocator),
+                        .args = std.ArrayList(WithRange(Expr)).init(allocator),
                         .comma_next = false,
                     } },
                     .linefeed => {},
@@ -75,20 +77,57 @@ pub fn parse(allocator: Allocator, s: []const u8) ![]Node {
             },
             .call => |*c| {
                 switch (t.payload) {
-                    .linefeed, .semicolon => try nx.append(.{
-                        .call = .{
-                            .name = c.label,
-                            .args = try c.args.toOwnedSlice(),
-                        },
-                    }),
-                    .number => |n| try c.args.append(.{
-                        .payload = .{ .number = n },
-                        .range = t.range,
-                    }),
+                    .linefeed, .semicolon => {
+                        try nx.append(.{
+                            .call = .{
+                                .name = c.label,
+                                .args = try c.args.toOwnedSlice(),
+                            },
+                        });
+                        state = .init;
+                    },
+                    .comma => {
+                        if (!c.comma_next)
+                            return Error.UnexpectedToken;
+                        c.comma_next = false;
+                    },
+                    .number => |n| {
+                        if (c.comma_next)
+                            return Error.UnexpectedToken;
+                        try c.args.append(.{
+                            .payload = .{ .imm_number = n },
+                            .range = t.range,
+                        });
+                        c.comma_next = true;
+                    },
+                    .label => |l| {
+                        if (c.comma_next)
+                            return Error.UnexpectedToken;
+                        try c.args.append(.{
+                            .payload = .{ .label = l },
+                            .range = t.range,
+                        });
+                        c.comma_next = true;
+                    },
                     else => return Error.UnexpectedToken,
                 }
             },
         }
+    }
+
+    switch (state) {
+        .init => {},
+        .call => |*c| {
+            if (!c.comma_next and c.args.items.len > 0)
+                // File ends at "BLAH X,"
+                return Error.UnexpectedEnd;
+            try nx.append(.{
+                .call = .{
+                    .name = c.label,
+                    .args = try c.args.toOwnedSlice(),
+                },
+            });
+        },
     }
 
     return nx.toOwnedSlice();
@@ -96,6 +135,26 @@ pub fn parse(allocator: Allocator, s: []const u8) ![]Node {
 
 test "parses a nullary statement without line-number" {
     const nx = try parse(testing.allocator, "PRINT\n");
+    defer testing.allocator.free(nx);
+
+    try testing.expectEqualDeep(nx, &[_]Node{
+        .{
+            .call = .{
+                .name = .{
+                    .payload = "PRINT",
+                    .range = .{
+                        .start = .{ .row = 1, .col = 1 },
+                        .end = .{ .row = 1, .col = 5 },
+                    },
+                },
+                .args = &.{},
+            },
+        },
+    });
+}
+
+test "parses a nullary statement without line-number, without linefeed" {
+    const nx = try parse(testing.allocator, "PRINT");
     defer testing.allocator.free(nx);
 
     try testing.expectEqualDeep(nx, &[_]Node{
@@ -133,10 +192,48 @@ test "parses a unary statement without line-number" {
                 },
                 .args = &.{
                     .{
-                        .payload = .{ .number = 42 },
+                        .payload = .{ .imm_number = 42 },
                         .range = .{
                             .start = .{ .row = 2, .col = 8 },
                             .end = .{ .row = 2, .col = 9 },
+                        },
+                    },
+                },
+            },
+        },
+    });
+}
+
+test "parses a binary statement without line-number" {
+    const nx = try parse(testing.allocator, "PRINT X$, Y%\n");
+    defer {
+        for (nx) |n| n.deinit(testing.allocator);
+        testing.allocator.free(nx);
+    }
+
+    try testing.expectEqualDeep(nx, &[_]Node{
+        .{
+            .call = .{
+                .name = .{
+                    .payload = "PRINT",
+                    .range = .{
+                        .start = .{ .row = 1, .col = 1 },
+                        .end = .{ .row = 1, .col = 5 },
+                    },
+                },
+                .args = &.{
+                    .{
+                        .payload = .{ .label = "X$" },
+                        .range = .{
+                            .start = .{ .row = 1, .col = 7 },
+                            .end = .{ .row = 1, .col = 8 },
+                        },
+                    },
+                    .{
+                        .payload = .{ .label = "Y%" },
+                        .range = .{
+                            .start = .{ .row = 1, .col = 11 },
+                            .end = .{ .row = 1, .col = 12 },
                         },
                     },
                 },
