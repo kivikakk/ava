@@ -31,6 +31,10 @@ pub fn WithRange(comptime T: type) type {
             };
         }
 
+        pub fn initBin(t: T, r1: Range, r2: Range) Self {
+            return init(t, .{ .start = r1.start, .end = r2.end });
+        }
+
         pub fn initRange(t: T, start: struct { usize, usize }, end: struct { usize, usize }) Self {
             return init(t, .{
                 .start = .{ .row = start[0], .col = start[1] },
