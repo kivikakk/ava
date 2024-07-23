@@ -45,6 +45,7 @@ pub const Line = union(enum) {
 pub const Error = error{
     UnexpectedToken,
     UnexpectedEnd,
+    OutOfRange,
 };
 
 const State = union(enum) {
@@ -65,89 +66,118 @@ const State = union(enum) {
     }
 };
 
-pub fn parse(allocator: Allocator, s: []const u8) ![]Line {
-    var lx = std.ArrayList(Line).init(allocator);
-    errdefer lx.deinit();
+const Parser = struct {
+    const Self = @This();
 
-    const tx = try token.tokenize(allocator, s);
-    defer allocator.free(tx);
+    lineno: ?WithRange(usize) = null,
 
-    var state: State = .init;
-    defer state.deinit();
-
-    var lineno_state: ?WithRange(usize) = null;
-
-    var i: usize = 0;
-    while (i < tx.len) : (i += 1) {
-        const t = tx[i];
-        switch (state) {
-            .init => {
-                switch (t.payload) {
-                    .label => |l| state = .{ .call = .{
-                        .label = WithRange([]const u8).init(l, t.range),
-                        .args = std.ArrayList(WithRange(Expr)).init(allocator),
-                        .comma_next = false,
-                    } },
-                    .linefeed => {},
-                    else => return Error.UnexpectedToken,
-                }
-            },
-            .call => |*c| {
-                switch (t.payload) {
-                    .linefeed, .semicolon => {
-                        try lx.append(.{ .stmt = .{
-                            .call = .{
-                                .name = c.label,
-                                .args = try c.args.toOwnedSlice(),
-                            },
-                        } });
-                        state = .init;
-                    },
-                    .comma => {
-                        if (!c.comma_next)
-                            return Error.UnexpectedToken;
-                        c.comma_next = false;
-                    },
-                    .number => |n| {
-                        if (c.comma_next)
-                            return Error.UnexpectedToken;
-                        try c.args.append(.{
-                            .payload = .{ .imm_number = n },
-                            .range = t.range,
-                        });
-                        c.comma_next = true;
-                    },
-                    .label => |l| {
-                        if (c.comma_next)
-                            return Error.UnexpectedToken;
-                        try c.args.append(.{
-                            .payload = .{ .label = l },
-                            .range = t.range,
-                        });
-                        c.comma_next = true;
-                    },
-                    else => return Error.UnexpectedToken,
-                }
-            },
+    fn attach(self: *Self, stmt: Stmt) Line {
+        defer self.lineno = null;
+        if (self.lineno) |lineno| {
+            return .{ .lineno = .{
+                .number = lineno,
+                .stmt = stmt,
+            } };
+        } else {
+            return .{ .stmt = stmt };
         }
     }
 
-    switch (state) {
-        .init => {},
-        .call => |*c| {
-            if (!c.comma_next and c.args.items.len > 0)
-                // File ends at "BLAH X,"
-                return Error.UnexpectedEnd;
-            try lx.append(.{ .stmt = .{
-                .call = .{
-                    .name = c.label,
-                    .args = try c.args.toOwnedSlice(),
-                },
-            } });
-        },
-    }
+    fn parse(self: *Self, allocator: Allocator, s: []const u8) ![]Line {
+        var lx = std.ArrayList(Line).init(allocator);
+        errdefer lx.deinit();
 
-    return lx.toOwnedSlice();
+        const tx = try token.tokenize(allocator, s);
+        defer allocator.free(tx);
+
+        var state: State = .init;
+        defer state.deinit();
+
+        var i: usize = 0;
+        while (i < tx.len) : (i += 1) {
+            const t = tx[i];
+            switch (state) {
+                .init => {
+                    switch (t.payload) {
+                        .label => |l| state = .{ .call = .{
+                            .label = WithRange([]const u8).init(l, t.range),
+                            .args = std.ArrayList(WithRange(Expr)).init(allocator),
+                            .comma_next = false,
+                        } },
+                        .number => |n| {
+                            if (self.lineno != null)
+                                return Error.UnexpectedToken;
+                            if (n < 0)
+                                return Error.OutOfRange;
+                            self.lineno = WithRange(usize).init(@intCast(n), t.range);
+                        },
+                        .linefeed => {},
+                        else => return Error.UnexpectedToken,
+                    }
+                },
+                .call => |*c| {
+                    switch (t.payload) {
+                        .linefeed, .semicolon => {
+                            // XXX: semicolon + lineno = ?
+                            try lx.append(self.attach(.{
+                                .call = .{
+                                    .name = c.label,
+                                    .args = try c.args.toOwnedSlice(),
+                                },
+                            }));
+                            state = .init;
+                        },
+                        .comma => {
+                            if (!c.comma_next)
+                                return Error.UnexpectedToken;
+                            c.comma_next = false;
+                        },
+                        .number => |n| {
+                            if (c.comma_next)
+                                return Error.UnexpectedToken;
+                            try c.args.append(.{
+                                .payload = .{ .imm_number = n },
+                                .range = t.range,
+                            });
+                            c.comma_next = true;
+                        },
+                        .label => |l| {
+                            if (c.comma_next)
+                                return Error.UnexpectedToken;
+                            try c.args.append(.{
+                                .payload = .{ .label = l },
+                                .range = t.range,
+                            });
+                            c.comma_next = true;
+                        },
+                        else => return Error.UnexpectedToken,
+                    }
+                },
+            }
+        }
+
+        switch (state) {
+            .init => {},
+            .call => |*c| {
+                if (!c.comma_next and c.args.items.len > 0)
+                    // File ends at "BLAH X,"
+                    return Error.UnexpectedEnd;
+                try lx.append(self.attach(.{
+                    .call = .{
+                        .name = c.label,
+                        .args = try c.args.toOwnedSlice(),
+                    },
+                }));
+            },
+        }
+
+        return lx.toOwnedSlice();
+    }
+};
+
+pub fn parse(allocator: Allocator, s: []const u8) ![]Line {
+    var p = Parser{};
+    return p.parse(allocator, s);
 }
 
 test "parses a nullary statement without line-number" {
@@ -228,11 +258,8 @@ test "parses a nullary statement with line-number" {
         .number = WithRange(usize).initRange(10, .{ 1, 1 }, .{ 1, 2 }),
         .stmt = .{
             .call = .{
-                .name = WithRange([]const u8).initRange("PRINT", .{ 1, 1 }, .{ 1, 5 }),
-                .args = &.{
-                    WithRange(Expr).initRange(.{ .label = "X$" }, .{ 1, 7 }, .{ 1, 8 }),
-                    WithRange(Expr).initRange(.{ .label = "X$" }, .{ 1, 11 }, .{ 1, 12 }),
-                },
+                .name = WithRange([]const u8).initRange("PRINT", .{ 1, 4 }, .{ 1, 8 }),
+                .args = &.{},
             },
         },
     } }});
