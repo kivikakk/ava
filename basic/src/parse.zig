@@ -10,7 +10,7 @@ pub const Expr = union(enum) {
     label: []const u8,
 };
 
-pub const Node = union(enum) {
+pub const Stmt = union(enum) {
     const Self = @This();
 
     call: struct {
@@ -20,9 +20,24 @@ pub const Node = union(enum) {
 
     pub fn deinit(self: Self, allocator: Allocator) void {
         switch (self) {
-            .call => |c| {
-                allocator.free(c.args);
-            },
+            .call => |c| allocator.free(c.args),
+        }
+    }
+};
+
+pub const Line = union(enum) {
+    const Self = @This();
+
+    lineno: struct {
+        number: WithRange(usize),
+        stmt: Stmt,
+    },
+    stmt: Stmt,
+
+    pub fn deinit(self: Self, allocator: Allocator) void {
+        switch (self) {
+            .lineno => |ln| ln.stmt.deinit(allocator),
+            .stmt => |s| s.deinit(allocator),
         }
     }
 };
@@ -50,15 +65,17 @@ const State = union(enum) {
     }
 };
 
-pub fn parse(allocator: Allocator, s: []const u8) ![]Node {
-    var nx = std.ArrayList(Node).init(allocator);
-    errdefer nx.deinit();
+pub fn parse(allocator: Allocator, s: []const u8) ![]Line {
+    var lx = std.ArrayList(Line).init(allocator);
+    errdefer lx.deinit();
 
     const tx = try token.tokenize(allocator, s);
     defer allocator.free(tx);
 
     var state: State = .init;
     defer state.deinit();
+
+    var lineno_state: ?WithRange(usize) = null;
 
     var i: usize = 0;
     while (i < tx.len) : (i += 1) {
@@ -78,12 +95,12 @@ pub fn parse(allocator: Allocator, s: []const u8) ![]Node {
             .call => |*c| {
                 switch (t.payload) {
                     .linefeed, .semicolon => {
-                        try nx.append(.{
+                        try lx.append(.{ .stmt = .{
                             .call = .{
                                 .name = c.label,
                                 .args = try c.args.toOwnedSlice(),
                             },
-                        });
+                        } });
                         state = .init;
                     },
                     .comma => {
@@ -121,123 +138,102 @@ pub fn parse(allocator: Allocator, s: []const u8) ![]Node {
             if (!c.comma_next and c.args.items.len > 0)
                 // File ends at "BLAH X,"
                 return Error.UnexpectedEnd;
-            try nx.append(.{
+            try lx.append(.{ .stmt = .{
                 .call = .{
                     .name = c.label,
                     .args = try c.args.toOwnedSlice(),
                 },
-            });
+            } });
         },
     }
 
-    return nx.toOwnedSlice();
+    return lx.toOwnedSlice();
 }
 
 test "parses a nullary statement without line-number" {
-    const nx = try parse(testing.allocator, "PRINT\n");
-    defer testing.allocator.free(nx);
+    const lx = try parse(testing.allocator, "PRINT\n");
+    defer testing.allocator.free(lx);
 
-    try testing.expectEqualDeep(nx, &[_]Node{
-        .{
+    try testing.expectEqualDeep(lx, &[_]Line{
+        .{ .stmt = .{
             .call = .{
-                .name = .{
-                    .payload = "PRINT",
-                    .range = .{
-                        .start = .{ .row = 1, .col = 1 },
-                        .end = .{ .row = 1, .col = 5 },
-                    },
-                },
+                .name = WithRange([]const u8).initRange("PRINT", .{ 1, 1 }, .{ 1, 5 }),
                 .args = &.{},
             },
-        },
+        } },
     });
 }
 
 test "parses a nullary statement without line-number, without linefeed" {
-    const nx = try parse(testing.allocator, "PRINT");
-    defer testing.allocator.free(nx);
+    const lx = try parse(testing.allocator, "PRINT");
+    defer testing.allocator.free(lx);
 
-    try testing.expectEqualDeep(nx, &[_]Node{
-        .{
+    try testing.expectEqualDeep(lx, &[_]Line{
+        .{ .stmt = .{
             .call = .{
-                .name = .{
-                    .payload = "PRINT",
-                    .range = .{
-                        .start = .{ .row = 1, .col = 1 },
-                        .end = .{ .row = 1, .col = 5 },
-                    },
-                },
+                .name = WithRange([]const u8).initRange("PRINT", .{ 1, 1 }, .{ 1, 5 }),
                 .args = &.{},
             },
-        },
+        } },
     });
 }
 
 test "parses a unary statement without line-number" {
-    const nx = try parse(testing.allocator, "\n PRINT 42\n");
+    const lx = try parse(testing.allocator, "\n PRINT 42\n");
     defer {
-        for (nx) |n| n.deinit(testing.allocator);
-        testing.allocator.free(nx);
+        for (lx) |l| l.deinit(testing.allocator);
+        testing.allocator.free(lx);
     }
 
-    try testing.expectEqualDeep(nx, &[_]Node{
-        .{
+    try testing.expectEqualDeep(lx, &[_]Line{
+        .{ .stmt = .{
             .call = .{
-                .name = .{
-                    .payload = "PRINT",
-                    .range = .{
-                        .start = .{ .row = 2, .col = 2 },
-                        .end = .{ .row = 2, .col = 6 },
-                    },
-                },
+                .name = WithRange([]const u8).initRange("PRINT", .{ 2, 2 }, .{ 2, 6 }),
                 .args = &.{
-                    .{
-                        .payload = .{ .imm_number = 42 },
-                        .range = .{
-                            .start = .{ .row = 2, .col = 8 },
-                            .end = .{ .row = 2, .col = 9 },
-                        },
-                    },
+                    WithRange(Expr).initRange(.{ .imm_number = 42 }, .{ 2, 8 }, .{ 2, 9 }),
                 },
             },
-        },
+        } },
     });
 }
 
 test "parses a binary statement without line-number" {
-    const nx = try parse(testing.allocator, "PRINT X$, Y%\n");
+    const lx = try parse(testing.allocator, "PRINT X$, Y%\n");
     defer {
-        for (nx) |n| n.deinit(testing.allocator);
-        testing.allocator.free(nx);
+        for (lx) |l| l.deinit(testing.allocator);
+        testing.allocator.free(lx);
     }
 
-    try testing.expectEqualDeep(nx, &[_]Node{
-        .{
+    try testing.expectEqualDeep(lx, &[_]Line{
+        .{ .stmt = .{
             .call = .{
-                .name = .{
-                    .payload = "PRINT",
-                    .range = .{
-                        .start = .{ .row = 1, .col = 1 },
-                        .end = .{ .row = 1, .col = 5 },
-                    },
-                },
+                .name = WithRange([]const u8).initRange("PRINT", .{ 1, 1 }, .{ 1, 5 }),
                 .args = &.{
-                    .{
-                        .payload = .{ .label = "X$" },
-                        .range = .{
-                            .start = .{ .row = 1, .col = 7 },
-                            .end = .{ .row = 1, .col = 8 },
-                        },
-                    },
-                    .{
-                        .payload = .{ .label = "Y%" },
-                        .range = .{
-                            .start = .{ .row = 1, .col = 11 },
-                            .end = .{ .row = 1, .col = 12 },
-                        },
-                    },
+                    WithRange(Expr).initRange(.{ .label = "X$" }, .{ 1, 7 }, .{ 1, 8 }),
+                    WithRange(Expr).initRange(.{ .label = "Y%" }, .{ 1, 11 }, .{ 1, 12 }),
+                },
+            },
+        } },
+    });
+}
+
+test "parses a nullary statement with line-number" {
+    const lx = try parse(testing.allocator, "10 PRINT");
+    defer {
+        for (lx) |l| l.deinit(testing.allocator);
+        testing.allocator.free(lx);
+    }
+
+    try testing.expectEqualDeep(lx, &[_]Line{.{ .lineno = .{
+        .number = WithRange(usize).initRange(10, .{ 1, 1 }, .{ 1, 2 }),
+        .stmt = .{
+            .call = .{
+                .name = WithRange([]const u8).initRange("PRINT", .{ 1, 1 }, .{ 1, 5 }),
+                .args = &.{
+                    WithRange(Expr).initRange(.{ .label = "X$" }, .{ 1, 7 }, .{ 1, 8 }),
+                    WithRange(Expr).initRange(.{ .label = "X$" }, .{ 1, 11 }, .{ 1, 12 }),
                 },
             },
         },
-    });
+    } }});
 }
