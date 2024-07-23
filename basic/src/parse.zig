@@ -30,8 +30,7 @@ pub const Stmt = union(enum) {
 
 pub const Error = error{
     UnexpectedToken,
-    UnexpectedEnd,
-    OutOfRange,
+    ExpectedEnd,
 };
 
 const State = union(enum) {
@@ -92,6 +91,53 @@ const Parser = struct {
         return null;
     }
 
+    fn acceptEnd(self: *Self) bool {
+        return self.eoi() or
+            self.accept(.linefeed) != null or
+            self.accept(.semicolon) != null;
+    }
+
+    fn acceptExpr(self: *Self) ?WithRange(Expr) {
+        if (self.accept(.number)) |n| {
+            return .{
+                .payload = .{ .imm_number = n.payload },
+                .range = n.range,
+            };
+        }
+        if (self.accept(.label)) |l| {
+            return .{
+                .payload = .{ .label = l.payload },
+                .range = l.range,
+            };
+        }
+        if (self.accept(.string)) |s| {
+            return .{
+                .payload = .{ .imm_string = s.payload },
+                .range = s.range,
+            };
+        }
+        return null;
+    }
+
+    fn acceptExprList(self: *Self) !?[]WithRange(Expr) {
+        const e = self.acceptExpr() orelse return null;
+
+        var ex = std.ArrayList(WithRange(Expr)).init(self.allocator);
+        errdefer ex.deinit();
+
+        try ex.append(e);
+
+        while (self.accept(.comma) != null) {
+            const e2 = self.acceptExpr() orelse return Error.UnexpectedToken;
+            try ex.append(e2);
+        }
+
+        if (!self.acceptEnd())
+            return Error.ExpectedEnd;
+
+        return try ex.toOwnedSlice();
+    }
+
     fn parseOne(self: *Self) !?Stmt {
         if (self.eoi())
             return null;
@@ -100,15 +146,22 @@ const Parser = struct {
             return self.parseOne();
 
         if (self.accept(.label)) |l| {
-            if (self.eoi() or self.accept(.linefeed) != null) {
+            if (self.acceptEnd()) {
                 return .{ .call = .{
                     .name = l,
                     .args = &.{},
                 } };
             }
-            return error.NYILabel;
+
+            if (try self.acceptExprList()) |ex| {
+                return .{ .call = .{
+                    .name = l,
+                    .args = ex,
+                } };
+            }
         }
-        return error.NYIParseOne;
+
+        return Error.UnexpectedToken;
     }
 
     fn parseAll(self: *Self) ![]Stmt {
@@ -121,108 +174,6 @@ const Parser = struct {
 
         return sx.toOwnedSlice();
     }
-
-    // fn parse(self: *Self) ![]Stmt {
-    //     var sx = std.ArrayList(Stmt).init(self.allocator);
-    //     errdefer sx.deinit();
-
-    //     const tx = try token.tokenize(allocator, inp);
-    //     defer allocator.free(tx);
-
-    //     var state: State = .init;
-    //     defer state.deinit();
-
-    //     var i: usize = 0;
-    //     while (i < tx.len) : (i += 1) {
-    //         const t = tx[i];
-    //         self.t = t;
-
-    //         if (t.payload == .remark) {
-    //             try sx.append(self.attach(.{
-    //                 .remark = WithRange([]const u8).init(t.payload.remark, t.range),
-    //             }));
-    //             continue;
-    //         }
-
-    //         switch (state) {
-    //             .init => {
-    //                 switch (t.payload) {
-    //                     .label => |s| state = .{ .call = .{
-    //                         .label = WithRange([]const u8).init(s, t.range),
-    //                         .args = std.ArrayList(WithRange(Expr)).init(allocator),
-    //                         .comma_next = false,
-    //                     } },
-    //                     .kw_let => state = .{ .let = .{} },
-    //                     .linefeed => {},
-    //                     else => return Error.UnexpectedToken,
-    //                 }
-    //             },
-    //             .call => |*c| {
-    //                 switch (t.payload) {
-    //                     .linefeed, .semicolon => {
-    //                         try sx.append(self.attach(.{
-    //                             .call = .{
-    //                                 .name = c.label,
-    //                                 .args = try c.args.toOwnedSlice(),
-    //                             },
-    //                         }));
-    //                         state = .init;
-    //                     },
-    //                     .comma => {
-    //                         if (!c.comma_next)
-    //                             return Error.UnexpectedToken;
-    //                         c.comma_next = false;
-    //                     },
-    //                     .number => |n| {
-    //                         if (c.comma_next)
-    //                             return Error.UnexpectedToken;
-    //                         try c.args.append(.{
-    //                             .payload = .{ .imm_number = n },
-    //                             .range = t.range,
-    //                         });
-    //                         c.comma_next = true;
-    //                     },
-    //                     .label => |s| {
-    //                         if (c.comma_next)
-    //                             return Error.UnexpectedToken;
-    //                         try c.args.append(.{
-    //                             .payload = .{ .label = s },
-    //                             .range = t.range,
-    //                         });
-    //                         c.comma_next = true;
-    //                     },
-    //                     .string => |s| {
-    //                         if (c.comma_next)
-    //                             return Error.UnexpectedToken;
-    //                         try c.args.append(.{
-    //                             .payload = .{ .imm_string = s },
-    //                             .range = t.range,
-    //                         });
-    //                         c.comma_next = true;
-    //                     },
-    //                     else => return Error.UnexpectedToken,
-    //                 }
-    //             },
-    //         }
-    //     }
-
-    //     switch (state) {
-    //         .init => {},
-    //         .call => |*c| {
-    //             if (!c.comma_next and c.args.items.len > 0)
-    //                 // File ends at "BLAH X,"
-    //                 return Error.UnexpectedEnd;
-    //             try sx.append(self.attach(.{
-    //                 .call = .{
-    //                     .name = c.label,
-    //                     .args = try c.args.toOwnedSlice(),
-    //                 },
-    //             }));
-    //         },
-    //     }
-
-    //     return sx.toOwnedSlice();
-    // }
 };
 
 pub fn parse(allocator: Allocator, inp: []const u8) ![]Stmt {
