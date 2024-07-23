@@ -46,6 +46,7 @@ const TokenPayload =
     label: []const u8,
     string: []const u8, // XXX: uninterpreted.
     jumplabel: []const u8,
+    fileno: usize, // XXX: doesn't support variable
     linefeed,
     comma,
     semicolon,
@@ -96,6 +97,7 @@ const State = union(enum) {
     number: LocOffset,
     bareword: LocOffset,
     string: LocOffset,
+    fileno: LocOffset,
 };
 
 fn classifyBareword(bw: []const u8) TokenPayload {
@@ -209,6 +211,8 @@ const Tokenizer = struct {
                         try tx.append(attach(.pareno, self.loc, self.loc));
                     } else if (c == ')') {
                         try tx.append(attach(.parenc, self.loc, self.loc));
+                    } else if (c == '#') {
+                        state = .{ .fileno = .{ .loc = self.loc, .offset = i } };
                     } else {
                         return Error.UnexpectedChar;
                     }
@@ -251,6 +255,17 @@ const Tokenizer = struct {
                         // nop
                     }
                 },
+                .fileno => |start| {
+                    if (c >= '0' and c <= '9') {
+                        // nop
+                    } else {
+                        try tx.append(attach(.{
+                            .fileno = try std.fmt.parseInt(usize, s[start.offset + 1 .. i], 10),
+                        }, start.loc, self.loc.back()));
+                        state = .init;
+                        rewind = true;
+                    }
+                },
             }
         }
 
@@ -261,6 +276,9 @@ const Tokenizer = struct {
             }, start.loc, self.loc.back())),
             .bareword => |start| try tx.append(attach(classifyBareword(s[start.offset..]), start.loc, self.loc.back())),
             .string => return Error.UnexpectedEnd,
+            .fileno => |start| try tx.append(attach(.{
+                .fileno = try std.fmt.parseInt(usize, s[start.offset + 1 ..], 10),
+            }, start.loc, self.loc.back())),
         }
 
         return tx.toOwnedSlice();
@@ -276,7 +294,7 @@ test "tokenizes basics" {
     const tx = try tokenize(testing.allocator,
         \\10 if Then END
         \\  tere maailm%, ava$ = siin&
-        \\Awawa:
+        \\Awawa: #7
     );
     defer testing.allocator.free(tx);
 
@@ -294,5 +312,6 @@ test "tokenizes basics" {
         Token.initRange(.{ .label = "siin&" }, .{ 2, 24 }, .{ 2, 28 }),
         Token.initRange(.linefeed, .{ 2, 29 }, .{ 2, 29 }),
         Token.initRange(.{ .jumplabel = "Awawa" }, .{ 3, 1 }, .{ 3, 6 }),
+        Token.initRange(.{ .fileno = 7 }, .{ 3, 8 }, .{ 3, 9 }),
     }, tx);
 }
