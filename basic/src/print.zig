@@ -129,16 +129,20 @@ pub fn print(allocator: Allocator, sx: []parse.Stmt) ![]const u8 {
     return try p.print(sx);
 }
 
+fn testppInner(allocator: Allocator, inp: []const u8) !void {
+    const sx = try parse.parse(allocator, inp);
+    defer parse.freeStmts(allocator, sx);
+
+    const out = try print(allocator, sx);
+    defer allocator.free(out);
+
+    try testing.expectEqualStrings(inp, out);
+}
+
 fn testpp(comptime path: []const u8) !void {
     const inp = @embedFile("testpp/" ++ path);
 
-    const sx = try parse.parse(testing.allocator, inp);
-    defer parse.freeStmts(testing.allocator, sx);
-
-    const out = try print(testing.allocator, sx);
-    defer testing.allocator.free(out);
-
-    try testing.expectEqualStrings(inp, out);
+    try testing.checkAllAllocationFailures(testing.allocator, testppInner, .{inp});
 }
 
 test "testpp" {

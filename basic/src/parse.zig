@@ -283,6 +283,7 @@ const Parser = struct {
 
     fn acceptExprList(self: *Self) !?[]Expr {
         const e = try self.acceptExpr() orelse return null;
+        errdefer e.payload.deinit(self.allocator);
 
         var ex = std.ArrayList(Expr).init(self.allocator);
         errdefer ex.deinit();
@@ -351,6 +352,7 @@ const Parser = struct {
 
         if (self.accept(.kw_if)) |k| {
             const cond = try self.acceptCond() orelse return Error.UnexpectedToken;
+            errdefer cond.payload.deinit(self.allocator);
             _ = try self.expect(.kw_then);
             // TODO: remarks anywhere, including here.
             // TODO: same line IF .. THEN ... [ELSE ...]
@@ -390,8 +392,10 @@ const Parser = struct {
             sx.deinit();
         }
 
-        while (try self.parseOne()) |s|
+        while (try self.parseOne()) |s| {
+            errdefer s.payload.deinit(self.allocator);
             try sx.append(s);
+        }
 
         return sx.toOwnedSlice();
     }
