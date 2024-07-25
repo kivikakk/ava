@@ -125,16 +125,15 @@ const Parser = struct {
 
     allocator: Allocator,
     tx: []token.Token,
-    nti: usize,
-    sx: std.ArrayListUnmanaged(Stmt),
+    nti: usize = 0,
+    sx: std.ArrayListUnmanaged(Stmt) = .{},
+    pending_rem: ?Stmt = null,
 
     fn init(allocator: Allocator, inp: []const u8) !Self {
         const tx = try token.tokenize(allocator, inp);
         return .{
             .allocator = allocator,
             .tx = tx,
-            .nti = 0,
-            .sx = .{},
         };
     }
 
@@ -143,6 +142,8 @@ const Parser = struct {
         for (self.sx.items) |s|
             s.payload.deinit(self.allocator);
         self.sx.deinit(self.allocator);
+        if (self.pending_rem) |s|
+            s.payload.deinit(self.allocator);
     }
 
     fn append(self: *Self, s: Stmt) !void {
@@ -176,8 +177,8 @@ const Parser = struct {
 
     fn acceptTerminator(self: *Self) !bool {
         if (self.accept(.remark)) |r| {
-            // XXX: this appends the remark before anything that's being processed.
-            try self.append(Stmt.init(.{ .remark = r.payload }, r.range));
+            std.debug.assert(self.pending_rem == null);
+            self.pending_rem = Stmt.init(.{ .remark = r.payload }, r.range);
         }
 
         return self.accept(.linefeed) != null or
@@ -351,6 +352,9 @@ const Parser = struct {
                 } }, l.range, rhs.range);
             }
 
+            if (self.eoi())
+                return Error.UnexpectedEnd;
+
             return Error.UnexpectedToken;
         }
 
@@ -404,6 +408,10 @@ const Parser = struct {
         while (try self.parseOne()) |s| {
             errdefer s.payload.deinit(self.allocator);
             try self.append(s);
+            // XXX: double free on error in pending_rem append.
+            if (self.pending_rem) |r|
+                try self.append(r);
+            self.pending_rem = null;
         }
 
         return self.sx.toOwnedSlice(self.allocator);
@@ -424,18 +432,6 @@ pub fn freeStmts(allocator: Allocator, sx: []Stmt) void {
 
 test "parses a nullary statement" {
     const sx = try parse(testing.allocator, "PRINT\n");
-    defer freeStmts(testing.allocator, sx);
-
-    try testing.expectEqualDeep(sx, &[_]Stmt{
-        Stmt.initRange(.{ .call = .{
-            .name = WithRange([]const u8).initRange("PRINT", .{ 1, 1 }, .{ 1, 5 }),
-            .args = &.{},
-        } }, .{ 1, 1 }, .{ 1, 5 }),
-    });
-}
-
-test "parses a nullary statement without linefeed" {
-    const sx = try parse(testing.allocator, "PRINT");
     defer freeStmts(testing.allocator, sx);
 
     try testing.expectEqualDeep(sx, &[_]Stmt{

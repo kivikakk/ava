@@ -116,6 +116,7 @@ const Printer = struct {
     fn print(self: *Self, sx: []parse.Stmt) ![]const u8 {
         for (sx) |s|
             try self.printStmt(s);
+        try self.buf.append(self.allocator, '\n');
         return self.buf.toOwnedSlice(self.allocator);
     }
 };
