@@ -61,9 +61,9 @@ pub const TokenPayload = union(enum) {
 
     number: i64,
     label: []const u8,
-    remark: []const u8,
+    remark: []const u8, // includes leading "REM " or "'"
     string: []const u8, // XXX: uninterpreted.
-    jumplabel: []const u8,
+    jumplabel: []const u8, // includes trailing ":"
     fileno: usize, // XXX: doesn't support variable
     linefeed,
     comma,
@@ -348,7 +348,7 @@ const Tokenizer = struct {
                         try tx.append(attach(.{ .label = inp[start.offset .. i + 1] }, start.loc, self.loc));
                         state = .init;
                     } else if (c == ':') {
-                        try tx.append(attach(.{ .jumplabel = inp[start.offset..i] }, start.loc, self.loc));
+                        try tx.append(attach(.{ .jumplabel = inp[start.offset .. i + 1] }, start.loc, self.loc));
                         state = .init;
                     } else if (std.ascii.eqlIgnoreCase(inp[start.offset..i], "rem")) {
                         state = .{ .remark = start };
@@ -472,7 +472,7 @@ test "tokenizes basics" {
         Token.initRange(.{ .label = "siin&" }, .{ 2, 24 }, .{ 2, 28 }),
         Token.initRange(.{ .remark = "'okok" }, .{ 2, 30 }, .{ 2, 34 }),
         Token.initRange(.linefeed, .{ 2, 35 }, .{ 2, 35 }),
-        Token.initRange(.{ .jumplabel = "Awawa" }, .{ 3, 1 }, .{ 3, 6 }),
+        Token.initRange(.{ .jumplabel = "Awawa:" }, .{ 3, 1 }, .{ 3, 6 }),
         Token.initRange(.{ .fileno = 7 }, .{ 3, 8 }, .{ 3, 9 }),
         Token.initRange(.angleo, .{ 3, 10 }, .{ 3, 10 }),
         Token.initRange(.diamond, .{ 3, 11 }, .{ 3, 12 }),

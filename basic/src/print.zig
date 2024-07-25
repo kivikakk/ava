@@ -155,6 +155,12 @@ const Printer = struct {
                 try self.advance(lv.range);
                 try self.writer.writeAll(lv.payload);
             },
+            .jumplabel => |l| try self.writer.writeAll(l),
+            .goto => |l| {
+                try self.writer.writeAll("GOTO");
+                try self.advance(l.range);
+                try self.writer.writeAll(l.payload);
+            },
             .end => try self.writer.writeAll("END"),
             .endif => try self.writer.writeAll("END IF"),
         }

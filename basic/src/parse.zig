@@ -53,7 +53,7 @@ pub const Expr = WithRange(ExprPayload);
 pub const StmtPayload = union(enum) {
     const Self = @This();
 
-    remark: []const u8, // includes "REM " or "'"
+    remark: []const u8,
     call: struct {
         name: WithRange([]const u8),
         args: []const Expr,
@@ -97,6 +97,8 @@ pub const StmtPayload = union(enum) {
         step: Expr,
     },
     next: WithRange([]const u8),
+    jumplabel: []const u8,
+    goto: WithRange([]const u8),
     end,
     endif,
 
@@ -132,6 +134,8 @@ pub const StmtPayload = union(enum) {
                 f.step.payload.deinit(allocator);
             },
             .next => {},
+            .jumplabel => {},
+            .goto => {},
             .end => {},
             .endif => {},
         }
@@ -479,6 +483,13 @@ const Parser = struct {
         return Stmt.initEnds(.{ .next = lv }, k.range, lv.range);
     }
 
+    fn acceptStmtGoto(self: *Self) !?Stmt {
+        const k = self.accept(.kw_goto) orelse return null;
+        const l = try self.expect(.label);
+
+        return Stmt.initEnds(.{ .goto = l }, k.range, l.range);
+    }
+
     fn acceptStmtEnd(self: *Self) !?Stmt {
         const k = self.accept(.kw_end) orelse return null;
         if (self.accept(.kw_if)) |k2| {
@@ -506,11 +517,15 @@ const Parser = struct {
             return self.parseOne();
         }
 
+        if (self.accept(.jumplabel)) |l|
+            return Stmt.init(.{ .jumplabel = l.payload }, l.range);
+
         if (try self.acceptStmtLabel()) |s| return s;
         if (try self.acceptStmtLet()) |s| return s;
         if (try self.acceptStmtIf()) |s| return s;
         if (try self.acceptStmtFor()) |s| return s;
         if (try self.acceptStmtNext()) |s| return s;
+        if (try self.acceptStmtGoto()) |s| return s;
         if (try self.acceptStmtEnd()) |s| return s;
 
         return Error.UnexpectedToken;
