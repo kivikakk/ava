@@ -97,7 +97,7 @@ pub const StmtPayload = union(enum) {
 pub const Stmt = WithRange(StmtPayload);
 
 pub const Error = error{
-    ExpectedEnd,
+    ExpectedTerminator,
     UnexpectedToken,
     UnexpectedEnd,
 };
@@ -126,6 +126,7 @@ const Parser = struct {
     allocator: Allocator,
     tx: []token.Token,
     nti: usize,
+    sx: std.ArrayListUnmanaged(Stmt),
 
     fn init(allocator: Allocator, inp: []const u8) !Self {
         const tx = try token.tokenize(allocator, inp);
@@ -133,11 +134,19 @@ const Parser = struct {
             .allocator = allocator,
             .tx = tx,
             .nti = 0,
+            .sx = .{},
         };
     }
 
-    fn deinit(self: Self) void {
+    fn deinit(self: *Self) void {
         self.allocator.free(self.tx);
+        for (self.sx.items) |s|
+            s.payload.deinit(self.allocator);
+        self.sx.deinit(self.allocator);
+    }
+
+    fn append(self: *Self, s: Stmt) !void {
+        try self.sx.append(self.allocator, s);
     }
 
     fn eoi(self: *const Self) bool {
@@ -165,9 +174,12 @@ const Parser = struct {
         return self.accept(tt) orelse Error.UnexpectedToken;
     }
 
-    fn acceptEnd(self: *Self) bool {
-        return self.eoi() or
-            self.accept(.linefeed) != null or
+    fn acceptTerminator(self: *Self) bool {
+        if (self.accept(.remark)) |r| {
+            try self.append(Stmt.init(.{ .remark = r.payload }, r.range));
+        }
+
+        return self.accept(.linefeed) != null or
             self.accept(.colon) != null;
     }
 
@@ -296,8 +308,8 @@ const Parser = struct {
             try ex.append(e2);
         }
 
-        if (!self.acceptEnd())
-            return Error.ExpectedEnd;
+        if (!self.acceptTerminator())
+            return Error.ExpectedTerminator;
 
         return try ex.toOwnedSlice();
     }
@@ -309,11 +321,13 @@ const Parser = struct {
         if (self.accept(.linefeed) != null)
             return self.parseOne();
 
-        if (self.accept(.remark)) |r|
-            return Stmt.init(.{ .remark = r.payload }, r.range);
+        if (self.accept(.remark)) |r| {
+            try self.append(Stmt.init(.{ .remark = r.payload }, r.range));
+            return self.parseOne();
+        }
 
         if (self.accept(.label)) |l| {
-            if (self.acceptEnd()) {
+            if (self.acceptTerminator()) {
                 return Stmt.init(.{ .call = .{
                     .name = l,
                     .args = &.{},
@@ -373,12 +387,12 @@ const Parser = struct {
 
         if (self.accept(.kw_end)) |k| {
             if (self.accept(.kw_if)) |k2| {
-                if (!self.acceptEnd())
-                    return Error.ExpectedEnd;
+                if (!self.acceptTerminator())
+                    return Error.ExpectedTerminator;
                 return Stmt.initEnds(.endif, k.range, k2.range);
             }
-            if (!self.acceptEnd())
-                return Error.ExpectedEnd;
+            if (!self.acceptTerminator())
+                return Error.ExpectedTerminator;
             return Stmt.init(.end, k.range);
         }
 
@@ -386,18 +400,12 @@ const Parser = struct {
     }
 
     fn parseAll(self: *Self) ![]Stmt {
-        var sx = std.ArrayList(Stmt).init(self.allocator);
-        errdefer {
-            for (sx.items) |s| s.payload.deinit(self.allocator);
-            sx.deinit();
-        }
-
         while (try self.parseOne()) |s| {
             errdefer s.payload.deinit(self.allocator);
-            try sx.append(s);
+            try self.append(s);
         }
 
-        return sx.toOwnedSlice();
+        return self.sx.toOwnedSlice(self.allocator);
     }
 };
 
