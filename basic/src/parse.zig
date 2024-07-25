@@ -29,7 +29,7 @@ pub const ExprPayload = union(enum) {
     label: []const u8,
     binop: struct {
         lhs: *Expr,
-        op: Op,
+        op: WithRange(Op),
         rhs: *Expr,
     },
 
@@ -61,13 +61,16 @@ pub const StmtPayload = union(enum) {
     let: struct {
         kw: bool,
         lhs: WithRange([]const u8),
+        eq: WithRange(void),
         rhs: Expr,
     },
     @"if": struct {
         cond: Expr,
+        then: WithRange(void),
     },
     if1: struct {
         cond: Expr,
+        then: WithRange(void),
         stmt: *Stmt,
     },
     end,
@@ -212,11 +215,11 @@ const Parser = struct {
     fn acceptTerm(self: *Self) !?Expr {
         const f = self.acceptFactor() orelse return null;
         errdefer f.payload.deinit(self.allocator);
-        const op: Op = op: {
-            if (self.accept(.asterisk) != null)
-                break :op .mul
-            else if (self.accept(.fslash) != null)
-                break :op .div;
+        const op = op: {
+            if (self.accept(.asterisk)) |o|
+                break :op WithRange(Op).init(.mul, o.range)
+            else if (self.accept(.fslash)) |o|
+                break :op WithRange(Op).init(.div, o.range);
             return f;
         };
         const f2 = self.acceptFactor() orelse return Error.UnexpectedToken;
@@ -238,11 +241,11 @@ const Parser = struct {
     fn acceptExpr(self: *Self) !?Expr {
         const t = try self.acceptTerm() orelse return null;
         errdefer t.payload.deinit(self.allocator);
-        const op: Op = op: {
-            if (self.accept(.plus) != null)
-                break :op .add
-            else if (self.accept(.minus) != null)
-                break :op .sub;
+        const op = op: {
+            if (self.accept(.plus)) |o|
+                break :op WithRange(Op).init(.add, o.range)
+            else if (self.accept(.minus)) |o|
+                break :op WithRange(Op).init(.sub, o.range);
             return t;
         };
         const t2 = try self.acceptTerm() orelse return Error.UnexpectedToken;
@@ -264,19 +267,19 @@ const Parser = struct {
     fn acceptCond(self: *Self) !?Expr {
         const e = try self.acceptExpr() orelse return null;
         errdefer e.payload.deinit(self.allocator);
-        const op: Op = op: {
-            if (self.accept(.equals) != null)
-                break :op .eq
-            else if (self.accept(.diamond) != null)
-                break :op .neq
-            else if (self.accept(.angleo) != null)
-                break :op .lt
-            else if (self.accept(.anglec) != null)
-                break :op .gt
-            else if (self.accept(.lte) != null)
-                break :op .lte
-            else if (self.accept(.gte) != null)
-                break :op .gte;
+        const op = op: {
+            if (self.accept(.equals)) |o|
+                break :op WithRange(Op).init(.eq, o.range)
+            else if (self.accept(.diamond)) |o|
+                break :op WithRange(Op).init(.neq, o.range)
+            else if (self.accept(.angleo)) |o|
+                break :op WithRange(Op).init(.lt, o.range)
+            else if (self.accept(.anglec)) |o|
+                break :op WithRange(Op).init(.gt, o.range)
+            else if (self.accept(.lte)) |o|
+                break :op WithRange(Op).init(.lte, o.range)
+            else if (self.accept(.gte)) |o|
+                break :op WithRange(Op).init(.gte, o.range);
             return e;
         };
         const e2 = try self.acceptExpr() orelse return Error.UnexpectedToken;
@@ -343,11 +346,12 @@ const Parser = struct {
                 } }, l.range, ex[ex.len - 1].range);
             }
 
-            if (self.accept(.equals) != null) {
+            if (self.accept(.equals)) |eq| {
                 const rhs = try self.acceptExpr() orelse return Error.UnexpectedToken;
                 return Stmt.initEnds(.{ .let = .{
                     .kw = false,
                     .lhs = l,
+                    .eq = eq,
                     .rhs = rhs,
                 } }, l.range, rhs.range);
             }
@@ -360,11 +364,12 @@ const Parser = struct {
 
         if (self.accept(.kw_let)) |k| {
             const lhs = try self.expect(.label);
-            _ = try self.expect(.equals);
+            const eq = try self.expect(.equals);
             const rhs = try self.acceptExpr() orelse return Error.UnexpectedToken;
             return Stmt.initEnds(.{ .let = .{
                 .kw = true,
                 .lhs = lhs,
+                .eq = eq,
                 .rhs = rhs,
             } }, k.range, rhs.range);
         }
@@ -372,12 +377,12 @@ const Parser = struct {
         if (self.accept(.kw_if)) |k| {
             const cond = try self.acceptCond() orelse return Error.UnexpectedToken;
             errdefer cond.payload.deinit(self.allocator);
-            _ = try self.expect(.kw_then);
-            // TODO: remarks anywhere, including here.
+            const then = try self.expect(.kw_then);
             // TODO: same line IF .. THEN ... [ELSE ...]
             if (self.accept(.linefeed) != null) {
                 return Stmt.initEnds(.{ .@"if" = .{
                     .cond = cond,
+                    .then = then,
                 } }, k.range, cond.range);
             }
             const s = try self.parseOne() orelse return Error.UnexpectedEnd;
@@ -386,6 +391,7 @@ const Parser = struct {
             stmt.* = s;
             return Stmt.initEnds(.{ .if1 = .{
                 .cond = cond,
+                .then = then,
                 .stmt = stmt,
             } }, k.range, stmt.range);
         }

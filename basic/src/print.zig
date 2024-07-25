@@ -61,20 +61,21 @@ const Printer = struct {
             .label => |l| try self.writer.writeAll(l),
             .binop => |b| {
                 try self.printExpr(b.lhs.*);
-                switch (b.op) {
-                    .mul => try self.writer.writeAll(" * "),
-                    .div => try self.writer.writeAll(" / "),
-                    .add => try self.writer.writeAll(" + "),
-                    .sub => try self.writer.writeAll(" - "),
-                    .eq => try self.writer.writeAll(" = "),
-                    .neq => try self.writer.writeAll(" <> "),
-                    .lt => try self.writer.writeAll(" < "),
-                    .gt => try self.writer.writeAll(" > "),
-                    .lte => try self.writer.writeAll(" <= "),
-                    .gte => try self.writer.writeAll(" >= "),
-                    .@"and" => try self.writer.writeAll(" AND "),
-                    .@"or" => try self.writer.writeAll(" OR "),
-                    .xor => try self.writer.writeAll(" XOR "),
+                try self.advance(b.op.range);
+                switch (b.op.payload) {
+                    .mul => try self.writer.writeAll("*"),
+                    .div => try self.writer.writeAll("/"),
+                    .add => try self.writer.writeAll("+"),
+                    .sub => try self.writer.writeAll("-"),
+                    .eq => try self.writer.writeAll("="),
+                    .neq => try self.writer.writeAll("<>"),
+                    .lt => try self.writer.writeAll("<"),
+                    .gt => try self.writer.writeAll(">"),
+                    .lte => try self.writer.writeAll("<="),
+                    .gte => try self.writer.writeAll(">="),
+                    .@"and" => try self.writer.writeAll("AND"),
+                    .@"or" => try self.writer.writeAll("OR"),
+                    .xor => try self.writer.writeAll("XOR"),
                 }
                 try self.printExpr(b.rhs.*);
             },
@@ -88,24 +89,30 @@ const Printer = struct {
             .call => |c| {
                 try self.writer.writeAll(c.name.payload);
                 for (c.args, 0..) |e, i| {
-                    try self.writer.writeAll(if (i == 0) " " else ", ");
+                    if (i > 0)
+                        try self.writer.writeByte(',');
                     try self.printExpr(e);
                 }
             },
             .let => |l| {
-                if (l.kw) try self.writer.writeAll("LET ");
-                try std.fmt.format(self.writer, "{s} = ", .{l.lhs.payload});
+                if (l.kw) try self.writer.writeAll("LET");
+                try self.advance(l.lhs.range);
+                try self.writer.writeAll(l.lhs.payload);
+                try self.advance(l.eq.range);
+                try self.writer.writeByte('=');
                 try self.printExpr(l.rhs);
             },
             .@"if" => |i| {
-                try self.writer.writeAll("IF ");
+                try self.writer.writeAll("IF");
                 try self.printExpr(i.cond);
-                try self.writer.writeAll(" THEN");
+                try self.advance(i.then.range);
+                try self.writer.writeAll("THEN");
             },
             .if1 => |i| {
-                try self.writer.writeAll("IF ");
+                try self.writer.writeAll("IF");
                 try self.printExpr(i.cond);
-                try self.writer.writeAll(" THEN ");
+                try self.advance(i.then.range);
+                try self.writer.writeAll("THEN");
                 try self.printStmt(i.stmt.*);
             },
             .end => try self.writer.writeAll("END"),
