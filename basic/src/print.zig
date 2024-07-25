@@ -84,25 +84,23 @@ const Printer = struct {
     fn printStmt(self: *Self, s: parse.Stmt) !void {
         try self.advance(s.range);
         switch (s.payload) {
-            .remark => |r| try std.fmt.format(self.writer, "'{s}\n", .{r}),
+            .remark => |r| try std.fmt.format(self.writer, "'{s}", .{r}),
             .call => |c| {
                 try self.writer.writeAll(c.name.payload);
                 for (c.args, 0..) |e, i| {
                     try self.writer.writeAll(if (i == 0) " " else ", ");
                     try self.printExpr(e);
                 }
-                try self.writer.writeAll("\n");
             },
             .let => |l| {
                 if (l.kw) try self.writer.writeAll("LET ");
                 try std.fmt.format(self.writer, "{s} = ", .{l.lhs.payload});
                 try self.printExpr(l.rhs);
-                try self.writer.writeAll("\n");
             },
             .@"if" => |i| {
                 try self.writer.writeAll("IF ");
                 try self.printExpr(i.cond);
-                try self.writer.writeAll(" THEN\n");
+                try self.writer.writeAll(" THEN");
             },
             .if1 => |i| {
                 try self.writer.writeAll("IF ");
@@ -110,8 +108,8 @@ const Printer = struct {
                 try self.writer.writeAll(" THEN ");
                 try self.printStmt(i.stmt.*);
             },
-            .end => try self.writer.writeAll("END\n"),
-            .endif => try self.writer.writeAll("END IF\n"),
+            .end => try self.writer.writeAll("END"),
+            .endif => try self.writer.writeAll("END IF"),
         }
     }
 

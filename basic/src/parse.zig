@@ -174,8 +174,9 @@ const Parser = struct {
         return self.accept(tt) orelse Error.UnexpectedToken;
     }
 
-    fn acceptTerminator(self: *Self) bool {
+    fn acceptTerminator(self: *Self) !bool {
         if (self.accept(.remark)) |r| {
+            // XXX: this appends the remark before anything that's being processed.
             try self.append(Stmt.init(.{ .remark = r.payload }, r.range));
         }
 
@@ -308,7 +309,7 @@ const Parser = struct {
             try ex.append(e2);
         }
 
-        if (!self.acceptTerminator())
+        if (!try self.acceptTerminator())
             return Error.ExpectedTerminator;
 
         return try ex.toOwnedSlice();
@@ -327,7 +328,7 @@ const Parser = struct {
         }
 
         if (self.accept(.label)) |l| {
-            if (self.acceptTerminator()) {
+            if (try self.acceptTerminator()) {
                 return Stmt.init(.{ .call = .{
                     .name = l,
                     .args = &.{},
@@ -387,11 +388,11 @@ const Parser = struct {
 
         if (self.accept(.kw_end)) |k| {
             if (self.accept(.kw_if)) |k2| {
-                if (!self.acceptTerminator())
+                if (!try self.acceptTerminator())
                     return Error.ExpectedTerminator;
                 return Stmt.initEnds(.endif, k.range, k2.range);
             }
-            if (!self.acceptTerminator())
+            if (!try self.acceptTerminator())
                 return Error.ExpectedTerminator;
             return Stmt.init(.end, k.range);
         }
