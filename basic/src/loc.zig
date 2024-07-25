@@ -40,14 +40,11 @@ pub fn WithRange(comptime T: type) type {
             });
         }
 
-        pub fn deinit(self: *const Self, allocator: std.mem.Allocator) void {
-            // XXX: usingnamespace (if (T == u8) struct { ... }) hacks used to
-            // make this compile-time verifiable. Mis nüüd?
-            if (@hasDecl(T, "deinit"))
-                self.payload.deinit(allocator)
-            else
-                @panic("deinit called but payload type " ++ @typeName(T) ++ " doesn't have one");
-        }
+        pub usingnamespace if (@typeInfo(T) == .Union and @hasDecl(T, "deinit")) struct {
+            pub fn deinit(self: *const Self, allocator: std.mem.Allocator) void {
+                self.payload.deinit(allocator);
+            }
+        } else struct {};
 
         pub fn format(self: Self, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
             _ = fmt;
