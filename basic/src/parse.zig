@@ -53,7 +53,7 @@ pub const Expr = WithRange(ExprPayload);
 pub const StmtPayload = union(enum) {
     const Self = @This();
 
-    remark: []const u8,
+    remark: []const u8, // includes "REM " or "'"
     call: struct {
         name: WithRange([]const u8),
         args: []const Expr,
@@ -330,7 +330,103 @@ const Parser = struct {
         return try ex.toOwnedSlice();
     }
 
-    fn parseOne(self: *Self) !?Stmt {
+    fn acceptStmtLabel(self: *Self) !?Stmt {
+        const l = self.accept(.label) orelse return null;
+        if (try self.peekTerminator()) {
+            return Stmt.init(.{ .call = .{
+                .name = l,
+                .args = &.{},
+            } }, l.range);
+        }
+
+        if (try self.acceptExprList()) |ex| {
+            return Stmt.initEnds(.{ .call = .{
+                .name = l,
+                .args = ex,
+            } }, l.range, ex[ex.len - 1].range);
+        }
+
+        if (self.accept(.equals)) |eq| {
+            const rhs = try self.acceptExpr() orelse return Error.UnexpectedToken;
+            return Stmt.initEnds(.{ .let = .{
+                .kw = false,
+                .lhs = l,
+                .tok_eq = eq,
+                .rhs = rhs,
+            } }, l.range, rhs.range);
+        }
+
+        if (self.eoi())
+            return Error.UnexpectedEnd;
+
+        return Error.UnexpectedToken;
+    }
+
+    fn acceptStmtLet(self: *Self) !?Stmt {
+        const k = self.accept(.kw_let) orelse return null;
+        const lhs = try self.expect(.label);
+        const eq = try self.expect(.equals);
+        const rhs = try self.acceptExpr() orelse return Error.UnexpectedToken;
+        return Stmt.initEnds(.{ .let = .{
+            .kw = true,
+            .lhs = lhs,
+            .tok_eq = eq,
+            .rhs = rhs,
+        } }, k.range, rhs.range);
+    }
+
+    fn acceptStmtIf(self: *Self) !?Stmt {
+        const k = self.accept(.kw_if) orelse return null;
+        const cond = try self.acceptCond() orelse return Error.UnexpectedToken;
+        errdefer cond.payload.deinit(self.allocator);
+        const tok_then = try self.expect(.kw_then);
+        if (try self.peekTerminator()) {
+            return Stmt.initEnds(.{ .@"if" = .{
+                .cond = cond,
+                .tok_then = tok_then,
+            } }, k.range, cond.range);
+        }
+        const st = try self.parseOne() orelse return Error.UnexpectedEnd;
+        errdefer st.payload.deinit(self.allocator);
+        const stmt_t = try self.allocator.create(Stmt);
+        errdefer self.allocator.destroy(stmt_t);
+        stmt_t.* = st;
+
+        if (self.accept(.kw_else)) |tok_else| {
+            const sf = try self.parseOne() orelse return Error.UnexpectedEnd;
+            errdefer sf.payload.deinit(self.allocator);
+            const stmt_f = try self.allocator.create(Stmt);
+            errdefer self.allocator.destroy(stmt_f);
+            stmt_f.* = sf;
+
+            return Stmt.initEnds(.{ .if2 = .{
+                .cond = cond,
+                .tok_then = tok_then,
+                .stmt_t = stmt_t,
+                .tok_else = tok_else,
+                .stmt_f = stmt_f,
+            } }, k.range, stmt_f.range);
+        }
+
+        return Stmt.initEnds(.{ .if1 = .{
+            .cond = cond,
+            .tok_then = tok_then,
+            .stmt_t = stmt_t,
+        } }, k.range, stmt_t.range);
+    }
+
+    fn acceptStmtEnd(self: *Self) !?Stmt {
+        const k = self.accept(.kw_end) orelse return null;
+        if (self.accept(.kw_if)) |k2| {
+            _ = try self.expect(.linefeed);
+            return Stmt.initEnds(.endif, k.range, k2.range);
+        }
+        if (!try self.peekTerminator())
+            return Error.ExpectedTerminator;
+        return Stmt.init(.end, k.range);
+    }
+
+    fn parseOne(self: *Self) (Error || Allocator.Error)!?Stmt {
         if (self.eoi())
             return null;
 
@@ -342,97 +438,10 @@ const Parser = struct {
             return self.parseOne();
         }
 
-        if (self.accept(.label)) |l| {
-            if (try self.peekTerminator()) {
-                return Stmt.init(.{ .call = .{
-                    .name = l,
-                    .args = &.{},
-                } }, l.range);
-            }
-
-            if (try self.acceptExprList()) |ex| {
-                return Stmt.initEnds(.{ .call = .{
-                    .name = l,
-                    .args = ex,
-                } }, l.range, ex[ex.len - 1].range);
-            }
-
-            if (self.accept(.equals)) |eq| {
-                const rhs = try self.acceptExpr() orelse return Error.UnexpectedToken;
-                return Stmt.initEnds(.{ .let = .{
-                    .kw = false,
-                    .lhs = l,
-                    .tok_eq = eq,
-                    .rhs = rhs,
-                } }, l.range, rhs.range);
-            }
-
-            if (self.eoi())
-                return Error.UnexpectedEnd;
-
-            return Error.UnexpectedToken;
-        }
-
-        if (self.accept(.kw_let)) |k| {
-            const lhs = try self.expect(.label);
-            const eq = try self.expect(.equals);
-            const rhs = try self.acceptExpr() orelse return Error.UnexpectedToken;
-            return Stmt.initEnds(.{ .let = .{
-                .kw = true,
-                .lhs = lhs,
-                .tok_eq = eq,
-                .rhs = rhs,
-            } }, k.range, rhs.range);
-        }
-
-        if (self.accept(.kw_if)) |k| {
-            const cond = try self.acceptCond() orelse return Error.UnexpectedToken;
-            errdefer cond.payload.deinit(self.allocator);
-            const tok_then = try self.expect(.kw_then);
-            if (try self.peekTerminator()) {
-                return Stmt.initEnds(.{ .@"if" = .{
-                    .cond = cond,
-                    .tok_then = tok_then,
-                } }, k.range, cond.range);
-            }
-            const st = try self.parseOne() orelse return Error.UnexpectedEnd;
-            errdefer st.payload.deinit(self.allocator);
-            const stmt_t = try self.allocator.create(Stmt);
-            errdefer self.allocator.destroy(stmt_t);
-            stmt_t.* = st;
-
-            if (self.accept(.kw_else)) |tok_else| {
-                const sf = try self.parseOne() orelse return Error.UnexpectedEnd;
-                errdefer sf.payload.deinit(self.allocator);
-                const stmt_f = try self.allocator.create(Stmt);
-                errdefer self.allocator.destroy(stmt_f);
-                stmt_f.* = sf;
-
-                return Stmt.initEnds(.{ .if2 = .{
-                    .cond = cond,
-                    .tok_then = tok_then,
-                    .stmt_t = stmt_t,
-                    .tok_else = tok_else,
-                    .stmt_f = stmt_f,
-                } }, k.range, stmt_f.range);
-            }
-
-            return Stmt.initEnds(.{ .if1 = .{
-                .cond = cond,
-                .tok_then = tok_then,
-                .stmt_t = stmt_t,
-            } }, k.range, stmt_t.range);
-        }
-
-        if (self.accept(.kw_end)) |k| {
-            if (self.accept(.kw_if)) |k2| {
-                _ = try self.expect(.linefeed);
-                return Stmt.initEnds(.endif, k.range, k2.range);
-            }
-            if (!try self.peekTerminator())
-                return Error.ExpectedTerminator;
-            return Stmt.init(.end, k.range);
-        }
+        if (try self.acceptStmtLabel()) |s| return s;
+        if (try self.acceptStmtLet()) |s| return s;
+        if (try self.acceptStmtIf()) |s| return s;
+        if (try self.acceptStmtEnd()) |s| return s;
 
         return Error.UnexpectedToken;
     }

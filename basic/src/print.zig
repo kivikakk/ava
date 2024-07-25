@@ -85,7 +85,7 @@ const Printer = struct {
     fn printStmt(self: *Self, s: parse.Stmt) !void {
         try self.advance(s.range);
         switch (s.payload) {
-            .remark => |r| try std.fmt.format(self.writer, "'{s}", .{r}),
+            .remark => |r| try self.writer.writeAll(r),
             .call => |c| {
                 try self.writer.writeAll(c.name.payload);
                 for (c.args, 0..) |e, i| {
@@ -163,4 +163,5 @@ fn testpp(comptime path: []const u8) !void {
 
 test "testpp" {
     try testpp("01.bas");
+    try testpp("02.bas");
 }

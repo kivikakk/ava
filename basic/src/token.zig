@@ -268,6 +268,10 @@ const Tokenizer = struct {
                 if (inp[i] == '\n') {
                     self.loc.row += 1;
                     self.loc.col = 1;
+                } else if (inp[i] == '\t') {
+                    self.loc.col += 1;
+                    while (self.loc.col % 8 != 0)
+                        self.loc.col += 1;
                 } else {
                     self.loc.col += 1;
                 }
@@ -285,6 +289,8 @@ const Tokenizer = struct {
                     } else if (c == '"') {
                         state = .{ .string = .{ .loc = self.loc, .offset = i } };
                     } else if (c == ' ') {
+                        // nop
+                    } else if (c == '\t') {
                         // nop
                     } else if (c == '\n') {
                         try tx.append(attach(.linefeed, self.loc, self.loc));
@@ -344,6 +350,8 @@ const Tokenizer = struct {
                     } else if (c == ':') {
                         try tx.append(attach(.{ .jumplabel = inp[start.offset..i] }, start.loc, self.loc));
                         state = .init;
+                    } else if (std.ascii.eqlIgnoreCase(inp[start.offset..i], "rem")) {
+                        state = .{ .remark = start };
                     } else {
                         try tx.append(attach(classifyBareword(inp[start.offset..i]), start.loc, self.loc.back()));
                         state = .init;
@@ -372,7 +380,7 @@ const Tokenizer = struct {
                 .remark => |start| {
                     if (c == '\n') {
                         try tx.append(attach(.{
-                            .remark = inp[start.offset + 1 .. i],
+                            .remark = inp[start.offset..i],
                         }, start.loc, self.loc.back()));
                         state = .init;
                         rewind = true;
@@ -411,7 +419,15 @@ const Tokenizer = struct {
             .number => |start| try tx.append(attach(.{
                 .number = try std.fmt.parseInt(isize, inp[start.offset..], 10),
             }, start.loc, self.loc.back())),
-            .bareword => |start| try tx.append(attach(classifyBareword(inp[start.offset..]), start.loc, self.loc.back())),
+            .bareword => |start| {
+                if (std.ascii.eqlIgnoreCase(inp[start.offset..], "rem")) {
+                    try tx.append(attach(.{
+                        .remark = inp[start.offset..],
+                    }, start.loc, self.loc.back()));
+                } else {
+                    try tx.append(attach(classifyBareword(inp[start.offset..]), start.loc, self.loc.back()));
+                }
+            },
             .string => return Error.UnexpectedEnd,
             .fileno => |start| try tx.append(attach(.{
                 .fileno = try std.fmt.parseInt(usize, inp[start.offset + 1 ..], 10),
@@ -437,6 +453,8 @@ test "tokenizes basics" {
         \\if 10 Then END
         \\  tere maailm%, ava$ = siin& 'okok
         \\Awawa: #7<<>>
+        \\REM Hiii :3
+        \\REM
     );
     defer testing.allocator.free(tx);
 
@@ -452,12 +470,16 @@ test "tokenizes basics" {
         Token.initRange(.{ .label = "ava$" }, .{ 2, 17 }, .{ 2, 20 }),
         Token.initRange(.equals, .{ 2, 22 }, .{ 2, 22 }),
         Token.initRange(.{ .label = "siin&" }, .{ 2, 24 }, .{ 2, 28 }),
-        Token.initRange(.{ .remark = "okok" }, .{ 2, 30 }, .{ 2, 34 }),
+        Token.initRange(.{ .remark = "'okok" }, .{ 2, 30 }, .{ 2, 34 }),
         Token.initRange(.linefeed, .{ 2, 35 }, .{ 2, 35 }),
         Token.initRange(.{ .jumplabel = "Awawa" }, .{ 3, 1 }, .{ 3, 6 }),
         Token.initRange(.{ .fileno = 7 }, .{ 3, 8 }, .{ 3, 9 }),
         Token.initRange(.angleo, .{ 3, 10 }, .{ 3, 10 }),
         Token.initRange(.diamond, .{ 3, 11 }, .{ 3, 12 }),
         Token.initRange(.anglec, .{ 3, 13 }, .{ 3, 13 }),
+        Token.initRange(.linefeed, .{ 3, 14 }, .{ 3, 14 }),
+        Token.initRange(.{ .remark = "REM Hiii :3" }, .{ 4, 1 }, .{ 4, 11 }),
+        Token.initRange(.linefeed, .{ 4, 12 }, .{ 4, 12 }),
+        Token.initRange(.{ .remark = "REM" }, .{ 5, 1 }, .{ 5, 3 }),
     }, tx);
 }
