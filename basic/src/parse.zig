@@ -406,9 +406,10 @@ const Parser = struct {
 
     fn parseAll(self: *Self) ![]Stmt {
         while (try self.parseOne()) |s| {
-            errdefer s.payload.deinit(self.allocator);
-            try self.append(s);
-            // XXX: double free on error in pending_rem append.
+            {
+                errdefer s.payload.deinit(self.allocator);
+                try self.append(s);
+            }
             if (self.pending_rem) |r|
                 try self.append(r);
             self.pending_rem = null;
