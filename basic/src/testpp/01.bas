@@ -9,7 +9,7 @@ LET x$ = "Tere"
 y$="maailm"
 PRINT x$, ", ", y$
 
-IF x$ + x$ = "TereTere" THEN
+IF x$ + x$ = "TereTere" THEN   'umm.
 
     PRINT "yey"   ' :)
     PRINT 1+2     ' !

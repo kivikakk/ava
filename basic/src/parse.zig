@@ -178,14 +178,20 @@ const Parser = struct {
         return self.accept(tt) orelse Error.UnexpectedToken;
     }
 
-    fn acceptTerminator(self: *Self) !bool {
+    fn peek(self: *Self, comptime tt: token.TokenTag) bool {
+        const t = self.nt() orelse return false;
+        return t.payload == tt;
+    }
+
+    fn peekTerminator(self: *Self) !bool {
         if (self.accept(.remark)) |r| {
             std.debug.assert(self.pending_rem == null);
             self.pending_rem = Stmt.init(.{ .remark = r.payload }, r.range);
         }
 
-        return self.accept(.linefeed) != null or
-            self.accept(.colon) != null;
+        return self.peek(.linefeed) or
+            self.peek(.colon) or
+            self.peek(.kw_else);
     }
 
     fn acceptFactor(self: *Self) ?Expr {
@@ -313,7 +319,7 @@ const Parser = struct {
             try ex.append(e2);
         }
 
-        if (!try self.acceptTerminator())
+        if (!try self.peekTerminator())
             return Error.ExpectedTerminator;
 
         return try ex.toOwnedSlice();
@@ -332,7 +338,7 @@ const Parser = struct {
         }
 
         if (self.accept(.label)) |l| {
-            if (try self.acceptTerminator()) {
+            if (try self.peekTerminator()) {
                 return Stmt.init(.{ .call = .{
                     .name = l,
                     .args = &.{},
@@ -379,7 +385,7 @@ const Parser = struct {
             errdefer cond.payload.deinit(self.allocator);
             const then = try self.expect(.kw_then);
             // TODO: same line IF .. THEN ... [ELSE ...]
-            if (self.accept(.linefeed) != null) {
+            if (try self.peekTerminator()) {
                 return Stmt.initEnds(.{ .@"if" = .{
                     .cond = cond,
                     .then = then,
@@ -388,7 +394,9 @@ const Parser = struct {
             const s = try self.parseOne() orelse return Error.UnexpectedEnd;
             errdefer s.payload.deinit(self.allocator);
             const stmt = try self.allocator.create(Stmt);
+            errdefer self.allocator.destroy(stmt);
             stmt.* = s;
+
             return Stmt.initEnds(.{ .if1 = .{
                 .cond = cond,
                 .then = then,
@@ -398,11 +406,11 @@ const Parser = struct {
 
         if (self.accept(.kw_end)) |k| {
             if (self.accept(.kw_if)) |k2| {
-                if (!try self.acceptTerminator())
+                if (!try self.peekTerminator())
                     return Error.ExpectedTerminator;
                 return Stmt.initEnds(.endif, k.range, k2.range);
             }
-            if (!try self.acceptTerminator())
+            if (!try self.peekTerminator())
                 return Error.ExpectedTerminator;
             return Stmt.init(.end, k.range);
         }
