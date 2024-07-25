@@ -96,6 +96,7 @@ pub const StmtPayload = union(enum) {
         tok_step: WithRange(void),
         step: Expr,
     },
+    next: WithRange([]const u8),
     end,
     endif,
 
@@ -130,6 +131,7 @@ pub const StmtPayload = union(enum) {
                 f.to.payload.deinit(allocator);
                 f.step.payload.deinit(allocator);
             },
+            .next => {},
             .end => {},
             .endif => {},
         }
@@ -440,6 +442,43 @@ const Parser = struct {
         } }, k.range, stmt_t.range);
     }
 
+    fn acceptStmtFor(self: *Self) !?Stmt {
+        const k = self.accept(.kw_for) orelse return null;
+        const lv = try self.expect(.label);
+        const tok_eq = try self.expect(.equals);
+        const from = try self.acceptExpr() orelse return Error.UnexpectedToken;
+        const tok_to = try self.expect(.kw_to);
+        const to = try self.acceptExpr() orelse return Error.UnexpectedToken;
+
+        if (self.accept(.kw_step)) |tok_step| {
+            const step = try self.acceptExpr() orelse return Error.UnexpectedToken;
+            return Stmt.initEnds(.{ .forstep = .{
+                .lv = lv,
+                .tok_eq = tok_eq,
+                .from = from,
+                .tok_to = tok_to,
+                .to = to,
+                .tok_step = tok_step,
+                .step = step,
+            } }, k.range, step.range);
+        }
+
+        return Stmt.initEnds(.{ .@"for" = .{
+            .lv = lv,
+            .tok_eq = tok_eq,
+            .from = from,
+            .tok_to = tok_to,
+            .to = to,
+        } }, k.range, to.range);
+    }
+
+    fn acceptStmtNext(self: *Self) !?Stmt {
+        const k = self.accept(.kw_next) orelse return null;
+        const lv = try self.expect(.label);
+
+        return Stmt.initEnds(.{ .next = lv }, k.range, lv.range);
+    }
+
     fn acceptStmtEnd(self: *Self) !?Stmt {
         const k = self.accept(.kw_end) orelse return null;
         if (self.accept(.kw_if)) |k2| {
@@ -455,6 +494,10 @@ const Parser = struct {
         if (self.eoi())
             return null;
 
+        // TODO: our terminator behaviour is (still) not very rigorous. Consider
+        // "FOR I = 1 to 10 PRINT "X" NEXT I". This probably just parses --
+        // should it?
+
         if (self.accept(.linefeed) != null)
             return self.parseOne();
 
@@ -466,6 +509,8 @@ const Parser = struct {
         if (try self.acceptStmtLabel()) |s| return s;
         if (try self.acceptStmtLet()) |s| return s;
         if (try self.acceptStmtIf()) |s| return s;
+        if (try self.acceptStmtFor()) |s| return s;
+        if (try self.acceptStmtNext()) |s| return s;
         if (try self.acceptStmtEnd()) |s| return s;
 
         return Error.UnexpectedToken;

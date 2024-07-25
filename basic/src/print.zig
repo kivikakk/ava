@@ -150,6 +150,11 @@ const Printer = struct {
                 try self.writer.writeAll("STEP");
                 try self.printExpr(f.step);
             },
+            .next => |lv| {
+                try self.writer.writeAll("NEXT");
+                try self.advance(lv.range);
+                try self.writer.writeAll(lv.payload);
+            },
             .end => try self.writer.writeAll("END"),
             .endif => try self.writer.writeAll("END IF"),
         }
