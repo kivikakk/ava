@@ -405,14 +405,7 @@ pub fn parse(allocator: Allocator, inp: []const u8) ![]Stmt {
     var p = try Parser.init(allocator, inp);
     defer p.deinit();
 
-    return p.parseAll() catch |err| {
-        if (p.nt()) |t| {
-            std.debug.print("last token: {any}\n", .{t});
-        } else {
-            std.debug.print("reached EOF\n", .{});
-        }
-        return err;
-    };
+    return p.parseAll();
 }
 
 pub fn freeStmts(allocator: Allocator, sx: []Stmt) void {

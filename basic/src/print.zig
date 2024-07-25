@@ -126,7 +126,7 @@ pub fn print(allocator: Allocator, sx: []parse.Stmt) ![]const u8 {
     var p = try Printer.init(allocator);
     defer p.deinit();
 
-    return try p.print(sx);
+    return p.print(sx);
 }
 
 fn testppInner(allocator: Allocator, inp: []const u8) !void {
