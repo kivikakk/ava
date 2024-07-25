@@ -18,6 +18,13 @@ fn printExpr(writer: std.ArrayList(u8).Writer, e: parse.Expr) !void {
                 .div => try writer.writeAll(" / "),
                 .add => try writer.writeAll(" + "),
                 .sub => try writer.writeAll(" - "),
+                .eq => try writer.writeAll(" = "),
+                .neq => try writer.writeAll(" <> "),
+                .lt => try writer.writeAll(" < "),
+                .gt => try writer.writeAll(" > "),
+                .@"and" => try writer.writeAll(" AND "),
+                .@"or" => try writer.writeAll(" OR "),
+                .xor => try writer.writeAll(" XOR "),
             }
             try printExpr(writer, b.rhs.payload);
         },
@@ -109,9 +116,8 @@ pub fn print(allocator: Allocator, sx: []parse.Stmt) ![]const u8 {
     return try p.print(allocator, sx);
 }
 
-test "testpp/01.bas" {
-    const inp = try std.fs.cwd().readFileAlloc(testing.allocator, "src/testpp/01.bas", 1048576);
-    defer testing.allocator.free(inp);
+fn testpp(comptime path: []const u8) !void {
+    const inp = @embedFile("testpp/" ++ path);
 
     const sx = try parse.parse(testing.allocator, inp);
     defer parse.freeStmts(testing.allocator, sx);
@@ -120,4 +126,8 @@ test "testpp/01.bas" {
     defer testing.allocator.free(out);
 
     try testing.expectEqualStrings(inp, out);
+}
+
+test "testpp" {
+    try testpp("01.bas");
 }

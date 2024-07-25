@@ -10,6 +10,14 @@ pub const Op = enum {
     div,
     add,
     sub,
+    eq,
+    neq,
+    lt,
+    gt,
+    // TODO: lte gte
+    @"and",
+    @"or",
+    xor,
 };
 
 pub const Expr = union(enum) {
@@ -224,6 +232,36 @@ const Parser = struct {
         } }, t.range, t2.range);
     }
 
+    fn acceptCond(self: *Self) !?WithRange(Expr) {
+        const e = try self.acceptExpr() orelse return null;
+        errdefer e.payload.deinit(self.allocator);
+        const op: Op = op: {
+            if (self.accept(.equals) != null)
+                break :op .eq
+            else if (self.accept(.diamond) != null)
+                break :op .neq
+            else if (self.accept(.angleo) != null)
+                break :op .lt
+            else if (self.accept(.anglec) != null)
+                break :op .gt;
+            return e;
+        };
+        const e2 = try self.acceptExpr() orelse return Error.UnexpectedToken;
+        errdefer e2.payload.deinit(self.allocator);
+
+        const lhs = try self.allocator.create(WithRange(Expr));
+        errdefer self.allocator.destroy(lhs);
+        lhs.* = e;
+        const rhs = try self.allocator.create(WithRange(Expr));
+        rhs.* = e2;
+
+        return WithRange(Expr).initBin(.{ .binop = .{
+            .lhs = lhs,
+            .op = op,
+            .rhs = rhs,
+        } }, e.range, e2.range);
+    }
+
     fn acceptExprList(self: *Self) !?[]WithRange(Expr) {
         const e = try self.acceptExpr() orelse return null;
 
@@ -293,13 +331,14 @@ const Parser = struct {
         }
 
         if (self.accept(.kw_if)) |k| {
-            const expr = try self.acceptExpr() orelse return Error.UnexpectedToken;
+            const cond = try self.acceptCond() orelse return Error.UnexpectedToken;
             _ = try self.expect(.kw_then);
             // TODO: same line IF .. THEN ... [ELSE ...]
+            // TODO: remarks anywhere, including here.
             _ = try self.expect(.linefeed);
             return .{ .@"if" = .{
                 .kw = k,
-                .cond = expr,
+                .cond = cond,
             } };
         }
 

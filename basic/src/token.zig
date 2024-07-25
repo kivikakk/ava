@@ -75,6 +75,9 @@ pub const TokenPayload = union(enum) {
     fslash,
     pareno,
     parenc,
+    angleo,
+    anglec,
+    diamond,
     kw_if,
     kw_then,
     kw_elseif,
@@ -96,6 +99,9 @@ pub const TokenPayload = union(enum) {
     kw_until,
     kw_wend,
     kw_let,
+    kw_and,
+    kw_or,
+    kw_xor,
 
     pub fn format(self: Self, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = fmt;
@@ -117,6 +123,9 @@ pub const TokenPayload = union(enum) {
             .fslash => try std.fmt.format(writer, "Fslash", .{}),
             .pareno => try std.fmt.format(writer, "Pareno", .{}),
             .parenc => try std.fmt.format(writer, "Parenc", .{}),
+            .angleo => try std.fmt.format(writer, "Angleo", .{}),
+            .anglec => try std.fmt.format(writer, "Anglec", .{}),
+            .diamond => try std.fmt.format(writer, "Diamond", .{}),
             .kw_if => try std.fmt.format(writer, "IF", .{}),
             .kw_then => try std.fmt.format(writer, "THEN", .{}),
             .kw_elseif => try std.fmt.format(writer, "ELSEIF", .{}),
@@ -138,6 +147,9 @@ pub const TokenPayload = union(enum) {
             .kw_until => try std.fmt.format(writer, "UNTIL", .{}),
             .kw_wend => try std.fmt.format(writer, "WEND", .{}),
             .kw_let => try std.fmt.format(writer, "LET", .{}),
+            .kw_and => try std.fmt.format(writer, "AND", .{}),
+            .kw_or => try std.fmt.format(writer, "OR", .{}),
+            .kw_xor => try std.fmt.format(writer, "XOR", .{}),
         }
     }
 };
@@ -164,8 +176,10 @@ const State = union(enum) {
     string: LocOffset,
     fileno: LocOffset,
     remark: LocOffset,
+    angleo,
 };
 
+// TODO: replace with table (same with other direction above).
 fn classifyBareword(bw: []const u8) TokenPayload {
     if (std.ascii.eqlIgnoreCase(bw, "if")) {
         return .kw_if;
@@ -209,6 +223,12 @@ fn classifyBareword(bw: []const u8) TokenPayload {
         return .kw_wend;
     } else if (std.ascii.eqlIgnoreCase(bw, "let")) {
         return .kw_let;
+    } else if (std.ascii.eqlIgnoreCase(bw, "and")) {
+        return .kw_and;
+    } else if (std.ascii.eqlIgnoreCase(bw, "or")) {
+        return .kw_or;
+    } else if (std.ascii.eqlIgnoreCase(bw, "xor")) {
+        return .kw_xor;
     } else {
         return .{ .label = bw };
     }
@@ -281,6 +301,10 @@ const Tokenizer = struct {
                         try tx.append(attach(.pareno, self.loc, self.loc));
                     } else if (c == ')') {
                         try tx.append(attach(.parenc, self.loc, self.loc));
+                    } else if (c == '<') {
+                        state = .angleo;
+                    } else if (c == '>') {
+                        try tx.append(attach(.anglec, self.loc, self.loc));
                     } else if (c == '#') {
                         state = .{ .fileno = .{ .loc = self.loc, .offset = i } };
                     } else {
@@ -347,6 +371,15 @@ const Tokenizer = struct {
                         // nop
                     }
                 },
+                .angleo => {
+                    state = .init;
+                    if (c == '>') {
+                        try tx.append(attach(.diamond, self.loc.back(), self.loc));
+                    } else {
+                        try tx.append(attach(.angleo, self.loc.back(), self.loc.back()));
+                        rewind = true;
+                    }
+                },
             }
         }
 
@@ -363,6 +396,7 @@ const Tokenizer = struct {
             .remark => |start| try tx.append(attach(.{
                 .remark = inp[start.offset..],
             }, start.loc, self.loc.back())),
+            .angleo => try tx.append(attach(.angleo, self.loc.back(), self.loc.back())),
         }
 
         return tx.toOwnedSlice();
@@ -378,7 +412,7 @@ test "tokenizes basics" {
     const tx = try tokenize(testing.allocator,
         \\if 10 Then END
         \\  tere maailm%, ava$ = siin& 'okok
-        \\Awawa: #7
+        \\Awawa: #7<<>>
     );
     defer testing.allocator.free(tx);
 
@@ -398,5 +432,8 @@ test "tokenizes basics" {
         Token.initRange(.linefeed, .{ 2, 35 }, .{ 2, 35 }),
         Token.initRange(.{ .jumplabel = "Awawa" }, .{ 3, 1 }, .{ 3, 6 }),
         Token.initRange(.{ .fileno = 7 }, .{ 3, 8 }, .{ 3, 9 }),
+        Token.initRange(.angleo, .{ 3, 10 }, .{ 3, 10 }),
+        Token.initRange(.diamond, .{ 3, 11 }, .{ 3, 12 }),
+        Token.initRange(.anglec, .{ 3, 13 }, .{ 3, 13 }),
     }, tx);
 }

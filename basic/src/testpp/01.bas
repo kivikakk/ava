@@ -5,7 +5,7 @@ y$ = "maailm"
 PRINT x$, ", ", y$
 
 ' TODO: same-line comments
-' TODO: "condition"
-IF x$ + "Tere" THEN
+IF x$ + x$ = "TereTere" THEN
+
     PRINT "yey"
 END IF
