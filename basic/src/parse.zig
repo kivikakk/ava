@@ -3,7 +3,8 @@ const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
 const token = @import("token.zig");
-const WithRange = token.WithRange;
+const loc = @import("loc.zig");
+const WithRange = loc.WithRange;
 
 pub const Op = enum {
     mul,
@@ -33,14 +34,14 @@ pub const ExprPayload = union(enum) {
         rhs: *Expr,
     },
 
-    fn deinit(self: Self, allocator: Allocator) void {
+    pub fn deinit(self: Self, allocator: Allocator) void {
         switch (self) {
             .imm_number => {},
             .imm_string => {},
             .label => {},
             .binop => |b| {
-                b.lhs.payload.deinit(allocator);
-                b.rhs.payload.deinit(allocator);
+                b.lhs.deinit(allocator);
+                b.rhs.deinit(allocator);
                 allocator.destroy(b.lhs);
                 allocator.destroy(b.rhs);
             },
@@ -102,36 +103,36 @@ pub const StmtPayload = union(enum) {
     end,
     endif,
 
-    fn deinit(self: Self, allocator: Allocator) void {
+    pub fn deinit(self: Self, allocator: Allocator) void {
         switch (self) {
             .remark => {},
             .call => |c| {
                 for (c.args) |e|
-                    e.payload.deinit(allocator);
+                    e.deinit(allocator);
                 allocator.free(c.args);
             },
-            .let => |l| l.rhs.payload.deinit(allocator),
-            .@"if" => |i| i.cond.payload.deinit(allocator),
+            .let => |l| l.rhs.deinit(allocator),
+            .@"if" => |i| i.cond.deinit(allocator),
             .if1 => |i| {
-                i.cond.payload.deinit(allocator);
-                i.stmt_t.payload.deinit(allocator);
+                i.cond.deinit(allocator);
+                i.stmt_t.deinit(allocator);
                 allocator.destroy(i.stmt_t);
             },
             .if2 => |i| {
-                i.cond.payload.deinit(allocator);
-                i.stmt_t.payload.deinit(allocator);
+                i.cond.deinit(allocator);
+                i.stmt_t.deinit(allocator);
                 allocator.destroy(i.stmt_t);
-                i.stmt_f.payload.deinit(allocator);
+                i.stmt_f.deinit(allocator);
                 allocator.destroy(i.stmt_f);
             },
             .@"for" => |f| {
-                f.from.payload.deinit(allocator);
-                f.to.payload.deinit(allocator);
+                f.from.deinit(allocator);
+                f.to.deinit(allocator);
             },
             .forstep => |f| {
-                f.from.payload.deinit(allocator);
-                f.to.payload.deinit(allocator);
-                f.step.payload.deinit(allocator);
+                f.from.deinit(allocator);
+                f.to.deinit(allocator);
+                f.step.deinit(allocator);
             },
             .next => {},
             .jumplabel => {},
@@ -188,10 +189,10 @@ const Parser = struct {
     fn deinit(self: *Self) void {
         self.allocator.free(self.tx);
         for (self.sx.items) |s|
-            s.payload.deinit(self.allocator);
+            s.deinit(self.allocator);
         self.sx.deinit(self.allocator);
         if (self.pending_rem) |s|
-            s.payload.deinit(self.allocator);
+            s.deinit(self.allocator);
     }
 
     fn append(self: *Self, s: Stmt) !void {
@@ -256,7 +257,7 @@ const Parser = struct {
     // TODO: comptime wonk to define accept(Term,Expr,Cond) in common?
     fn acceptTerm(self: *Self) !?Expr {
         const f = self.acceptFactor() orelse return null;
-        errdefer f.payload.deinit(self.allocator);
+        errdefer f.deinit(self.allocator);
         const op = op: {
             if (self.accept(.asterisk)) |o|
                 break :op WithRange(Op).init(.mul, o.range)
@@ -265,7 +266,7 @@ const Parser = struct {
             return f;
         };
         const f2 = self.acceptFactor() orelse return Error.UnexpectedToken;
-        errdefer f2.payload.deinit(self.allocator);
+        errdefer f2.deinit(self.allocator);
 
         const lhs = try self.allocator.create(Expr);
         errdefer self.allocator.destroy(lhs);
@@ -282,7 +283,7 @@ const Parser = struct {
 
     fn acceptExpr(self: *Self) !?Expr {
         const t = try self.acceptTerm() orelse return null;
-        errdefer t.payload.deinit(self.allocator);
+        errdefer t.deinit(self.allocator);
         const op = op: {
             if (self.accept(.plus)) |o|
                 break :op WithRange(Op).init(.add, o.range)
@@ -291,7 +292,7 @@ const Parser = struct {
             return t;
         };
         const t2 = try self.acceptTerm() orelse return Error.UnexpectedToken;
-        errdefer t2.payload.deinit(self.allocator);
+        errdefer t2.deinit(self.allocator);
 
         const lhs = try self.allocator.create(Expr);
         errdefer self.allocator.destroy(lhs);
@@ -308,7 +309,7 @@ const Parser = struct {
 
     fn acceptCond(self: *Self) !?Expr {
         const e = try self.acceptExpr() orelse return null;
-        errdefer e.payload.deinit(self.allocator);
+        errdefer e.deinit(self.allocator);
         const op = op: {
             if (self.accept(.equals)) |o|
                 break :op WithRange(Op).init(.eq, o.range)
@@ -325,7 +326,7 @@ const Parser = struct {
             return e;
         };
         const e2 = try self.acceptExpr() orelse return Error.UnexpectedToken;
-        errdefer e2.payload.deinit(self.allocator);
+        errdefer e2.deinit(self.allocator);
 
         const lhs = try self.allocator.create(Expr);
         errdefer self.allocator.destroy(lhs);
@@ -342,7 +343,7 @@ const Parser = struct {
 
     fn acceptExprList(self: *Self) !?[]Expr {
         const e = try self.acceptExpr() orelse return null;
-        errdefer e.payload.deinit(self.allocator);
+        errdefer e.deinit(self.allocator);
 
         var ex = std.ArrayList(Expr).init(self.allocator);
         errdefer ex.deinit();
@@ -409,7 +410,7 @@ const Parser = struct {
     fn acceptStmtIf(self: *Self) !?Stmt {
         const k = self.accept(.kw_if) orelse return null;
         const cond = try self.acceptCond() orelse return Error.UnexpectedToken;
-        errdefer cond.payload.deinit(self.allocator);
+        errdefer cond.deinit(self.allocator);
         const tok_then = try self.expect(.kw_then);
         if (try self.peekTerminator()) {
             return Stmt.initEnds(.{ .@"if" = .{
@@ -418,14 +419,14 @@ const Parser = struct {
             } }, k.range, cond.range);
         }
         const st = try self.parseOne() orelse return Error.UnexpectedEnd;
-        errdefer st.payload.deinit(self.allocator);
+        errdefer st.deinit(self.allocator);
         const stmt_t = try self.allocator.create(Stmt);
         errdefer self.allocator.destroy(stmt_t);
         stmt_t.* = st;
 
         if (self.accept(.kw_else)) |tok_else| {
             const sf = try self.parseOne() orelse return Error.UnexpectedEnd;
-            errdefer sf.payload.deinit(self.allocator);
+            errdefer sf.deinit(self.allocator);
             const stmt_f = try self.allocator.create(Stmt);
             errdefer self.allocator.destroy(stmt_f);
             stmt_f.* = sf;
@@ -451,10 +452,10 @@ const Parser = struct {
         const lv = try self.expect(.label);
         const tok_eq = try self.expect(.equals);
         const from = try self.acceptExpr() orelse return Error.UnexpectedToken;
-        errdefer from.payload.deinit(self.allocator);
+        errdefer from.deinit(self.allocator);
         const tok_to = try self.expect(.kw_to);
         const to = try self.acceptExpr() orelse return Error.UnexpectedToken;
-        errdefer to.payload.deinit(self.allocator);
+        errdefer to.deinit(self.allocator);
 
         if (self.accept(.kw_step)) |tok_step| {
             const step = try self.acceptExpr() orelse return Error.UnexpectedToken;
@@ -536,7 +537,7 @@ const Parser = struct {
     fn parseAll(self: *Self) ![]Stmt {
         while (try self.parseOne()) |s| {
             {
-                errdefer s.payload.deinit(self.allocator);
+                errdefer s.deinit(self.allocator);
                 try self.append(s);
             }
             if (self.pending_rem) |r|
@@ -565,7 +566,7 @@ pub fn parse(allocator: Allocator, inp: []const u8) ![]Stmt {
 }
 
 pub fn freeStmts(allocator: Allocator, sx: []Stmt) void {
-    for (sx) |s| s.payload.deinit(allocator);
+    for (sx) |s| s.deinit(allocator);
     allocator.free(sx);
 }
 

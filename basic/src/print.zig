@@ -4,7 +4,8 @@ const testing = std.testing;
 
 const parse = @import("parse.zig");
 const token = @import("token.zig");
-const WithRange = token.WithRange;
+const loc = @import("loc.zig");
+const WithRange = loc.WithRange;
 
 const Printer = struct {
     const Self = @This();
@@ -45,7 +46,7 @@ const Printer = struct {
         return m.len;
     }
 
-    fn advance(self: *Self, r: token.Range) !void {
+    fn advance(self: *Self, r: loc.Range) !void {
         while (self.row < r.start.row)
             try self.writer.writeByte('\n');
 
