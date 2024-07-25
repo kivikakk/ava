@@ -9,3 +9,5 @@ IF x$ + x$ = "TereTere" THEN
 
     PRINT "yey"
 END IF
+
+IF 3 >= 2 THEN PRINT "fine."

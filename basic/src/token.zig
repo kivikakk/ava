@@ -31,7 +31,7 @@ pub fn WithRange(comptime T: type) type {
             };
         }
 
-        pub fn initBin(t: T, r1: Range, r2: Range) Self {
+        pub fn initEnds(t: T, r1: Range, r2: Range) Self {
             return init(t, .{ .start = r1.start, .end = r2.end });
         }
 
@@ -68,6 +68,7 @@ pub const TokenPayload = union(enum) {
     linefeed,
     comma,
     semicolon,
+    colon,
     equals,
     plus,
     minus,
@@ -78,6 +79,8 @@ pub const TokenPayload = union(enum) {
     angleo,
     anglec,
     diamond,
+    lte,
+    gte,
     kw_if,
     kw_then,
     kw_elseif,
@@ -116,6 +119,7 @@ pub const TokenPayload = union(enum) {
             .linefeed => try std.fmt.format(writer, "Linefeed", .{}),
             .comma => try std.fmt.format(writer, "Comma", .{}),
             .semicolon => try std.fmt.format(writer, "Semicolon", .{}),
+            .colon => try std.fmt.format(writer, "Colon", .{}),
             .equals => try std.fmt.format(writer, "Equals", .{}),
             .plus => try std.fmt.format(writer, "Plus", .{}),
             .minus => try std.fmt.format(writer, "Minus", .{}),
@@ -126,6 +130,8 @@ pub const TokenPayload = union(enum) {
             .angleo => try std.fmt.format(writer, "Angleo", .{}),
             .anglec => try std.fmt.format(writer, "Anglec", .{}),
             .diamond => try std.fmt.format(writer, "Diamond", .{}),
+            .lte => try std.fmt.format(writer, "Lte", .{}),
+            .gte => try std.fmt.format(writer, "Gte", .{}),
             .kw_if => try std.fmt.format(writer, "IF", .{}),
             .kw_then => try std.fmt.format(writer, "THEN", .{}),
             .kw_elseif => try std.fmt.format(writer, "ELSEIF", .{}),
@@ -177,6 +183,7 @@ const State = union(enum) {
     fileno: LocOffset,
     remark: LocOffset,
     angleo,
+    anglec,
 };
 
 // TODO: replace with table (same with other direction above).
@@ -287,6 +294,8 @@ const Tokenizer = struct {
                         try tx.append(attach(.comma, self.loc, self.loc));
                     } else if (c == ';') {
                         try tx.append(attach(.semicolon, self.loc, self.loc));
+                    } else if (c == ':') {
+                        try tx.append(attach(.colon, self.loc, self.loc));
                     } else if (c == '=') {
                         try tx.append(attach(.equals, self.loc, self.loc));
                     } else if (c == '+') {
@@ -304,7 +313,7 @@ const Tokenizer = struct {
                     } else if (c == '<') {
                         state = .angleo;
                     } else if (c == '>') {
-                        try tx.append(attach(.anglec, self.loc, self.loc));
+                        state = .anglec;
                     } else if (c == '#') {
                         state = .{ .fileno = .{ .loc = self.loc, .offset = i } };
                     } else {
@@ -372,11 +381,25 @@ const Tokenizer = struct {
                     }
                 },
                 .angleo => {
-                    state = .init;
-                    if (c == '>') {
+                    if (c == '>') { // <>
                         try tx.append(attach(.diamond, self.loc.back(), self.loc));
+                        state = .init;
+                    } else if (c == '=') { // <=
+                        try tx.append(attach(.lte, self.loc.back(), self.loc));
+                        state = .init;
                     } else {
                         try tx.append(attach(.angleo, self.loc.back(), self.loc.back()));
+                        state = .init;
+                        rewind = true;
+                    }
+                },
+                .anglec => {
+                    if (c == '=') { // >=
+                        try tx.append(attach(.gte, self.loc.back(), self.loc));
+                        state = .init;
+                    } else {
+                        try tx.append(attach(.anglec, self.loc.back(), self.loc.back()));
+                        state = .init;
                         rewind = true;
                     }
                 },
@@ -397,6 +420,7 @@ const Tokenizer = struct {
                 .remark = inp[start.offset..],
             }, start.loc, self.loc.back())),
             .angleo => try tx.append(attach(.angleo, self.loc.back(), self.loc.back())),
+            .anglec => try tx.append(attach(.anglec, self.loc.back(), self.loc.back())),
         }
 
         return tx.toOwnedSlice();

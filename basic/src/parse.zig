@@ -14,22 +14,23 @@ pub const Op = enum {
     neq,
     lt,
     gt,
-    // TODO: lte gte
+    lte,
+    gte,
     @"and",
     @"or",
     xor,
 };
 
-pub const Expr = union(enum) {
+pub const ExprPayload = union(enum) {
     const Self = @This();
 
     imm_number: isize,
     imm_string: []const u8,
     label: []const u8,
     binop: struct {
-        lhs: *WithRange(Expr),
+        lhs: *Expr,
         op: Op,
-        rhs: *WithRange(Expr),
+        rhs: *Expr,
     },
 
     fn deinit(self: Self, allocator: Allocator) void {
@@ -47,25 +48,30 @@ pub const Expr = union(enum) {
     }
 };
 
-pub const Stmt = union(enum) {
+pub const Expr = WithRange(ExprPayload);
+
+pub const StmtPayload = union(enum) {
     const Self = @This();
 
-    remark: WithRange([]const u8),
+    remark: []const u8,
     call: struct {
         name: WithRange([]const u8),
-        args: []const WithRange(Expr),
+        args: []const Expr,
     },
     let: struct {
-        kw: ?WithRange(void),
+        kw: bool,
         lhs: WithRange([]const u8),
-        rhs: WithRange(Expr),
+        rhs: Expr,
     },
     @"if": struct {
-        kw: WithRange(void),
-        cond: WithRange(Expr),
+        cond: Expr,
     },
-    end: WithRange(void),
-    endif: WithRange(void),
+    if1: struct {
+        cond: Expr,
+        stmt: *Stmt,
+    },
+    end,
+    endif,
 
     fn deinit(self: Self, allocator: Allocator) void {
         switch (self) {
@@ -77,22 +83,30 @@ pub const Stmt = union(enum) {
             },
             .let => |l| l.rhs.payload.deinit(allocator),
             .@"if" => |i| i.cond.payload.deinit(allocator),
+            .if1 => |i| {
+                i.cond.payload.deinit(allocator);
+                i.stmt.payload.deinit(allocator);
+                allocator.destroy(i.stmt);
+            },
             .end => {},
             .endif => {},
         }
     }
 };
 
+pub const Stmt = WithRange(StmtPayload);
+
 pub const Error = error{
-    UnexpectedToken,
     ExpectedEnd,
+    UnexpectedToken,
+    UnexpectedEnd,
 };
 
 const State = union(enum) {
     init,
     call: struct {
         label: WithRange([]const u8),
-        args: std.ArrayList(WithRange(Expr)),
+        args: std.ArrayList(Expr),
         comma_next: bool,
     },
 
@@ -154,10 +168,10 @@ const Parser = struct {
     fn acceptEnd(self: *Self) bool {
         return self.eoi() or
             self.accept(.linefeed) != null or
-            self.accept(.semicolon) != null;
+            self.accept(.colon) != null;
     }
 
-    fn acceptFactor(self: *Self) ?WithRange(Expr) {
+    fn acceptFactor(self: *Self) ?Expr {
         if (self.accept(.number)) |n| {
             return .{
                 .payload = .{ .imm_number = n.payload },
@@ -180,7 +194,8 @@ const Parser = struct {
         return null;
     }
 
-    fn acceptTerm(self: *Self) !?WithRange(Expr) {
+    // TODO: comptime wonk to define accept(Term,Expr,Cond) in common?
+    fn acceptTerm(self: *Self) !?Expr {
         const f = self.acceptFactor() orelse return null;
         errdefer f.payload.deinit(self.allocator);
         const op: Op = op: {
@@ -193,20 +208,20 @@ const Parser = struct {
         const f2 = self.acceptFactor() orelse return Error.UnexpectedToken;
         errdefer f2.payload.deinit(self.allocator);
 
-        const lhs = try self.allocator.create(WithRange(Expr));
+        const lhs = try self.allocator.create(Expr);
         errdefer self.allocator.destroy(lhs);
         lhs.* = f;
-        const rhs = try self.allocator.create(WithRange(Expr));
+        const rhs = try self.allocator.create(Expr);
         rhs.* = f2;
 
-        return WithRange(Expr).initBin(.{ .binop = .{
+        return Expr.initEnds(.{ .binop = .{
             .lhs = lhs,
             .op = op,
             .rhs = rhs,
         } }, f.range, f2.range);
     }
 
-    fn acceptExpr(self: *Self) !?WithRange(Expr) {
+    fn acceptExpr(self: *Self) !?Expr {
         const t = try self.acceptTerm() orelse return null;
         errdefer t.payload.deinit(self.allocator);
         const op: Op = op: {
@@ -219,20 +234,20 @@ const Parser = struct {
         const t2 = try self.acceptTerm() orelse return Error.UnexpectedToken;
         errdefer t2.payload.deinit(self.allocator);
 
-        const lhs = try self.allocator.create(WithRange(Expr));
+        const lhs = try self.allocator.create(Expr);
         errdefer self.allocator.destroy(lhs);
         lhs.* = t;
-        const rhs = try self.allocator.create(WithRange(Expr));
+        const rhs = try self.allocator.create(Expr);
         rhs.* = t2;
 
-        return WithRange(Expr).initBin(.{ .binop = .{
+        return Expr.initEnds(.{ .binop = .{
             .lhs = lhs,
             .op = op,
             .rhs = rhs,
         } }, t.range, t2.range);
     }
 
-    fn acceptCond(self: *Self) !?WithRange(Expr) {
+    fn acceptCond(self: *Self) !?Expr {
         const e = try self.acceptExpr() orelse return null;
         errdefer e.payload.deinit(self.allocator);
         const op: Op = op: {
@@ -243,29 +258,33 @@ const Parser = struct {
             else if (self.accept(.angleo) != null)
                 break :op .lt
             else if (self.accept(.anglec) != null)
-                break :op .gt;
+                break :op .gt
+            else if (self.accept(.lte) != null)
+                break :op .lte
+            else if (self.accept(.gte) != null)
+                break :op .gte;
             return e;
         };
         const e2 = try self.acceptExpr() orelse return Error.UnexpectedToken;
         errdefer e2.payload.deinit(self.allocator);
 
-        const lhs = try self.allocator.create(WithRange(Expr));
+        const lhs = try self.allocator.create(Expr);
         errdefer self.allocator.destroy(lhs);
         lhs.* = e;
-        const rhs = try self.allocator.create(WithRange(Expr));
+        const rhs = try self.allocator.create(Expr);
         rhs.* = e2;
 
-        return WithRange(Expr).initBin(.{ .binop = .{
+        return Expr.initEnds(.{ .binop = .{
             .lhs = lhs,
             .op = op,
             .rhs = rhs,
         } }, e.range, e2.range);
     }
 
-    fn acceptExprList(self: *Self) !?[]WithRange(Expr) {
+    fn acceptExprList(self: *Self) !?[]Expr {
         const e = try self.acceptExpr() orelse return null;
 
-        var ex = std.ArrayList(WithRange(Expr)).init(self.allocator);
+        var ex = std.ArrayList(Expr).init(self.allocator);
         errdefer ex.deinit();
 
         try ex.append(e);
@@ -290,30 +309,30 @@ const Parser = struct {
             return self.parseOne();
 
         if (self.accept(.remark)) |r|
-            return .{ .remark = r };
+            return Stmt.init(.{ .remark = r.payload }, r.range);
 
         if (self.accept(.label)) |l| {
             if (self.acceptEnd()) {
-                return .{ .call = .{
+                return Stmt.init(.{ .call = .{
                     .name = l,
                     .args = &.{},
-                } };
+                } }, l.range);
             }
 
             if (try self.acceptExprList()) |ex| {
-                return .{ .call = .{
+                return Stmt.initEnds(.{ .call = .{
                     .name = l,
                     .args = ex,
-                } };
+                } }, l.range, ex[ex.len - 1].range);
             }
 
             if (self.accept(.equals) != null) {
                 const rhs = try self.acceptExpr() orelse return Error.UnexpectedToken;
-                return .{ .let = .{
-                    .kw = null,
+                return Stmt.initEnds(.{ .let = .{
+                    .kw = false,
                     .lhs = l,
                     .rhs = rhs,
-                } };
+                } }, l.range, rhs.range);
             }
 
             return Error.UnexpectedToken;
@@ -323,34 +342,42 @@ const Parser = struct {
             const lhs = try self.expect(.label);
             _ = try self.expect(.equals);
             const rhs = try self.acceptExpr() orelse return Error.UnexpectedToken;
-            return .{ .let = .{
-                .kw = k,
+            return Stmt.initEnds(.{ .let = .{
+                .kw = true,
                 .lhs = lhs,
                 .rhs = rhs,
-            } };
+            } }, k.range, rhs.range);
         }
 
         if (self.accept(.kw_if)) |k| {
             const cond = try self.acceptCond() orelse return Error.UnexpectedToken;
             _ = try self.expect(.kw_then);
-            // TODO: same line IF .. THEN ... [ELSE ...]
             // TODO: remarks anywhere, including here.
-            _ = try self.expect(.linefeed);
-            return .{ .@"if" = .{
-                .kw = k,
+            // TODO: same line IF .. THEN ... [ELSE ...]
+            if (self.accept(.linefeed) != null) {
+                return Stmt.initEnds(.{ .@"if" = .{
+                    .cond = cond,
+                } }, k.range, cond.range);
+            }
+            const s = try self.parseOne() orelse return Error.UnexpectedEnd;
+            errdefer s.payload.deinit(self.allocator);
+            const stmt = try self.allocator.create(Stmt);
+            stmt.* = s;
+            return Stmt.initEnds(.{ .if1 = .{
                 .cond = cond,
-            } };
+                .stmt = stmt,
+            } }, k.range, stmt.range);
         }
 
         if (self.accept(.kw_end)) |k| {
             if (self.accept(.kw_if)) |k2| {
                 if (!self.acceptEnd())
                     return Error.ExpectedEnd;
-                return .{ .endif = WithRange(void).initBin({}, k.range, k2.range) };
+                return Stmt.initEnds(.endif, k.range, k2.range);
             }
             if (!self.acceptEnd())
                 return Error.ExpectedEnd;
-            return .{ .end = k };
+            return Stmt.init(.end, k.range);
         }
 
         return Error.UnexpectedToken;
@@ -359,7 +386,7 @@ const Parser = struct {
     fn parseAll(self: *Self) ![]Stmt {
         var sx = std.ArrayList(Stmt).init(self.allocator);
         errdefer {
-            for (sx.items) |s| s.deinit(self.allocator);
+            for (sx.items) |s| s.payload.deinit(self.allocator);
             sx.deinit();
         }
 
@@ -385,7 +412,7 @@ pub fn parse(allocator: Allocator, inp: []const u8) ![]Stmt {
 }
 
 pub fn freeStmts(allocator: Allocator, sx: []Stmt) void {
-    for (sx) |s| s.deinit(allocator);
+    for (sx) |s| s.payload.deinit(allocator);
     allocator.free(sx);
 }
 
@@ -393,51 +420,51 @@ test "parses a nullary statement" {
     const sx = try parse(testing.allocator, "PRINT\n");
     defer freeStmts(testing.allocator, sx);
 
-    try testing.expectEqualDeep(sx, &[_]Stmt{.{
-        .call = .{
+    try testing.expectEqualDeep(sx, &[_]Stmt{
+        Stmt.initRange(.{ .call = .{
             .name = WithRange([]const u8).initRange("PRINT", .{ 1, 1 }, .{ 1, 5 }),
             .args = &.{},
-        },
-    }});
+        } }, .{ 1, 1 }, .{ 1, 5 }),
+    });
 }
 
 test "parses a nullary statement without linefeed" {
     const sx = try parse(testing.allocator, "PRINT");
     defer freeStmts(testing.allocator, sx);
 
-    try testing.expectEqualDeep(sx, &[_]Stmt{.{
-        .call = .{
+    try testing.expectEqualDeep(sx, &[_]Stmt{
+        Stmt.initRange(.{ .call = .{
             .name = WithRange([]const u8).initRange("PRINT", .{ 1, 1 }, .{ 1, 5 }),
             .args = &.{},
-        },
-    }});
+        } }, .{ 1, 1 }, .{ 1, 5 }),
+    });
 }
 
 test "parses a unary statement" {
     const sx = try parse(testing.allocator, "\n PRINT 42\n");
     defer freeStmts(testing.allocator, sx);
 
-    try testing.expectEqualDeep(sx, &[_]Stmt{.{
-        .call = .{
+    try testing.expectEqualDeep(sx, &[_]Stmt{
+        Stmt.initRange(.{ .call = .{
             .name = WithRange([]const u8).initRange("PRINT", .{ 2, 2 }, .{ 2, 6 }),
             .args = &.{
-                WithRange(Expr).initRange(.{ .imm_number = 42 }, .{ 2, 8 }, .{ 2, 9 }),
+                Expr.initRange(.{ .imm_number = 42 }, .{ 2, 8 }, .{ 2, 9 }),
             },
-        },
-    }});
+        } }, .{ 2, 2 }, .{ 2, 9 }),
+    });
 }
 
 test "parses a binary statement" {
     const sx = try parse(testing.allocator, "PRINT X$, Y%\n");
     defer freeStmts(testing.allocator, sx);
 
-    try testing.expectEqualDeep(sx, &[_]Stmt{.{
-        .call = .{
+    try testing.expectEqualDeep(sx, &[_]Stmt{
+        Stmt.initRange(.{ .call = .{
             .name = WithRange([]const u8).initRange("PRINT", .{ 1, 1 }, .{ 1, 5 }),
             .args = &.{
-                WithRange(Expr).initRange(.{ .label = "X$" }, .{ 1, 7 }, .{ 1, 8 }),
-                WithRange(Expr).initRange(.{ .label = "Y%" }, .{ 1, 11 }, .{ 1, 12 }),
+                Expr.initRange(.{ .label = "X$" }, .{ 1, 7 }, .{ 1, 8 }),
+                Expr.initRange(.{ .label = "Y%" }, .{ 1, 11 }, .{ 1, 12 }),
             },
-        },
-    }});
+        } }, .{ 1, 1 }, .{ 1, 12 }),
+    });
 }
