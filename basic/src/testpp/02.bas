@@ -6,7 +6,7 @@ NEXT I
 
 Res:
 
-FOR I% = 1 TO 10 STEP 2
+FOR I% = 4 + 3 * 2 TO (4 + 3) * 2 STEP 2
     PRINT I%
 NEXT I%
 

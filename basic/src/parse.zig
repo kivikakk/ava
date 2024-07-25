@@ -451,8 +451,10 @@ const Parser = struct {
         const lv = try self.expect(.label);
         const tok_eq = try self.expect(.equals);
         const from = try self.acceptExpr() orelse return Error.UnexpectedToken;
+        errdefer from.payload.deinit(self.allocator);
         const tok_to = try self.expect(.kw_to);
         const to = try self.acceptExpr() orelse return Error.UnexpectedToken;
+        errdefer to.payload.deinit(self.allocator);
 
         if (self.accept(.kw_step)) |tok_step| {
             const step = try self.acceptExpr() orelse return Error.UnexpectedToken;
