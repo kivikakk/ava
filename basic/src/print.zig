@@ -46,12 +46,16 @@ const Printer = struct {
         return m.len;
     }
 
-    fn advance(self: *Self, r: loc.Range) !void {
-        while (self.row < r.start.row)
+    fn advanceLoc(self: *Self, l: loc.Loc) !void {
+        while (self.row < l.row)
             try self.writer.writeByte('\n');
 
-        while (self.col < r.start.col)
+        while (self.col < l.col)
             try self.writer.writeByte(' ');
+    }
+
+    fn advance(self: *Self, r: loc.Range) !void {
+        try self.advanceLoc(r.start);
     }
 
     fn printExpr(self: *Self, e: parse.Expr) !void {
@@ -79,6 +83,12 @@ const Printer = struct {
                     .xor => try self.writer.writeAll("XOR"),
                 }
                 try self.printExpr(b.rhs.*);
+            },
+            .paren => |p| {
+                try self.writer.writeByte('(');
+                try self.printExpr(p.*);
+                try self.advanceLoc(p.range.end.back());
+                try self.writer.writeByte(')');
             },
         }
     }

@@ -33,6 +33,7 @@ pub const ExprPayload = union(enum) {
         op: WithRange(Op),
         rhs: *Expr,
     },
+    paren: *Expr,
 
     pub fn deinit(self: Self, allocator: Allocator) void {
         switch (self) {
@@ -44,6 +45,10 @@ pub const ExprPayload = union(enum) {
                 b.rhs.deinit(allocator);
                 allocator.destroy(b.lhs);
                 allocator.destroy(b.rhs);
+            },
+            .paren => |e| {
+                e.deinit(allocator);
+                allocator.destroy(e);
             },
         }
     }
@@ -237,10 +242,11 @@ const Parser = struct {
 
         return self.peek(.linefeed) or
             self.peek(.colon) or
-            self.peek(.kw_else);
+            self.peek(.kw_else) or
+            self.peek(.parenc);
     }
 
-    fn acceptFactor(self: *Self) ?Expr {
+    fn acceptFactor(self: *Self) !?Expr {
         if (self.accept(.number)) |n|
             return Expr.init(.{ .imm_number = n.payload }, n.range);
 
@@ -250,13 +256,22 @@ const Parser = struct {
         if (self.accept(.string)) |s|
             return Expr.init(.{ .imm_string = s.payload }, s.range);
 
-        // TODO: pareno
+        if (self.accept(.pareno)) |p| {
+            const e = try self.acceptExpr() orelse return Error.UnexpectedToken;
+            errdefer e.deinit(self.allocator);
+            const tok_pc = try self.expect(.parenc);
+
+            const expr = try self.allocator.create(Expr);
+            expr.* = e;
+            return Expr.initEnds(.{ .paren = expr }, p.range, tok_pc.range);
+        }
+
         return null;
     }
 
     // TODO: comptime wonk to define accept(Term,Expr,Cond) in common?
     fn acceptTerm(self: *Self) !?Expr {
-        const f = self.acceptFactor() orelse return null;
+        const f = try self.acceptFactor() orelse return null;
         errdefer f.deinit(self.allocator);
         const op = op: {
             if (self.accept(.asterisk)) |o|
@@ -265,7 +280,7 @@ const Parser = struct {
                 break :op WithRange(Op).init(.div, o.range);
             return f;
         };
-        const f2 = self.acceptFactor() orelse return Error.UnexpectedToken;
+        const f2 = try self.acceptFactor() orelse return Error.UnexpectedToken;
         errdefer f2.deinit(self.allocator);
 
         const lhs = try self.allocator.create(Expr);
@@ -281,7 +296,7 @@ const Parser = struct {
         } }, f.range, f2.range);
     }
 
-    fn acceptExpr(self: *Self) !?Expr {
+    fn acceptExpr(self: *Self) (Allocator.Error || Error)!?Expr {
         const t = try self.acceptTerm() orelse return null;
         errdefer t.deinit(self.allocator);
         const op = op: {
