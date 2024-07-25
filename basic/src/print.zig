@@ -125,6 +125,31 @@ const Printer = struct {
                 try self.writer.writeAll("ELSE");
                 try self.printStmt(i.stmt_f.*);
             },
+            .@"for" => |f| {
+                try self.writer.writeAll("FOR");
+                try self.advance(f.lv.range);
+                try self.writer.writeAll(f.lv.payload);
+                try self.advance(f.tok_eq.range);
+                try self.writer.writeByte('=');
+                try self.printExpr(f.from);
+                try self.advance(f.tok_to.range);
+                try self.writer.writeAll("TO");
+                try self.printExpr(f.to);
+            },
+            .forstep => |f| {
+                try self.writer.writeAll("FOR");
+                try self.advance(f.lv.range);
+                try self.writer.writeAll(f.lv.payload);
+                try self.advance(f.tok_eq.range);
+                try self.writer.writeByte('=');
+                try self.printExpr(f.from);
+                try self.advance(f.tok_to.range);
+                try self.writer.writeAll("TO");
+                try self.printExpr(f.to);
+                try self.advance(f.tok_step.range);
+                try self.writer.writeAll("STEP");
+                try self.printExpr(f.step);
+            },
             .end => try self.writer.writeAll("END"),
             .endif => try self.writer.writeAll("END IF"),
         }

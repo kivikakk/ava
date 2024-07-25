@@ -80,6 +80,22 @@ pub const StmtPayload = union(enum) {
         tok_else: WithRange(void),
         stmt_f: *Stmt,
     },
+    @"for": struct {
+        lv: WithRange([]const u8),
+        tok_eq: WithRange(void),
+        from: Expr,
+        tok_to: WithRange(void),
+        to: Expr,
+    },
+    forstep: struct {
+        lv: WithRange([]const u8),
+        tok_eq: WithRange(void),
+        from: Expr,
+        tok_to: WithRange(void),
+        to: Expr,
+        tok_step: WithRange(void),
+        step: Expr,
+    },
     end,
     endif,
 
@@ -104,6 +120,15 @@ pub const StmtPayload = union(enum) {
                 allocator.destroy(i.stmt_t);
                 i.stmt_f.payload.deinit(allocator);
                 allocator.destroy(i.stmt_f);
+            },
+            .@"for" => |f| {
+                f.from.payload.deinit(allocator);
+                f.to.payload.deinit(allocator);
+            },
+            .forstep => |f| {
+                f.from.payload.deinit(allocator);
+                f.to.payload.deinit(allocator);
+                f.step.payload.deinit(allocator);
             },
             .end => {},
             .endif => {},
@@ -465,7 +490,16 @@ pub fn parse(allocator: Allocator, inp: []const u8) ![]Stmt {
     var p = try Parser.init(allocator, inp);
     defer p.deinit();
 
-    return p.parseAll();
+    return p.parseAll() catch |err| {
+        if (err == Allocator.Error.OutOfMemory)
+            return err;
+        if (p.nt()) |t| {
+            std.debug.print("last token: {any}\n", .{t});
+        } else {
+            std.debug.print("reached EOF\n", .{});
+        }
+        return err;
+    };
 }
 
 pub fn freeStmts(allocator: Allocator, sx: []Stmt) void {

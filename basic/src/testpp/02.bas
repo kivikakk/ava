@@ -1,3 +1,7 @@
-REM FOR I = 1 TO 5
-'    PRINT I
-'NEXT I
+FOR I = 1 TO 5
+    PRINT I
+NEXT I
+
+FOR I = 1 TO 10 STEP 2
+    PRINT I
+NEXT I
