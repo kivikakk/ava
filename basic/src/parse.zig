@@ -61,17 +61,24 @@ pub const StmtPayload = union(enum) {
     let: struct {
         kw: bool,
         lhs: WithRange([]const u8),
-        eq: WithRange(void),
+        tok_eq: WithRange(void),
         rhs: Expr,
     },
     @"if": struct {
         cond: Expr,
-        then: WithRange(void),
+        tok_then: WithRange(void),
     },
     if1: struct {
         cond: Expr,
-        then: WithRange(void),
-        stmt: *Stmt,
+        tok_then: WithRange(void),
+        stmt_t: *Stmt,
+    },
+    if2: struct {
+        cond: Expr,
+        tok_then: WithRange(void),
+        stmt_t: *Stmt,
+        tok_else: WithRange(void),
+        stmt_f: *Stmt,
     },
     end,
     endif,
@@ -88,8 +95,15 @@ pub const StmtPayload = union(enum) {
             .@"if" => |i| i.cond.payload.deinit(allocator),
             .if1 => |i| {
                 i.cond.payload.deinit(allocator);
-                i.stmt.payload.deinit(allocator);
-                allocator.destroy(i.stmt);
+                i.stmt_t.payload.deinit(allocator);
+                allocator.destroy(i.stmt_t);
+            },
+            .if2 => |i| {
+                i.cond.payload.deinit(allocator);
+                i.stmt_t.payload.deinit(allocator);
+                allocator.destroy(i.stmt_t);
+                i.stmt_f.payload.deinit(allocator);
+                allocator.destroy(i.stmt_f);
             },
             .end => {},
             .endif => {},
@@ -195,24 +209,15 @@ const Parser = struct {
     }
 
     fn acceptFactor(self: *Self) ?Expr {
-        if (self.accept(.number)) |n| {
-            return .{
-                .payload = .{ .imm_number = n.payload },
-                .range = n.range,
-            };
-        }
-        if (self.accept(.label)) |l| {
-            return .{
-                .payload = .{ .label = l.payload },
-                .range = l.range,
-            };
-        }
-        if (self.accept(.string)) |s| {
-            return .{
-                .payload = .{ .imm_string = s.payload },
-                .range = s.range,
-            };
-        }
+        if (self.accept(.number)) |n|
+            return Expr.init(.{ .imm_number = n.payload }, n.range);
+
+        if (self.accept(.label)) |l|
+            return Expr.init(.{ .label = l.payload }, l.range);
+
+        if (self.accept(.string)) |s|
+            return Expr.init(.{ .imm_string = s.payload }, s.range);
+
         // TODO: pareno
         return null;
     }
@@ -357,7 +362,7 @@ const Parser = struct {
                 return Stmt.initEnds(.{ .let = .{
                     .kw = false,
                     .lhs = l,
-                    .eq = eq,
+                    .tok_eq = eq,
                     .rhs = rhs,
                 } }, l.range, rhs.range);
             }
@@ -375,7 +380,7 @@ const Parser = struct {
             return Stmt.initEnds(.{ .let = .{
                 .kw = true,
                 .lhs = lhs,
-                .eq = eq,
+                .tok_eq = eq,
                 .rhs = rhs,
             } }, k.range, rhs.range);
         }
@@ -383,31 +388,45 @@ const Parser = struct {
         if (self.accept(.kw_if)) |k| {
             const cond = try self.acceptCond() orelse return Error.UnexpectedToken;
             errdefer cond.payload.deinit(self.allocator);
-            const then = try self.expect(.kw_then);
-            // TODO: same line IF .. THEN ... [ELSE ...]
+            const tok_then = try self.expect(.kw_then);
             if (try self.peekTerminator()) {
                 return Stmt.initEnds(.{ .@"if" = .{
                     .cond = cond,
-                    .then = then,
+                    .tok_then = tok_then,
                 } }, k.range, cond.range);
             }
-            const s = try self.parseOne() orelse return Error.UnexpectedEnd;
-            errdefer s.payload.deinit(self.allocator);
-            const stmt = try self.allocator.create(Stmt);
-            errdefer self.allocator.destroy(stmt);
-            stmt.* = s;
+            const st = try self.parseOne() orelse return Error.UnexpectedEnd;
+            errdefer st.payload.deinit(self.allocator);
+            const stmt_t = try self.allocator.create(Stmt);
+            errdefer self.allocator.destroy(stmt_t);
+            stmt_t.* = st;
+
+            if (self.accept(.kw_else)) |tok_else| {
+                const sf = try self.parseOne() orelse return Error.UnexpectedEnd;
+                errdefer sf.payload.deinit(self.allocator);
+                const stmt_f = try self.allocator.create(Stmt);
+                errdefer self.allocator.destroy(stmt_f);
+                stmt_f.* = sf;
+
+                return Stmt.initEnds(.{ .if2 = .{
+                    .cond = cond,
+                    .tok_then = tok_then,
+                    .stmt_t = stmt_t,
+                    .tok_else = tok_else,
+                    .stmt_f = stmt_f,
+                } }, k.range, stmt_f.range);
+            }
 
             return Stmt.initEnds(.{ .if1 = .{
                 .cond = cond,
-                .then = then,
-                .stmt = stmt,
-            } }, k.range, stmt.range);
+                .tok_then = tok_then,
+                .stmt_t = stmt_t,
+            } }, k.range, stmt_t.range);
         }
 
         if (self.accept(.kw_end)) |k| {
             if (self.accept(.kw_if)) |k2| {
-                if (!try self.peekTerminator())
-                    return Error.ExpectedTerminator;
+                _ = try self.expect(.linefeed);
                 return Stmt.initEnds(.endif, k.range, k2.range);
             }
             if (!try self.peekTerminator())

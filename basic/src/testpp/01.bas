@@ -16,3 +16,5 @@ IF x$ + x$ = "TereTere" THEN   'umm.
 END IF
 
 IF 3 >= 2 THEN      PRINT "fine."
+IF 3 <= 2 THEN  PRINT "ok"  ELSE PRINT "!!"
+IF 3 <= 2 THEN  END  ELSE PRINT "!!"

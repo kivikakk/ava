@@ -98,22 +98,32 @@ const Printer = struct {
                 if (l.kw) try self.writer.writeAll("LET");
                 try self.advance(l.lhs.range);
                 try self.writer.writeAll(l.lhs.payload);
-                try self.advance(l.eq.range);
+                try self.advance(l.tok_eq.range);
                 try self.writer.writeByte('=');
                 try self.printExpr(l.rhs);
             },
             .@"if" => |i| {
                 try self.writer.writeAll("IF");
                 try self.printExpr(i.cond);
-                try self.advance(i.then.range);
+                try self.advance(i.tok_then.range);
                 try self.writer.writeAll("THEN");
             },
             .if1 => |i| {
                 try self.writer.writeAll("IF");
                 try self.printExpr(i.cond);
-                try self.advance(i.then.range);
+                try self.advance(i.tok_then.range);
                 try self.writer.writeAll("THEN");
-                try self.printStmt(i.stmt.*);
+                try self.printStmt(i.stmt_t.*);
+            },
+            .if2 => |i| {
+                try self.writer.writeAll("IF");
+                try self.printExpr(i.cond);
+                try self.advance(i.tok_then.range);
+                try self.writer.writeAll("THEN");
+                try self.printStmt(i.stmt_t.*);
+                try self.advance(i.tok_else.range);
+                try self.writer.writeAll("ELSE");
+                try self.printStmt(i.stmt_f.*);
             },
             .end => try self.writer.writeAll("END"),
             .endif => try self.writer.writeAll("END IF"),
