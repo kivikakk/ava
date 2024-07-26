@@ -580,14 +580,14 @@ pub fn parse(allocator: Allocator, inp: []const u8) ![]Stmt {
     };
 }
 
-pub fn freeStmts(allocator: Allocator, sx: []Stmt) void {
+pub fn free(allocator: Allocator, sx: []Stmt) void {
     for (sx) |s| s.deinit(allocator);
     allocator.free(sx);
 }
 
 test "parses a nullary statement" {
     const sx = try parse(testing.allocator, "PRINT\n");
-    defer freeStmts(testing.allocator, sx);
+    defer free(testing.allocator, sx);
 
     try testing.expectEqualDeep(sx, &[_]Stmt{
         Stmt.initRange(.{ .call = .{
@@ -599,7 +599,7 @@ test "parses a nullary statement" {
 
 test "parses a unary statement" {
     const sx = try parse(testing.allocator, "\n PRINT 42\n");
-    defer freeStmts(testing.allocator, sx);
+    defer free(testing.allocator, sx);
 
     try testing.expectEqualDeep(sx, &[_]Stmt{
         Stmt.initRange(.{ .call = .{
@@ -613,7 +613,7 @@ test "parses a unary statement" {
 
 test "parses a binary statement" {
     const sx = try parse(testing.allocator, "PRINT X$, Y%\n");
-    defer freeStmts(testing.allocator, sx);
+    defer free(testing.allocator, sx);
 
     try testing.expectEqualDeep(sx, &[_]Stmt{
         Stmt.initRange(.{ .call = .{

@@ -1,1 +1,7 @@
-Ava BASIC parser.
+Ava BASIC parser
+================
+
+Diversions from BASIC (per QBASIC) as I knew it:
+
+* Line numbers are not supported.
+* Arguments are (only) comma-separated; this will likely change.
