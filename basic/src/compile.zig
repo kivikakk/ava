@@ -48,6 +48,9 @@ const Compiler = struct {
                 };
                 try stack.assembleInto(.{opc}, self.writer);
             },
+            .paren => |e2| {
+                try self.push(e2.*);
+            },
             else => std.debug.panic("unhandled Expr type in Compiler.push: {s}", .{@tagName(e.payload)}),
         }
     }

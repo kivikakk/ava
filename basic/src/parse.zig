@@ -45,6 +45,11 @@ pub const ExprPayload = union(enum) {
                 for (0..indent + 1) |_| try writer.writeAll("  ");
                 try b.rhs.formatAst(indent + 1, writer);
             },
+            .paren => |e| {
+                try writer.writeAll("Paren\n");
+                for (0..indent + 1) |_| try writer.writeAll("  ");
+                try e.formatAst(indent + 1, writer);
+            },
             else => unreachable,
         }
     }
