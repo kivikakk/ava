@@ -8,6 +8,7 @@ pub const Opcode = enum(u8) {
     BUILTIN_PRINT = 0x80,
     OPERATOR_ADD = 0xd0,
     OPERATOR_MULTIPLY = 0xd1,
+    WE_MADE_IT_UP = 0xff, // XXX: not impl for this on purpose so else prongs can remain
 };
 
 // XXX: feels complected
@@ -31,13 +32,10 @@ pub fn assembleOne(e: anytype, writer: anytype) !void {
         Opcode => try writer.writeByte(@intFromEnum(e)),
         Value => {
             switch (e) {
-                .integer => |i| {
-                    var b: [2]u8 = undefined;
-                    std.mem.writeInt(i16, &b, i, .little);
-                    try writer.writeAll(&b);
-                },
+                .integer => |i| try writer.writeInt(i16, i, .little),
                 .string => |s| {
-                    _ = s;
+                    try writer.writeInt(u16, @as(u16, @intCast(s.len)), .little);
+                    try writer.writeAll(s);
                 },
             }
         },

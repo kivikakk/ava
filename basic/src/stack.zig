@@ -49,8 +49,26 @@ pub fn Machine(comptime Effects: type) type {
         }
 
         pub fn deinit(self: *Self) void {
+            self.freeValues(self.stack.items);
             self.stack.deinit(self.allocator);
             self.effects.deinit();
+        }
+
+        fn freeValues(self: *Self, vx: []isa.Value) void {
+            for (vx) |v| self.freeValue(v);
+        }
+
+        fn freeValue(self: *Self, v: isa.Value) void {
+            switch (v) {
+                .integer => {},
+                .string => |s| self.allocator.free(s),
+            }
+        }
+
+        fn takeStack(self: *Self, n: usize) []isa.Value {
+            std.debug.assert(self.stack.items.len >= n);
+            defer self.stack.items.len -= n;
+            return self.stack.items[self.stack.items.len - n ..];
         }
 
         pub fn run(self: *Self, code: []const u8) !void {
@@ -69,19 +87,30 @@ pub fn Machine(comptime Effects: type) type {
                             .{ .integer = std.mem.readInt(i16, imm, .little) },
                         );
                     },
+                    .PUSH_IMM_STRING => {
+                        std.debug.assert(code.len - i + 1 >= 2);
+                        const lenb = code[i..][0..2];
+                        i += 2;
+                        const len = std.mem.readInt(u16, lenb, .little);
+                        const str = code[i..][0..len];
+                        i += len;
+                        try self.stack.append(
+                            self.allocator,
+                            .{ .string = try self.allocator.dupe(u8, str) },
+                        );
+                    },
                     .BUILTIN_PRINT => {
                         std.debug.assert(code.len - i + 1 >= 1);
                         const argc = code[i];
                         i += 1;
-                        std.debug.assert(self.stack.items.len >= argc);
-                        try self.effects.print(self.stack.items[self.stack.items.len - argc ..]);
-                        self.stack.items.len -= argc;
+                        const vals = self.takeStack(argc);
+                        defer self.freeValues(vals);
+                        try self.effects.print(vals);
                     },
                     .OPERATOR_ADD => {
                         std.debug.assert(code.len - i + 1 >= 0);
                         std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stack.items[self.stack.items.len - 2 ..];
-                        self.stack.items.len -= 2;
+                        const vals = self.takeStack(2);
                         const lhs = vals[0].integer;
                         const rhs = vals[1].integer;
                         try self.stack.append(self.allocator, .{ .integer = lhs + rhs });
@@ -89,8 +118,7 @@ pub fn Machine(comptime Effects: type) type {
                     .OPERATOR_MULTIPLY => {
                         std.debug.assert(code.len - i + 1 >= 0);
                         std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stack.items[self.stack.items.len - 2 ..];
-                        self.stack.items.len -= 2;
+                        const vals = self.takeStack(2);
                         const lhs = vals[0].integer;
                         const rhs = vals[1].integer;
                         try self.stack.append(self.allocator, .{ .integer = lhs * rhs });
