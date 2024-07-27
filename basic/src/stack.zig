@@ -2,9 +2,13 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
+const compile = @import("compile.zig");
+
 pub const Opcode = enum(u8) {
     PUSH_IMM_INTEGER = 0x01,
     BUILTIN_PRINT = 0x02,
+    OPERATOR_ADD = 0x03,
+    OPERATOR_MULTIPLY = 0x04,
 };
 
 pub const Value = union(enum) {
@@ -106,25 +110,43 @@ pub fn Machine(comptime Effects: type) type {
 
         pub fn run(self: *Self, code: []const u8) !void {
             var i: usize = 0;
-            while (i < code.len) : (i += 1) {
+            while (i < code.len) {
                 const b = code[i];
                 const op = @as(Opcode, @enumFromInt(b));
+                i += 1;
                 switch (op) {
                     .PUSH_IMM_INTEGER => {
-                        std.debug.assert(code.len - i - 1 >= 2);
+                        std.debug.assert(code.len - i + 1 >= 2);
+                        const argc = code[i..][0..2];
+                        i += 2;
                         try self.stack.append(
                             self.allocator,
-                            .{ .integer = std.mem.readInt(i16, code[i + 1 ..][0..2], .little) },
+                            .{ .integer = std.mem.readInt(i16, argc, .little) },
                         );
-                        i += 2;
                     },
                     .BUILTIN_PRINT => {
-                        std.debug.assert(code.len - i - 1 >= 1);
-                        const argc = code[i + 1];
+                        std.debug.assert(code.len - i + 1 >= 1);
+                        const argc = code[i];
+                        i += 1;
                         std.debug.assert(self.stack.items.len >= argc);
                         try self.effects.print(self.stack.items[self.stack.items.len - argc ..]);
                         self.stack.items.len -= argc;
-                        i += 1;
+                    },
+                    .OPERATOR_ADD => {
+                        std.debug.assert(code.len - i + 1 >= 0);
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const lhs = self.stack.items[0].integer;
+                        const rhs = self.stack.items[1].integer;
+                        self.stack.items.len -= 2;
+                        try self.stack.append(self.allocator, .{ .integer = lhs + rhs });
+                    },
+                    .OPERATOR_MULTIPLY => {
+                        std.debug.assert(code.len - i + 1 >= 0);
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const lhs = self.stack.items[0].integer;
+                        const rhs = self.stack.items[1].integer;
+                        self.stack.items.len -= 2;
+                        try self.stack.append(self.allocator, .{ .integer = lhs * rhs });
                     },
                     // else => std.debug.panic("unhandled opcode: {s}", .{@tagName(op)}),
                 }
@@ -158,6 +180,17 @@ fn testRun(comptime inp: anytype) !Machine(*TestEffects) {
     return m;
 }
 
+fn testRunBas(inp: []const u8) !Machine(*TestEffects) {
+    const code = try compile.compile(testing.allocator, inp, null);
+    defer testing.allocator.free(code);
+
+    var m = Machine(*TestEffects).init(testing.allocator, try TestEffects.init());
+    errdefer m.deinit();
+
+    try m.run(code);
+    return m;
+}
+
 test "actually print a thing" {
     var m = try testRun(.{
         Opcode.PUSH_IMM_INTEGER,
@@ -169,4 +202,15 @@ test "actually print a thing" {
 
     try m.expectStack(&.{});
     try m.effects.expectPrinted("123\n");
+}
+
+test "actually print a calculated thing" {
+    var m = try testRunBas(
+        \\PRINT 1 + 2 * 3
+        \\
+    );
+    defer m.deinit();
+
+    try m.expectStack(&.{});
+    try m.effects.expectPrinted("7\n");
 }

@@ -1,2 +1,2 @@
 ' First human-invoked run!
-PRINT 123
+PRINT 2 + 3 * 4

@@ -2,6 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
+const loc = @import("loc.zig");
 const parse = @import("parse.zig");
 const stack = @import("stack.zig");
 
@@ -32,13 +33,22 @@ const Compiler = struct {
             .imm_number => |n| {
                 // XXX: only handling INTEGER for now.
                 std.debug.assert(n >= -32768 and n <= 32767);
-                const nt: i16 = @truncate(n);
                 try stack.assembleInto(.{
                     stack.Opcode.PUSH_IMM_INTEGER,
-                    stack.Value{ .integer = nt },
+                    stack.Value{ .integer = @truncate(n) },
                 }, self.writer);
             },
-            else => std.debug.panic("unhandled Expr type in Compiler.push: {any}", .{@tagName(e.payload)}),
+            .binop => |b| {
+                try self.push(b.lhs.*);
+                try self.push(b.rhs.*);
+                const opc: stack.Opcode = switch (b.op.payload) {
+                    .add => .OPERATOR_ADD,
+                    .mul => .OPERATOR_MULTIPLY,
+                    else => std.debug.panic("unhandled opcode: {s}", .{@tagName(b.op.payload)}),
+                };
+                try stack.assembleInto(.{opc}, self.writer);
+            },
+            else => std.debug.panic("unhandled Expr type in Compiler.push: {s}", .{@tagName(e.payload)}),
         }
     }
 
@@ -77,8 +87,8 @@ const Compiler = struct {
     }
 };
 
-pub fn compile(allocator: Allocator, inp: []const u8) ![]const u8 {
-    const sx = try parse.parse(allocator, inp);
+pub fn compile(allocator: Allocator, inp: []const u8, errorloc: ?*loc.Loc) ![]const u8 {
+    const sx = try parse.parse(allocator, inp, errorloc);
     defer parse.free(allocator, sx);
 
     var compiler = try Compiler.init(allocator);
@@ -91,12 +101,33 @@ test "compile shrimple" {
     const code = try compile(testing.allocator,
         \\PRINT 123
         \\
-    );
+    , null);
     defer testing.allocator.free(code);
 
     try testing.expectEqualSlices(u8, stack.assemble(.{
         stack.Opcode.PUSH_IMM_INTEGER,
         stack.Value{ .integer = 123 },
+        stack.Opcode.BUILTIN_PRINT,
+        1,
+    }), code);
+}
+
+test "compile less shrimple" {
+    const code = try compile(testing.allocator,
+        \\PRINT 6 + 5 * 4
+        \\
+    , null);
+    defer testing.allocator.free(code);
+
+    try testing.expectEqualSlices(u8, stack.assemble(.{
+        stack.Opcode.PUSH_IMM_INTEGER,
+        stack.Value{ .integer = 6 },
+        stack.Opcode.PUSH_IMM_INTEGER,
+        stack.Value{ .integer = 5 },
+        stack.Opcode.PUSH_IMM_INTEGER,
+        stack.Value{ .integer = 4 },
+        stack.Opcode.OPERATOR_MULTIPLY,
+        stack.Opcode.OPERATOR_ADD,
         stack.Opcode.BUILTIN_PRINT,
         1,
     }), code);

@@ -183,8 +183,8 @@ const Parser = struct {
     sx: std.ArrayListUnmanaged(Stmt) = .{},
     pending_rem: ?Stmt = null,
 
-    fn init(allocator: Allocator, inp: []const u8) !Self {
-        const tx = try token.tokenize(allocator, inp);
+    fn init(allocator: Allocator, inp: []const u8, errorloc: ?*loc.Loc) !Self {
+        const tx = try token.tokenize(allocator, inp, errorloc);
         return .{
             .allocator = allocator,
             .tx = tx,
@@ -564,14 +564,16 @@ const Parser = struct {
     }
 };
 
-pub fn parse(allocator: Allocator, inp: []const u8) ![]Stmt {
-    var p = try Parser.init(allocator, inp);
+pub fn parse(allocator: Allocator, inp: []const u8, errorloc: ?*loc.Loc) ![]Stmt {
+    var p = try Parser.init(allocator, inp, errorloc);
     defer p.deinit();
 
     return p.parseAll() catch |err| {
         if (err == Allocator.Error.OutOfMemory)
             return err;
         if (p.nt()) |t| {
+            if (errorloc) |el|
+                el.* = t.range.start;
             std.debug.print("last token: {any}\n", .{t});
         } else {
             std.debug.print("reached EOF\n", .{});
@@ -586,7 +588,7 @@ pub fn free(allocator: Allocator, sx: []Stmt) void {
 }
 
 test "parses a nullary statement" {
-    const sx = try parse(testing.allocator, "PRINT\n");
+    const sx = try parse(testing.allocator, "PRINT\n", null);
     defer free(testing.allocator, sx);
 
     try testing.expectEqualDeep(sx, &[_]Stmt{
@@ -598,7 +600,7 @@ test "parses a nullary statement" {
 }
 
 test "parses a unary statement" {
-    const sx = try parse(testing.allocator, "\n PRINT 42\n");
+    const sx = try parse(testing.allocator, "\n PRINT 42\n", null);
     defer free(testing.allocator, sx);
 
     try testing.expectEqualDeep(sx, &[_]Stmt{
@@ -612,7 +614,7 @@ test "parses a unary statement" {
 }
 
 test "parses a binary statement" {
-    const sx = try parse(testing.allocator, "PRINT X$, Y%\n");
+    const sx = try parse(testing.allocator, "PRINT X$, Y%\n", null);
     defer free(testing.allocator, sx);
 
     try testing.expectEqualDeep(sx, &[_]Stmt{

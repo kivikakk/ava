@@ -391,9 +391,13 @@ const Tokenizer = struct {
     }
 };
 
-pub fn tokenize(allocator: Allocator, inp: []const u8) ![]Token {
+pub fn tokenize(allocator: Allocator, inp: []const u8, errorloc: ?*loc.Loc) ![]Token {
     var t = Tokenizer{};
-    return t.feed(allocator, inp);
+    return t.feed(allocator, inp) catch |err| {
+        if (errorloc) |el|
+            el.* = t.loc;
+        return err;
+    };
 }
 
 test "tokenizes basics" {
@@ -403,7 +407,7 @@ test "tokenizes basics" {
         \\Awawa: #7<<>>
         \\REM Hiii :3
         \\REM
-    );
+    , null);
     defer testing.allocator.free(tx);
 
     try testing.expectEqualDeep(&[_]Token{

@@ -193,7 +193,7 @@ pub fn print(allocator: Allocator, sx: []parse.Stmt) ![]const u8 {
 }
 
 fn testppInner(allocator: Allocator, inp: []const u8) !void {
-    const sx = try parse.parse(allocator, inp);
+    const sx = try parse.parse(allocator, inp, null);
     defer parse.free(allocator, sx);
 
     const out = try print(allocator, sx);

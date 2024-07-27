@@ -1,8 +1,8 @@
 const std = @import("std");
 
 pub const Loc = struct {
-    row: usize,
-    col: usize,
+    row: usize = 0,
+    col: usize = 0,
 
     pub fn back(self: Loc) Loc {
         std.debug.assert(self.col > 1);
