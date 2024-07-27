@@ -39,12 +39,21 @@ pub fn assemble(comptime inp: anytype) []const u8 {
     return out;
 }
 
-pub fn assembleInto(inp: anytype, writer: std.io.AnyWriter) !void {
+pub fn assembleInto(inp: anytype, writer: anytype) !void {
     var buf: [3]u8 = undefined;
     inline for (inp) |e| {
         const len = assembleOne(e, &buf);
         try writer.writeAll(buf[0..len]);
     }
+}
+
+pub fn printFormat(writer: anytype, vx: []const Value) !void {
+    for (vx) |v| {
+        switch (v) {
+            .integer => |i| try std.fmt.format(writer, "{d}", .{i}),
+        }
+    }
+    try writer.writeByte('\n');
 }
 
 const TestEffects = struct {
@@ -65,14 +74,8 @@ const TestEffects = struct {
         testing.allocator.destroy(self);
     }
 
-    // TODO: unify with RunEffects somehow.
     pub fn print(self: *Self, vx: []const Value) !void {
-        for (vx) |v| {
-            switch (v) {
-                .integer => |i| try std.fmt.format(self.printedwr, "{d}", .{i}),
-            }
-        }
-        try self.printedwr.writeByte('\n');
+        try printFormat(self.printedwr, vx);
     }
 
     pub fn expectPrinted(self: *Self, s: []const u8) !void {

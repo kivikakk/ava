@@ -36,7 +36,7 @@ const Compiler = struct {
                 try stack.assembleInto(.{
                     stack.Opcode.PUSH_IMM_INTEGER,
                     stack.Value{ .integer = nt },
-                }, self.writer.any());
+                }, self.writer);
             },
             else => std.debug.panic("unhandled Expr type in Compiler.push: {any}", .{@tagName(e.payload)}),
         }
@@ -54,7 +54,7 @@ const Compiler = struct {
                         try stack.assembleInto(.{
                             stack.Opcode.BUILTIN_PRINT,
                             @as(u8, @intCast(c.args.len)),
-                        }, self.writer.any());
+                        }, self.writer);
                     } else {
                         std.debug.panic("call to \"{s}\"", .{c.name.payload});
                     }

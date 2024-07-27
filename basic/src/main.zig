@@ -44,15 +44,7 @@ const RunEffects = struct {
 
     pub fn print(_: *Self, vx: []const stack.Value) !void {
         var stdout = std.io.getStdOut();
-
-        // TODO: unify with TestEffects somehow.
-        for (vx) |v| {
-            switch (v) {
-                .integer => |i| try std.fmt.format(stdout.writer(), "{d}", .{i}),
-            }
-        }
-
-        try stdout.writeAll("\n");
+        try stack.printFormat(stdout.writer(), vx);
         try stdout.sync();
     }
 };
