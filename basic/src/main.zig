@@ -1,24 +1,58 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
+
+const compile = @import("compile.zig");
+const stack = @import("stack.zig");
 
 pub fn main() !void {
-    // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
-    std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
+    if (std.os.argv.len != 2) usage();
 
-    // stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
-    const stdout_file = std.io.getStdOut().writer();
-    var bw = std.io.bufferedWriter(stdout_file);
-    const stdout = bw.writer();
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
 
-    try stdout.print("Run `zig build test` to run the tests.\n", .{});
+    const inp = try std.fs.cwd().readFileAlloc(allocator, "hello.bas", 1048576);
+    const code = try compile.compile(allocator, inp);
 
-    try bw.flush(); // don't forget to flush!
+    var m = stack.Machine(*RunEffects).init(allocator, try RunEffects.init(allocator));
+    defer m.deinit();
+
+    try m.run(code);
 }
 
-test "simple test" {
-    var list = std.ArrayList(i32).init(std.testing.allocator);
-    defer list.deinit(); // try commenting this out and see if zig detects the memory leak!
-    try list.append(42);
-    try std.testing.expectEqual(@as(i32, 42), list.pop());
+fn usage() noreturn {
+    std.debug.print("Usage: {s} FILE.BAS\n", .{std.os.argv[0]});
+    std.process.exit(1);
 }
+
+const RunEffects = struct {
+    const Self = @This();
+
+    allocator: Allocator,
+
+    pub fn init(allocator: Allocator) !*Self {
+        const self = try allocator.create(Self);
+        self.* = .{
+            .allocator = allocator,
+        };
+        return self;
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.allocator.destroy(self);
+    }
+
+    pub fn print(_: *Self, vx: []const stack.Value) !void {
+        var stdout = std.io.getStdOut();
+
+        // TODO: unify with TestEffects somehow.
+        for (vx) |v| {
+            switch (v) {
+                .integer => |i| try std.fmt.format(stdout.writer(), "{d}", .{i}),
+            }
+        }
+
+        try stdout.writeAll("\n");
+        try stdout.sync();
+    }
+};

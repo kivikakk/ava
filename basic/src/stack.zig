@@ -2,40 +2,61 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
-const Opcode = enum(u8) {
+pub const Opcode = enum(u8) {
     PUSH_IMM_INTEGER = 0x01,
     BUILTIN_PRINT = 0x02,
 };
 
-const Value = union(enum) {
+pub const Value = union(enum) {
     integer: i16,
 };
 
-fn assemble(comptime inp: anytype) []const u8 {
+pub fn assembleOne(e: anytype, out: *[3]u8) usize {
+    switch (@TypeOf(e)) {
+        Opcode => {
+            out[0] = @intFromEnum(e);
+            return 1;
+        },
+        Value => {
+            std.mem.writeInt(i16, &out[0..2].*, e.integer, .little);
+            return 2;
+        },
+        u8, comptime_int => {
+            out[0] = @as(u8, e);
+            return 1;
+        },
+        else => @panic("unhandled type: " ++ @typeName(@TypeOf(e))),
+    }
+}
+
+pub fn assemble(comptime inp: anytype) []const u8 {
     comptime var out: []const u8 = "";
+    comptime var buf: [3]u8 = undefined;
     inline for (inp) |e| {
-        switch (@TypeOf(e)) {
-            Opcode => out = out ++ [_]u8{@intFromEnum(e)},
-            Value => {
-                comptime var b: [2]u8 = undefined;
-                std.mem.writeInt(i16, &b, e.integer, .little);
-                out = out ++ b;
-            },
-            comptime_int => out = out ++ [_]u8{@as(u8, e)},
-            else => @panic("unhandled type: " ++ @typeName(@TypeOf(e))),
-        }
+        const len = comptime assembleOne(e, &buf);
+        out = out ++ buf[0..len];
     }
     return out;
+}
+
+pub fn assembleInto(inp: anytype, writer: std.io.AnyWriter) !void {
+    var buf: [3]u8 = undefined;
+    inline for (inp) |e| {
+        const len = assembleOne(e, &buf);
+        try writer.writeAll(buf[0..len]);
+    }
 }
 
 const TestEffects = struct {
     const Self = @This();
 
     printed: std.ArrayListUnmanaged(u8) = .{},
+    printedwr: std.ArrayListUnmanaged(u8).Writer,
 
     pub fn init() !*Self {
         const self = try testing.allocator.create(Self);
-        self.* = .{};
+        self.* = .{ .printedwr = undefined };
+        self.printedwr = self.printed.writer(testing.allocator);
         return self;
     }
 
@@ -44,12 +65,14 @@ const TestEffects = struct {
         testing.allocator.destroy(self);
     }
 
+    // TODO: unify with RunEffects somehow.
     pub fn print(self: *Self, vx: []const Value) !void {
         for (vx) |v| {
             switch (v) {
-                .integer => |i| try std.fmt.format(self.printed.writer(testing.allocator), "{d}", .{i}),
+                .integer => |i| try std.fmt.format(self.printedwr, "{d}", .{i}),
             }
         }
+        try self.printedwr.writeByte('\n');
     }
 
     pub fn expectPrinted(self: *Self, s: []const u8) !void {
@@ -58,7 +81,7 @@ const TestEffects = struct {
     }
 };
 
-fn Machine(comptime Effects: type) type {
+pub fn Machine(comptime Effects: type) type {
     return struct {
         const Self = @This();
 
@@ -66,19 +89,19 @@ fn Machine(comptime Effects: type) type {
         stack: std.ArrayListUnmanaged(Value) = .{},
         effects: Effects,
 
-        fn init(allocator: Allocator, effects: Effects) Self {
+        pub fn init(allocator: Allocator, effects: Effects) Self {
             return .{
                 .allocator = allocator,
                 .effects = effects,
             };
         }
 
-        fn deinit(self: *Self) void {
+        pub fn deinit(self: *Self) void {
             self.stack.deinit(self.allocator);
             self.effects.deinit();
         }
 
-        fn run(self: *Self, code: []const u8) !void {
+        pub fn run(self: *Self, code: []const u8) !void {
             var i: usize = 0;
             while (i < code.len) : (i += 1) {
                 const b = code[i];
@@ -142,5 +165,5 @@ test "actually print a thing" {
     defer m.deinit();
 
     try m.expectStack(&.{});
-    try m.effects.expectPrinted("123");
+    try m.effects.expectPrinted("123\n");
 }
