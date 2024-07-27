@@ -4,6 +4,7 @@ const Allocator = std.mem.Allocator;
 const loc = @import("loc.zig");
 const parse = @import("parse.zig");
 const print = @import("print.zig");
+const isa = @import("isa.zig");
 const compile = @import("compile.zig");
 const stack = @import("stack.zig");
 
@@ -99,8 +100,8 @@ const RunEffects = struct {
         self.allocator.destroy(self);
     }
 
-    pub fn print(self: *Self, vx: []const stack.Value) !void {
-        try stack.printFormat(self.outwr, vx);
+    pub fn print(self: *Self, vx: []const isa.Value) !void {
+        try isa.printFormat(self.outwr, vx);
         try self.out.sync();
     }
 };

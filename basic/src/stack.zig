@@ -2,63 +2,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
+const isa = @import("isa.zig");
 const compile = @import("compile.zig");
-
-pub const Opcode = enum(u8) {
-    PUSH_IMM_INTEGER = 0x01,
-    BUILTIN_PRINT = 0x02,
-    OPERATOR_ADD = 0x03,
-    OPERATOR_MULTIPLY = 0x04,
-};
-
-pub const Value = union(enum) {
-    integer: i16,
-};
-
-pub fn assembleOne(e: anytype, out: *[3]u8) usize {
-    switch (@TypeOf(e)) {
-        Opcode => {
-            out[0] = @intFromEnum(e);
-            return 1;
-        },
-        Value => {
-            std.mem.writeInt(i16, &out[0..2].*, e.integer, .little);
-            return 2;
-        },
-        u8, comptime_int => {
-            out[0] = @as(u8, e);
-            return 1;
-        },
-        else => @panic("unhandled type: " ++ @typeName(@TypeOf(e))),
-    }
-}
-
-pub fn assemble(comptime inp: anytype) []const u8 {
-    comptime var out: []const u8 = "";
-    comptime var buf: [3]u8 = undefined;
-    inline for (inp) |e| {
-        const len = comptime assembleOne(e, &buf);
-        out = out ++ buf[0..len];
-    }
-    return out;
-}
-
-pub fn assembleInto(inp: anytype, writer: anytype) !void {
-    var buf: [3]u8 = undefined;
-    inline for (inp) |e| {
-        const len = assembleOne(e, &buf);
-        try writer.writeAll(buf[0..len]);
-    }
-}
-
-pub fn printFormat(writer: anytype, vx: []const Value) !void {
-    for (vx) |v| {
-        switch (v) {
-            .integer => |i| try std.fmt.format(writer, "{d}", .{i}),
-        }
-    }
-    try writer.writeByte('\n');
-}
 
 const TestEffects = struct {
     const Self = @This();
@@ -78,8 +23,8 @@ const TestEffects = struct {
         testing.allocator.destroy(self);
     }
 
-    pub fn print(self: *Self, vx: []const Value) !void {
-        try printFormat(self.printedwr, vx);
+    pub fn print(self: *Self, vx: []const isa.Value) !void {
+        try isa.printFormat(self.printedwr, vx);
     }
 
     pub fn expectPrinted(self: *Self, s: []const u8) !void {
@@ -93,7 +38,7 @@ pub fn Machine(comptime Effects: type) type {
         const Self = @This();
 
         allocator: Allocator,
-        stack: std.ArrayListUnmanaged(Value) = .{},
+        stack: std.ArrayListUnmanaged(isa.Value) = .{},
         effects: Effects,
 
         pub fn init(allocator: Allocator, effects: Effects) Self {
@@ -112,7 +57,7 @@ pub fn Machine(comptime Effects: type) type {
             var i: usize = 0;
             while (i < code.len) {
                 const b = code[i];
-                const op = @as(Opcode, @enumFromInt(b));
+                const op = @as(isa.Opcode, @enumFromInt(b));
                 i += 1;
                 switch (op) {
                     .PUSH_IMM_INTEGER => {
@@ -150,35 +95,25 @@ pub fn Machine(comptime Effects: type) type {
                         const rhs = vals[1].integer;
                         try self.stack.append(self.allocator, .{ .integer = lhs * rhs });
                     },
-                    // else => std.debug.panic("unhandled opcode: {s}", .{@tagName(op)}),
+                    else => std.debug.panic("unhandled opcode: {s}", .{@tagName(op)}),
                 }
             }
         }
 
-        fn expectStack(self: *const Self, vx: []const Value) !void {
-            try testing.expectEqualSlices(Value, vx, self.stack.items);
+        fn expectStack(self: *const Self, vx: []const isa.Value) !void {
+            try testing.expectEqualSlices(isa.Value, vx, self.stack.items);
         }
     };
 }
 
-test "simple push and asseble" {
-    var m = Machine(*TestEffects).init(testing.allocator, try TestEffects.init());
-    defer m.deinit();
+fn testRun(inp: anytype) !Machine(*TestEffects) {
+    const code = try isa.assemble(testing.allocator, inp);
+    defer testing.allocator.free(code);
 
-    const code = assemble(.{
-        Opcode.PUSH_IMM_INTEGER,
-        Value{ .integer = 0x7fff },
-    });
-    try testing.expectEqualSlices(u8, "\x01\xff\x7f", code);
-    try m.run(code);
-    try m.expectStack(&.{.{ .integer = 0x7fff }});
-}
-
-fn testRun(comptime inp: anytype) !Machine(*TestEffects) {
     var m = Machine(*TestEffects).init(testing.allocator, try TestEffects.init());
     errdefer m.deinit();
 
-    try m.run(assemble(inp));
+    try m.run(code);
     return m;
 }
 
@@ -193,11 +128,21 @@ fn testRunBas(inp: []const u8) !Machine(*TestEffects) {
     return m;
 }
 
+test "simple push" {
+    var m = try testRun(.{
+        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Value{ .integer = 0x7fff },
+    });
+    defer m.deinit();
+
+    try m.expectStack(&.{.{ .integer = 0x7fff }});
+}
+
 test "actually print a thing" {
     var m = try testRun(.{
-        Opcode.PUSH_IMM_INTEGER,
-        Value{ .integer = 123 },
-        Opcode.BUILTIN_PRINT,
+        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Value{ .integer = 123 },
+        isa.Opcode.BUILTIN_PRINT,
         1,
     });
     defer m.deinit();

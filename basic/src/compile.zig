@@ -3,8 +3,9 @@ const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
 const loc = @import("loc.zig");
+const ast = @import("ast.zig");
 const parse = @import("parse.zig");
-const stack = @import("stack.zig");
+const isa = @import("isa.zig");
 
 const Compiler = struct {
     const Self = @This();
@@ -28,25 +29,31 @@ const Compiler = struct {
         self.allocator.destroy(self);
     }
 
-    fn push(self: *Self, e: parse.Expr) !void {
+    fn push(self: *Self, e: ast.Expr) !void {
         switch (e.payload) {
             .imm_number => |n| {
                 // XXX: only handling INTEGER for now.
                 std.debug.assert(n >= -32768 and n <= 32767);
-                try stack.assembleInto(.{
-                    stack.Opcode.PUSH_IMM_INTEGER,
-                    stack.Value{ .integer = @truncate(n) },
-                }, self.writer);
+                try isa.assembleInto(self.writer, .{
+                    isa.Opcode.PUSH_IMM_INTEGER,
+                    isa.Value{ .integer = @truncate(n) },
+                });
+            },
+            .imm_string => |s| {
+                try isa.assembleInto(self.writer, .{
+                    isa.Opcode.PUSH_IMM_STRING,
+                    isa.Value{ .string = s },
+                });
             },
             .binop => |b| {
                 try self.push(b.lhs.*);
                 try self.push(b.rhs.*);
-                const opc: stack.Opcode = switch (b.op.payload) {
+                const opc: isa.Opcode = switch (b.op.payload) {
                     .add => .OPERATOR_ADD,
                     .mul => .OPERATOR_MULTIPLY,
                     else => std.debug.panic("unhandled opcode: {s}", .{@tagName(b.op.payload)}),
                 };
-                try stack.assembleInto(.{opc}, self.writer);
+                try isa.assembleInto(self.writer, .{opc});
             },
             .paren => |e2| {
                 try self.push(e2.*);
@@ -55,7 +62,7 @@ const Compiler = struct {
         }
     }
 
-    fn compile(self: *Self, sx: []parse.Stmt) ![]const u8 {
+    fn compile(self: *Self, sx: []ast.Stmt) ![]const u8 {
         for (sx) |s| {
             switch (s.payload) {
                 .remark => {},
@@ -64,10 +71,10 @@ const Compiler = struct {
                         try self.push(a);
                     }
                     if (std.ascii.eqlIgnoreCase(c.name.payload, "print")) {
-                        try stack.assembleInto(.{
-                            stack.Opcode.BUILTIN_PRINT,
+                        try isa.assembleInto(self.writer, .{
+                            isa.Opcode.BUILTIN_PRINT,
                             @as(u8, @intCast(c.args.len)),
-                        }, self.writer);
+                        });
                     } else {
                         std.debug.panic("call to \"{s}\"", .{c.name.payload});
                     }
@@ -107,12 +114,15 @@ test "compile shrimple" {
     , null);
     defer testing.allocator.free(code);
 
-    try testing.expectEqualSlices(u8, stack.assemble(.{
-        stack.Opcode.PUSH_IMM_INTEGER,
-        stack.Value{ .integer = 123 },
-        stack.Opcode.BUILTIN_PRINT,
+    const exp = try isa.assemble(testing.allocator, .{
+        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Value{ .integer = 123 },
+        isa.Opcode.BUILTIN_PRINT,
         1,
-    }), code);
+    });
+    defer testing.allocator.free(exp);
+
+    try testing.expectEqualSlices(u8, exp, code);
 }
 
 test "compile less shrimple" {
@@ -122,16 +132,20 @@ test "compile less shrimple" {
     , null);
     defer testing.allocator.free(code);
 
-    try testing.expectEqualSlices(u8, stack.assemble(.{
-        stack.Opcode.PUSH_IMM_INTEGER,
-        stack.Value{ .integer = 6 },
-        stack.Opcode.PUSH_IMM_INTEGER,
-        stack.Value{ .integer = 5 },
-        stack.Opcode.PUSH_IMM_INTEGER,
-        stack.Value{ .integer = 4 },
-        stack.Opcode.OPERATOR_MULTIPLY,
-        stack.Opcode.OPERATOR_ADD,
-        stack.Opcode.BUILTIN_PRINT,
+    const exp =
+        try isa.assemble(testing.allocator, .{
+        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Value{ .integer = 6 },
+        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Value{ .integer = 5 },
+        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Value{ .integer = 4 },
+        isa.Opcode.OPERATOR_MULTIPLY,
+        isa.Opcode.OPERATOR_ADD,
+        isa.Opcode.BUILTIN_PRINT,
         1,
-    }), code);
+    });
+    defer testing.allocator.free(exp);
+
+    try testing.expectEqualSlices(u8, exp, code);
 }
