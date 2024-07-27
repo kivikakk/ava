@@ -117,11 +117,11 @@ pub fn Machine(comptime Effects: type) type {
                 switch (op) {
                     .PUSH_IMM_INTEGER => {
                         std.debug.assert(code.len - i + 1 >= 2);
-                        const argc = code[i..][0..2];
+                        const imm = code[i..][0..2];
                         i += 2;
                         try self.stack.append(
                             self.allocator,
-                            .{ .integer = std.mem.readInt(i16, argc, .little) },
+                            .{ .integer = std.mem.readInt(i16, imm, .little) },
                         );
                     },
                     .BUILTIN_PRINT => {
@@ -135,17 +135,19 @@ pub fn Machine(comptime Effects: type) type {
                     .OPERATOR_ADD => {
                         std.debug.assert(code.len - i + 1 >= 0);
                         std.debug.assert(self.stack.items.len >= 2);
-                        const lhs = self.stack.items[0].integer;
-                        const rhs = self.stack.items[1].integer;
+                        const vals = self.stack.items[self.stack.items.len - 2 ..];
                         self.stack.items.len -= 2;
+                        const lhs = vals[0].integer;
+                        const rhs = vals[1].integer;
                         try self.stack.append(self.allocator, .{ .integer = lhs + rhs });
                     },
                     .OPERATOR_MULTIPLY => {
                         std.debug.assert(code.len - i + 1 >= 0);
                         std.debug.assert(self.stack.items.len >= 2);
-                        const lhs = self.stack.items[0].integer;
-                        const rhs = self.stack.items[1].integer;
+                        const vals = self.stack.items[self.stack.items.len - 2 ..];
                         self.stack.items.len -= 2;
+                        const lhs = vals[0].integer;
+                        const rhs = vals[1].integer;
                         try self.stack.append(self.allocator, .{ .integer = lhs * rhs });
                     },
                     // else => std.debug.panic("unhandled opcode: {s}", .{@tagName(op)}),

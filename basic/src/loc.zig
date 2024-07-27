@@ -46,14 +46,28 @@ pub fn WithRange(comptime T: type) type {
             }
         } else struct {};
 
-        pub fn format(self: Self, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
-            _ = fmt;
-            _ = options;
-            try std.fmt.format(writer, "<{d}:{d}-{d}:{d}> {any}", .{
+        pub usingnamespace if (@typeInfo(T) == .Union and @hasDecl(T, "formatAst")) struct {
+            pub fn formatAst(self: Self, indent: usize, writer: anytype) !void {
+                // TODO: get ast formatting working with ranges. It'd be nice to
+                // not have them so separate (and in this order).
+                try self.payload.formatAst(indent, writer);
+            }
+        } else struct {};
+
+        fn formatRange(self: Self, writer: anytype) !void {
+            try std.fmt.format(writer, "<{d}:{d}-{d}:{d}>", .{
                 self.range.start.row,
                 self.range.start.col,
                 self.range.end.row,
                 self.range.end.col,
+            });
+        }
+
+        pub fn format(self: Self, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+            _ = fmt;
+            _ = options;
+            try self.formatRange(writer);
+            try std.fmt.format(writer, " {any}", .{
                 self.payload,
             });
         }

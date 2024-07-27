@@ -60,7 +60,7 @@ fn mainAst(allocator: Allocator, filename: []const u8) !void {
 
     const outwr = std.io.getStdOut().writer();
     for (sx) |s| {
-        try std.fmt.format(outwr, "{any}\n", .{s});
+        try s.formatAst(0, outwr);
     }
 }
 

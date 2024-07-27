@@ -35,6 +35,20 @@ pub const ExprPayload = union(enum) {
     },
     paren: *Expr,
 
+    pub fn formatAst(self: Self, indent: usize, writer: anytype) @TypeOf(writer).Error!void {
+        switch (self) {
+            .imm_number => |n| try std.fmt.format(writer, "Number({d})\n", .{n}),
+            .binop => |b| {
+                try std.fmt.format(writer, "Binop({s})\n", .{@tagName(b.op.payload)});
+                for (0..indent + 1) |_| try writer.writeAll("  ");
+                try b.lhs.formatAst(indent + 1, writer);
+                for (0..indent + 1) |_| try writer.writeAll("  ");
+                try b.rhs.formatAst(indent + 1, writer);
+            },
+            else => unreachable,
+        }
+    }
+
     pub fn deinit(self: Self, allocator: Allocator) void {
         switch (self) {
             .imm_number => {},
@@ -107,6 +121,23 @@ pub const StmtPayload = union(enum) {
     goto: WithRange([]const u8),
     end,
     endif,
+
+    pub fn formatAst(self: Self, indent: usize, writer: anytype) !void {
+        for (0..indent) |_| try writer.writeAll("  ");
+
+        switch (self) {
+            .remark => |r| try std.fmt.format(writer, "Remark: <{s}>\n", .{r}),
+            .call => |c| {
+                try std.fmt.format(writer, "Call <{s}> with {d} argument(s):\n", .{ c.name.payload, c.args.len });
+                for (c.args, 0..) |a, i| {
+                    for (0..indent + 1) |_| try writer.writeAll("  ");
+                    try std.fmt.format(writer, "{d}: ", .{i});
+                    try a.formatAst(indent + 1, writer);
+                }
+            },
+            else => unreachable,
+        }
+    }
 
     pub fn deinit(self: Self, allocator: Allocator) void {
         switch (self) {
