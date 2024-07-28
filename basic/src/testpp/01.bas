@@ -4,11 +4,11 @@
 PRINT "Hello","world!"
 LET x$ = "Tere"
 y$="maailm"
-PRINT x$, ", ", y$
+  PRINT x$, ", ", y$
 
 IF x$ + x$ = "TereTere" THEN   'umm.
 
-    PRINT "yey"   ' :)
+    print "yey"   ' :)
     PRINT 1+2     ' !
 END IF
 
