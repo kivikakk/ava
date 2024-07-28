@@ -46,6 +46,12 @@ pub fn WithRange(comptime T: type) type {
             }
         } else struct {};
 
+        pub usingnamespace if (@typeInfo(T) == .Union and @hasDecl(T, "deinitAll")) struct {
+            pub fn deinitAll(allocator: std.mem.Allocator, a: []const Self) void {
+                T.deinitAll(allocator, a);
+            }
+        } else struct {};
+
         pub usingnamespace if (@typeInfo(T) == .Union and @hasDecl(T, "formatAst")) struct {
             pub fn formatAst(self: Self, indent: usize, writer: anytype) !void {
                 // TODO: get ast formatting working with ranges. It'd be nice to

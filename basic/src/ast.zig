@@ -73,6 +73,11 @@ pub const ExprPayload = union(enum) {
             },
         }
     }
+
+    pub fn deinitAll(allocator: Allocator, ex: []const Expr) void {
+        for (ex) |e| e.deinit(allocator);
+        allocator.free(ex);
+    }
 };
 
 pub const Expr = WithRange(ExprPayload);
@@ -84,6 +89,10 @@ pub const StmtPayload = union(enum) {
     call: struct {
         name: WithRange([]const u8),
         args: []const Expr,
+    },
+    print: struct {
+        args: []const Expr,
+        separators: []const WithRange(u8),
     },
     let: struct {
         kw: bool,
@@ -142,6 +151,18 @@ pub const StmtPayload = union(enum) {
                     try a.formatAst(indent + 1, writer);
                 }
             },
+            .print => |p| {
+                try std.fmt.format(writer, "Print with {d} argument(s):\n", .{p.args.len});
+                for (p.args, 0..) |a, i| {
+                    for (0..indent + 1) |_| try writer.writeAll("  ");
+                    try std.fmt.format(writer, "{d}: ", .{i});
+                    try a.formatAst(indent + 1, writer);
+                    if (i < p.args.len - 1) {
+                        for (0..indent + 1) |_| try writer.writeAll("  ");
+                        try std.fmt.format(writer, "separated by '{c}'\n", .{p.separators[i]});
+                    }
+                }
+            },
             else => unreachable,
         }
     }
@@ -149,10 +170,10 @@ pub const StmtPayload = union(enum) {
     pub fn deinit(self: Self, allocator: Allocator) void {
         switch (self) {
             .remark => {},
-            .call => |c| {
-                for (c.args) |e|
-                    e.deinit(allocator);
-                allocator.free(c.args);
+            .call => |c| Expr.deinitAll(allocator, c.args),
+            .print => |p| {
+                Expr.deinitAll(allocator, p.args);
+                allocator.free(p.separators);
             },
             .let => |l| l.rhs.deinit(allocator),
             .@"if" => |i| i.cond.deinit(allocator),

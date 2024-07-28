@@ -22,7 +22,7 @@ const Printer = struct {
         const self = try allocator.create(Self);
         self.* = .{
             .allocator = allocator,
-            .buf = std.ArrayListUnmanaged(u8){},
+            .buf = .{},
             .writer = Writer{ .context = self },
         };
         return self;
@@ -103,6 +103,20 @@ const Printer = struct {
                     if (i > 0)
                         try self.writer.writeByte(',');
                     try self.printExpr(e);
+                }
+            },
+            .print => |p| {
+                try self.writer.writeAll("PRINT");
+                for (p.args, 0..) |e, i| {
+                    if (i > 0) {
+                        try self.advance(p.separators[i - 1].range);
+                        try self.writer.writeByte(p.separators[i - 1].payload);
+                    }
+                    try self.printExpr(e);
+                }
+                if (p.separators.len == p.args.len) {
+                    try self.advance(p.separators[p.args.len - 1].range);
+                    try self.writer.writeByte(p.separators[p.args.len - 1].payload);
                 }
             },
             .let => |l| {

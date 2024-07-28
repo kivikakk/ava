@@ -213,29 +213,96 @@ const Parser = struct {
         } }, e.range, e2.range);
     }
 
-    fn acceptExprList(self: *Self) !?[]ast.Expr {
-        const e = try self.acceptExpr() orelse return null;
-        errdefer e.deinit(self.allocator);
-
+    fn acceptExprList(self: *Self, comptime septoks: []const token.TokenTag, separators: ?*std.ArrayListUnmanaged(token.Token), trailing: bool) !?[]ast.Expr {
         var ex = std.ArrayList(ast.Expr).init(self.allocator);
-        errdefer ex.deinit();
-
-        try ex.append(e);
-
-        while (self.accept(.comma) != null) {
-            const e2 = try self.acceptExpr() orelse
-                return Error.UnexpectedToken;
-            try ex.append(e2);
+        errdefer {
+            for (ex.items) |i| i.deinit(self.allocator);
+            ex.deinit();
         }
 
-        if (!try self.peekTerminator())
-            return Error.ExpectedTerminator;
+        {
+            const e = try self.acceptExpr() orelse return null;
+            errdefer e.deinit(self.allocator);
+            try ex.append(e);
+        }
+
+        while (true) {
+            // PRINT a
+            // PRINT a; b
+            // XYZ a, b, c
+            var found = false;
+            inline for (septoks) |st| {
+                if (self.accept(st)) |t| {
+                    if (separators) |so|
+                        try so.append(self.allocator, token.Token.init(st, t.range));
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                // No separator found.
+                if (!try self.peekTerminator())
+                    return Error.ExpectedTerminator;
+                break;
+            }
+
+            // PRINT a,
+            // PRINT a; b;
+            // XYZ c, d,
+
+            if (trailing and try self.peekTerminator()) {
+                // Trailing permitted, and:
+                // PRINT a,\n
+                // PRINT a; b;\n
+                // XYZ c, d,\n
+                break;
+            }
+
+            const e2 = try self.acceptExpr() orelse
+                return Error.UnexpectedToken;
+            errdefer e2.deinit(self.allocator);
+            try ex.append(e2);
+        }
 
         return try ex.toOwnedSlice();
     }
 
+    fn acceptBuiltinPrint(self: *Self, l: WithRange([]const u8)) !?ast.Stmt {
+        if (try self.peekTerminator()) {
+            return ast.Stmt.init(.{ .print = .{
+                .args = &.{},
+                .separators = &.{},
+            } }, l.range);
+        }
+
+        var separators = std.ArrayListUnmanaged(token.Token){};
+        defer separators.deinit(self.allocator);
+
+        const ex = try self.acceptExprList(&.{ .comma, .semicolon }, &separators, true) orelse
+            return Error.UnexpectedToken;
+        errdefer ast.Expr.deinitAll(self.allocator, ex);
+
+        var seps = try self.allocator.alloc(WithRange(u8), separators.items.len);
+        for (separators.items, 0..) |s, i| {
+            seps[i] = WithRange(u8).init(switch (s.payload) {
+                .comma => ',',
+                .semicolon => ';',
+                else => unreachable,
+            }, s.range);
+        }
+
+        return ast.Stmt.initEnds(.{ .print = .{
+            .args = ex,
+            .separators = seps,
+        } }, l.range, if (seps.len == ex.len) seps[ex.len - 1].range else ex[ex.len - 1].range);
+    }
+
     fn acceptStmtLabel(self: *Self) !?ast.Stmt {
         const l = self.accept(.label) orelse return null;
+
+        if (std.ascii.eqlIgnoreCase(l.payload, "print"))
+            return self.acceptBuiltinPrint(l);
+
         if (try self.peekTerminator()) {
             return ast.Stmt.init(.{ .call = .{
                 .name = l,
@@ -243,7 +310,7 @@ const Parser = struct {
             } }, l.range);
         }
 
-        if (try self.acceptExprList()) |ex| {
+        if (try self.acceptExprList(&.{.comma}, null, false)) |ex| {
             return ast.Stmt.initEnds(.{ .call = .{
                 .name = l,
                 .args = ex,
@@ -444,43 +511,81 @@ pub fn free(allocator: Allocator, sx: []ast.Stmt) void {
     allocator.free(sx);
 }
 
-test "parses a nullary statement" {
-    const sx = try parse(testing.allocator, "PRINT\n", null);
+test "parses a nullary call" {
+    const sx = try parse(testing.allocator, "NYONK\n", null);
     defer free(testing.allocator, sx);
 
-    try testing.expectEqualDeep(sx, &[_]ast.Stmt{
+    try testing.expectEqualDeep(&[_]ast.Stmt{
         ast.Stmt.initRange(.{ .call = .{
-            .name = WithRange([]const u8).initRange("PRINT", .{ 1, 1 }, .{ 1, 5 }),
+            .name = WithRange([]const u8).initRange("NYONK", .{ 1, 1 }, .{ 1, 5 }),
             .args = &.{},
         } }, .{ 1, 1 }, .{ 1, 5 }),
-    });
+    }, sx);
 }
 
 test "parses a unary statement" {
-    const sx = try parse(testing.allocator, "\n PRINT 42\n", null);
+    const sx = try parse(testing.allocator, "\n NYONK 42\n", null);
     defer free(testing.allocator, sx);
 
-    try testing.expectEqualDeep(sx, &[_]ast.Stmt{
+    try testing.expectEqualDeep(&[_]ast.Stmt{
         ast.Stmt.initRange(.{ .call = .{
-            .name = WithRange([]const u8).initRange("PRINT", .{ 2, 2 }, .{ 2, 6 }),
+            .name = WithRange([]const u8).initRange("NYONK", .{ 2, 2 }, .{ 2, 6 }),
             .args = &.{
                 ast.Expr.initRange(.{ .imm_number = 42 }, .{ 2, 8 }, .{ 2, 9 }),
             },
         } }, .{ 2, 2 }, .{ 2, 9 }),
-    });
+    }, sx);
 }
 
 test "parses a binary statement" {
-    const sx = try parse(testing.allocator, "PRINT X$, Y%\n", null);
+    const sx = try parse(testing.allocator, "NYONK X$, Y%\n", null);
     defer free(testing.allocator, sx);
 
-    try testing.expectEqualDeep(sx, &[_]ast.Stmt{
+    try testing.expectEqualDeep(&[_]ast.Stmt{
         ast.Stmt.initRange(.{ .call = .{
-            .name = WithRange([]const u8).initRange("PRINT", .{ 1, 1 }, .{ 1, 5 }),
+            .name = WithRange([]const u8).initRange("NYONK", .{ 1, 1 }, .{ 1, 5 }),
             .args = &.{
                 ast.Expr.initRange(.{ .label = "X$" }, .{ 1, 7 }, .{ 1, 8 }),
                 ast.Expr.initRange(.{ .label = "Y%" }, .{ 1, 11 }, .{ 1, 12 }),
             },
         } }, .{ 1, 1 }, .{ 1, 12 }),
-    });
+    }, sx);
+}
+
+test "parses a PRINT statement with semicolons" {
+    const sx = try parse(testing.allocator, "PRINT X$, Y%; Z&\n", null);
+    defer free(testing.allocator, sx);
+
+    try testing.expectEqualDeep(&[_]ast.Stmt{
+        ast.Stmt.initRange(.{ .print = .{
+            .args = &.{
+                ast.Expr.initRange(.{ .label = "X$" }, .{ 1, 7 }, .{ 1, 8 }),
+                ast.Expr.initRange(.{ .label = "Y%" }, .{ 1, 11 }, .{ 1, 12 }),
+                ast.Expr.initRange(.{ .label = "Z&" }, .{ 1, 15 }, .{ 1, 16 }),
+            },
+            .separators = &.{
+                WithRange(u8).initRange(',', .{ 1, 9 }, .{ 1, 9 }),
+                WithRange(u8).initRange(';', .{ 1, 13 }, .{ 1, 13 }),
+            },
+        } }, .{ 1, 1 }, .{ 1, 16 }),
+    }, sx);
+}
+test "parses a PRINT statement with trailing separator" {
+    const sx = try parse(testing.allocator, "PRINT X$, Y%; Z&,\n", null);
+    defer free(testing.allocator, sx);
+
+    try testing.expectEqualDeep(&[_]ast.Stmt{
+        ast.Stmt.initRange(.{ .print = .{
+            .args = &.{
+                ast.Expr.initRange(.{ .label = "X$" }, .{ 1, 7 }, .{ 1, 8 }),
+                ast.Expr.initRange(.{ .label = "Y%" }, .{ 1, 11 }, .{ 1, 12 }),
+                ast.Expr.initRange(.{ .label = "Z&" }, .{ 1, 15 }, .{ 1, 16 }),
+            },
+            .separators = &.{
+                WithRange(u8).initRange(',', .{ 1, 9 }, .{ 1, 9 }),
+                WithRange(u8).initRange(';', .{ 1, 13 }, .{ 1, 13 }),
+                WithRange(u8).initRange(',', .{ 1, 17 }, .{ 1, 17 }),
+            },
+        } }, .{ 1, 1 }, .{ 1, 17 }),
+    }, sx);
 }

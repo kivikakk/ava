@@ -7,14 +7,18 @@ const compile = @import("compile.zig");
 
 const TestEffects = struct {
     const Self = @This();
+    const PrintedWriter = std.io.GenericWriter(*Self, Allocator.Error, writerFn);
 
-    printed: std.ArrayListUnmanaged(u8) = .{},
-    printedwr: std.ArrayListUnmanaged(u8).Writer,
+    col: usize = 1,
+    printed: std.ArrayListUnmanaged(u8),
+    printedwr: PrintedWriter,
 
     pub fn init() !*Self {
         const self = try testing.allocator.create(Self);
-        self.* = .{ .printedwr = undefined };
-        self.printedwr = self.printed.writer(testing.allocator);
+        self.* = .{
+            .printed = .{},
+            .printedwr = PrintedWriter{ .context = self },
+        };
         return self;
     }
 
@@ -23,8 +27,54 @@ const TestEffects = struct {
         testing.allocator.destroy(self);
     }
 
-    pub fn print(self: *Self, vx: []const isa.Value) !void {
-        try isa.printFormat(self.printedwr, vx);
+    fn writerFn(self: *Self, m: []const u8) Allocator.Error!usize {
+        for (m) |c| {
+            if (c == '\n') {
+                self.col = 1;
+            } else {
+                self.col += 1;
+                if (self.col == 81)
+                    self.col = 80;
+            }
+        }
+        try self.printed.appendSlice(testing.allocator, m);
+        return m.len;
+    }
+
+    pub fn print(self: *Self, v: isa.Value) !void {
+        try isa.printFormat(self.printedwr, v);
+    }
+
+    pub fn printComma(self: *Self) !void {
+        // QBASIC splits the textmode screen up into 14 character "print zones".
+        // Comma advances to the next, ensuring at least one space is included.
+        // i.e. print zones start at column 1, 15, 29, 43, 57, 71.
+        // If you're at columns 1-13 and print a comma, you'll wind up at column
+        // 15. Columns 14-27 advance to 29. (14 included because 14 advancing to
+        // 15 wouldn't leave a space.)
+        // Why do arithmetic when just writing it out will do?
+        // TODO: this won't hold up for wider screens :)
+        const spaces =
+            if (self.col < 14)
+            15 - self.col
+        else if (self.col < 28)
+            29 - self.col
+        else if (self.col < 42)
+            43 - self.col
+        else if (self.col < 56)
+            57 - self.col
+        else if (self.col < 70)
+            71 - self.col
+        else {
+            try self.printed.append(testing.allocator, '\n');
+            return;
+        };
+
+        try self.printed.appendNTimes(testing.allocator, ' ', spaces);
+    }
+
+    pub fn printLinefeed(self: *Self) !void {
+        try self.printed.append(testing.allocator, '\n');
     }
 
     pub fn expectPrinted(self: *Self, s: []const u8) !void {
@@ -100,13 +150,12 @@ pub fn Machine(comptime Effects: type) type {
                         );
                     },
                     .BUILTIN_PRINT => {
-                        std.debug.assert(code.len - i + 1 >= 1);
-                        const argc = code[i];
-                        i += 1;
-                        const vals = self.takeStack(argc);
-                        defer self.freeValues(vals);
-                        try self.effects.print(vals);
+                        const val = self.takeStack(1);
+                        defer self.freeValues(val);
+                        try self.effects.print(val[0]);
                     },
+                    .BUILTIN_PRINT_COMMA => try self.effects.printComma(),
+                    .BUILTIN_PRINT_LINEFEED => try self.effects.printLinefeed(),
                     .OPERATOR_ADD => {
                         std.debug.assert(code.len - i + 1 >= 0);
                         std.debug.assert(self.stack.items.len >= 2);
@@ -171,7 +220,7 @@ test "actually print a thing" {
         isa.Opcode.PUSH_IMM_INTEGER,
         isa.Value{ .integer = 123 },
         isa.Opcode.BUILTIN_PRINT,
-        1,
+        isa.Opcode.BUILTIN_PRINT_LINEFEED,
     });
     defer m.deinit();
 

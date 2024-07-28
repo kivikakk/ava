@@ -8,7 +8,7 @@ y$="maailm"
 
 IF x$ + x$ = "TereTere" THEN   'umm.
 
-    print "yey"   ' :)
+    PRINT "yey"   ' :)
     PRINT 1+2     ' !
 END IF
 

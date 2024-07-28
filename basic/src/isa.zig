@@ -6,6 +6,8 @@ pub const Opcode = enum(u8) {
     PUSH_IMM_INTEGER = 0x01,
     PUSH_IMM_STRING = 0x02,
     BUILTIN_PRINT = 0x80,
+    BUILTIN_PRINT_COMMA = 0x81,
+    BUILTIN_PRINT_LINEFEED = 0x82,
     OPERATOR_ADD = 0xd0,
     OPERATOR_MULTIPLY = 0xd1,
     WE_MADE_IT_UP = 0xff, // XXX: not impl for this on purpose so else prongs can remain
@@ -17,14 +19,11 @@ pub const Value = union(enum) {
     string: []const u8,
 };
 
-pub fn printFormat(writer: anytype, vx: []const Value) !void {
-    for (vx) |v| {
-        switch (v) {
-            .integer => |i| try std.fmt.format(writer, "{d}", .{i}),
-            .string => |s| try writer.writeAll(s),
-        }
+pub fn printFormat(writer: anytype, v: Value) !void {
+    switch (v) {
+        .integer => |i| try std.fmt.format(writer, "{d}", .{i}),
+        .string => |s| try writer.writeAll(s),
     }
-    try writer.writeByte('\n');
 }
 
 pub fn assembleOne(e: anytype, writer: anytype) !void {

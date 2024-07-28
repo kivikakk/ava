@@ -79,6 +79,33 @@ const Compiler = struct {
                         std.debug.panic("call to \"{s}\"", .{c.name.payload});
                     }
                 },
+                .print => |p| {
+                    // Each argument gets BUILTIN_PRINTed.
+                    // Between arguments, BUILTIN_PRINT_COMMA advances to the next print zone.
+                    // At the end, if there's a trailing comma, another BUILTIN_PRINT_COMMA is used.
+                    // If there's a trailing semicolon, we do nothing.
+                    // Otherwise, we BUILTIN_PRINT_LINEFEED.
+                    for (p.args, 0..) |a, i| {
+                        try self.push(a);
+                        try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT});
+                        if (i + 1 < p.separators.len) {
+                            switch (p.separators[i].payload) {
+                                ';' => {},
+                                ',' => try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT_COMMA}),
+                                else => unreachable,
+                            }
+                        }
+                    }
+                    if (p.separators.len == p.args.len) {
+                        switch (p.separators[p.args.len - 1].payload) {
+                            ';' => {},
+                            ',' => try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT_COMMA}),
+                            else => unreachable,
+                        }
+                    } else {
+                        try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT_LINEFEED});
+                    }
+                },
                 .let => unreachable,
                 .@"if" => unreachable,
                 .if1 => unreachable,
@@ -118,7 +145,7 @@ test "compile shrimple" {
         isa.Opcode.PUSH_IMM_INTEGER,
         isa.Value{ .integer = 123 },
         isa.Opcode.BUILTIN_PRINT,
-        1,
+        isa.Opcode.BUILTIN_PRINT_LINEFEED,
     });
     defer testing.allocator.free(exp);
 
@@ -127,7 +154,7 @@ test "compile shrimple" {
 
 test "compile less shrimple" {
     const code = try compile(testing.allocator,
-        \\PRINT 6 + 5 * 4
+        \\PRINT 6 + 5 * 4, 3; 2
         \\
     , null);
     defer testing.allocator.free(code);
@@ -143,7 +170,14 @@ test "compile less shrimple" {
         isa.Opcode.OPERATOR_MULTIPLY,
         isa.Opcode.OPERATOR_ADD,
         isa.Opcode.BUILTIN_PRINT,
-        1,
+        isa.Opcode.BUILTIN_PRINT_COMMA,
+        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Value{ .integer = 3 },
+        isa.Opcode.BUILTIN_PRINT,
+        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Value{ .integer = 2 },
+        isa.Opcode.BUILTIN_PRINT,
+        isa.Opcode.BUILTIN_PRINT_LINEFEED,
     });
     defer testing.allocator.free(exp);
 

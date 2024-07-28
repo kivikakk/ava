@@ -402,7 +402,7 @@ pub fn tokenize(allocator: Allocator, inp: []const u8, errorloc: ?*loc.Loc) ![]T
 
 test "tokenizes basics" {
     const tx = try tokenize(testing.allocator,
-        \\if 10 Then END
+        \\if 10 Then END;
         \\  tere maailm%, ava$ = siin& 'okok
         \\Awawa: #7<<>>
         \\REM Hiii :3
@@ -415,7 +415,8 @@ test "tokenizes basics" {
         Token.initRange(.{ .number = 10 }, .{ 1, 4 }, .{ 1, 5 }),
         Token.initRange(.kw_then, .{ 1, 7 }, .{ 1, 10 }),
         Token.initRange(.kw_end, .{ 1, 12 }, .{ 1, 14 }),
-        Token.initRange(.linefeed, .{ 1, 15 }, .{ 1, 15 }),
+        Token.initRange(.semicolon, .{ 1, 15 }, .{ 1, 15 }),
+        Token.initRange(.linefeed, .{ 1, 16 }, .{ 1, 16 }),
         Token.initRange(.{ .label = "tere" }, .{ 2, 3 }, .{ 2, 6 }),
         Token.initRange(.{ .label = "maailm%" }, .{ 2, 8 }, .{ 2, 14 }),
         Token.initRange(.comma, .{ 2, 15 }, .{ 2, 15 }),

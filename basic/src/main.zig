@@ -100,8 +100,8 @@ const RunEffects = struct {
         self.allocator.destroy(self);
     }
 
-    pub fn print(self: *Self, vx: []const isa.Value) !void {
-        try isa.printFormat(self.outwr, vx);
+    pub fn print(self: *Self, v: isa.Value) !void {
+        try isa.printFormat(self.outwr, v);
         try self.out.sync();
     }
 };
