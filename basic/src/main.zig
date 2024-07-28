@@ -52,7 +52,7 @@ fn usage(executable_name: ?[:0]const u8, status: u8) noreturn {
         \\Multiple of --pp, --ast, and/or --bc can be given at once.
         \\
         \\If --pp, --ast, and/or --bc are given without [file], the corresponding
-        \\action is taken on each input line, but the lines are still executed.
+        \\action is taken on each input line, and the line is executed.
         \\
         \\Ava BASIC  Copyright (C) 2024  Asherah Erin Connor
         \\This program comes with ABSOLUTELY NO WARRANTY; for details type `LICENCE
