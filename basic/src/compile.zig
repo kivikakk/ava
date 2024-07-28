@@ -88,7 +88,7 @@ const Compiler = struct {
                     for (p.args, 0..) |a, i| {
                         try self.push(a);
                         try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT});
-                        if (i + 1 < p.separators.len) {
+                        if (i < p.separators.len) {
                             switch (p.separators[i].payload) {
                                 ';' => {},
                                 ',' => try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT_COMMA}),
