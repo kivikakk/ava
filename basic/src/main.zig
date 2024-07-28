@@ -10,8 +10,9 @@ const compile = @import("compile.zig");
 const stack = @import("stack.zig");
 
 const Options = struct {
-    ast: bool = false,
     pp: bool = false,
+    ast: bool = false,
+    bc: bool = false,
     help: bool = false,
 };
 var options: Options = undefined;
@@ -21,26 +22,16 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    const optionsParsed = try args.parseForCurrentProcess(Options, allocator, .print);
-    defer optionsParsed.deinit();
+    const parsed = try args.parseForCurrentProcess(Options, allocator, .print);
+    defer parsed.deinit();
 
-    options = optionsParsed.options;
+    options = parsed.options;
 
-    if (options.help) usage(optionsParsed.executable_name, 0);
-    if (optionsParsed.positionals.len > 1) usage(optionsParsed.executable_name, 1);
+    if (options.help) usage(parsed.executable_name, 0);
+    if (parsed.positionals.len > 1) usage(parsed.executable_name, 1);
 
-    if (optionsParsed.positionals.len == 1) {
-        const inp = try std.fs.cwd().readFileAlloc(allocator, optionsParsed.positionals[0], 1048576);
-        defer allocator.free(inp);
-
-        if (options.ast)
-            try mainAst(allocator, inp);
-
-        if (options.pp)
-            try mainPp(allocator, inp);
-
-        if (!options.ast and !options.pp)
-            try mainRun(allocator, inp);
+    if (parsed.positionals.len == 1) {
+        return mainRun(allocator, parsed.positionals[0]);
     } else {
         return mainInteractive(allocator);
     }
@@ -53,11 +44,15 @@ fn usage(executable_name: ?[:0]const u8, status: u8) noreturn {
         \\
         \\Options:
         \\
-        \\  --ast      When given [file], prints its AST without executing.
-        \\             Otherwise, prints the AST of each input before executing.
-        \\  --pp       Pretty-prints [file] without executing it.
-        \\             Otherwise, pretty-prints each input before executing.
+        \\  --pp       Pretty-prints [file] without executing.
+        \\  --ast      Prints the AST of [file] without executing.
+        \\  --bc       Dumps the bytecode compiled from [file] without executing.
         \\  --help     Shows this information.
+        \\
+        \\Multiple of --pp, --ast, and/or --bc can be given at once.
+        \\
+        \\If --pp, --ast, and/or --bc are given without [file], the corresponding
+        \\action is taken on each input line, but the lines are still executed.
         \\
         \\Ava BASIC  Copyright (C) 2024  Asherah Erin Connor
         \\This program comes with ABSOLUTELY NO WARRANTY; for details type `LICENCE
@@ -72,11 +67,56 @@ fn handleErr(err: anyerror, errorloc: loc.Loc) @TypeOf(err) {
     return err;
 }
 
+fn mainRun(allocator: Allocator, filename: []const u8) !void {
+    const inp = try std.fs.cwd().readFileAlloc(allocator, filename, 1048576);
+    defer allocator.free(inp);
+
+    var errorloc: loc.Loc = .{};
+    const sx = parse.parse(allocator, inp, &errorloc) catch |err| return handleErr(err, errorloc);
+    defer parse.free(allocator, sx);
+
+    if (options.pp) {
+        const out = try print.print(allocator, sx);
+        defer allocator.free(out);
+
+        try std.io.getStdOut().writeAll(out);
+    }
+
+    if (options.ast) {
+        const outwr = std.io.getStdOut().writer();
+        for (sx) |s|
+            try s.formatAst(0, outwr);
+    }
+
+    if (options.bc) {
+        const code = try compile.compileStmts(allocator, sx);
+        defer allocator.free(code);
+
+        try xxd(code);
+    }
+
+    if (!options.ast and !options.pp and !options.bc) {
+        const code = try compile.compileStmts(allocator, sx);
+        defer allocator.free(code);
+
+        var m = stack.Machine(*RunEffects).init(allocator, try RunEffects.init(allocator, std.io.getStdOut()));
+        defer m.deinit();
+
+        try m.run(code);
+    }
+}
+
 fn mainInteractive(allocator: Allocator) !void {
     const stdout = std.io.getStdOut();
+    var stdoutwr = stdout.writer();
+    var ttyconf = std.io.tty.detectConfig(stdout);
     const stdin = std.io.getStdIn();
-    var stdinBuffered = std.io.bufferedReader(stdin.reader());
-    var stdinReader = stdinBuffered.reader();
+    var stdinbuf = std.io.bufferedReader(stdin.reader());
+    var stdinrd = stdinbuf.reader();
+
+    try ttyconf.setColor(stdoutwr, .bright_blue);
+    try stdoutwr.writeAll("Ava BASIC\n");
+    try ttyconf.setColor(stdoutwr, .reset);
 
     var m = stack.Machine(*RunEffects).init(allocator, try RunEffects.init(allocator, stdout));
     defer m.deinit();
@@ -84,10 +124,13 @@ fn mainInteractive(allocator: Allocator) !void {
     while (true) {
         try stdout.writeAll("> ");
         try stdout.sync();
+        try ttyconf.setColor(stdoutwr, .bold);
 
-        const inp = try stdinReader.readUntilDelimiterOrEofAlloc(allocator, '\n', 1048576) orelse
+        const inp = try stdinrd.readUntilDelimiterOrEofAlloc(allocator, '\n', 1048576) orelse
             break;
         defer allocator.free(inp);
+
+        try ttyconf.setColor(stdoutwr, .reset);
 
         var errorloc: loc.Loc = .{};
         const sx = parse.parse(allocator, inp, &errorloc) catch |err| {
@@ -115,8 +158,10 @@ fn mainInteractive(allocator: Allocator) !void {
             std.debug.print("compile err: {any}\n\n", .{err});
             continue;
         };
-
         defer allocator.free(code);
+
+        if (options.bc)
+            try xxd(code);
 
         m.run(code) catch |err| {
             std.debug.print("run err: {any}\n\n", .{err});
@@ -127,37 +172,50 @@ fn mainInteractive(allocator: Allocator) !void {
     std.debug.print("\ngoobai\n", .{});
 }
 
-fn mainRun(allocator: Allocator, inp: []const u8) !void {
-    var errorloc: loc.Loc = .{};
-    const code = compile.compile(allocator, inp, &errorloc) catch |err| return handleErr(err, errorloc);
-    defer allocator.free(code);
+fn xxd(code: []const u8) !void {
+    var stdout = std.io.getStdOut();
+    var writer = stdout.writer();
+    var ttyconf = std.io.tty.detectConfig(stdout);
 
-    var m = stack.Machine(*RunEffects).init(allocator, try RunEffects.init(allocator, std.io.getStdOut()));
-    defer m.deinit();
+    var i: usize = 0;
 
-    try m.run(code);
-}
+    while (i < code.len) : (i += 16) {
+        try ttyconf.setColor(writer, .white);
+        try std.fmt.format(writer, "{x:0>4}:", .{i});
+        const c = @min(code.len - i, 16);
+        for (0..c) |j| {
+            const ch = code[i + j];
+            if (j % 2 == 0)
+                try writer.writeByte(' ');
+            if (ch < 32 or ch > 126)
+                try ttyconf.setColor(writer, .bright_yellow)
+            else
+                try ttyconf.setColor(writer, .bright_green);
+            try std.fmt.format(writer, "{x:0>2}", .{ch});
+        }
 
-fn mainAst(allocator: Allocator, inp: []const u8) !void {
-    var errorloc: loc.Loc = .{};
-    const sx = parse.parse(allocator, inp, &errorloc) catch |err| return handleErr(err, errorloc);
-    defer parse.free(allocator, sx);
+        for (c..16) |j| {
+            if (j % 2 == 0)
+                try writer.writeByte(' ');
+            try writer.writeAll("  ");
+        }
 
-    const outwr = std.io.getStdOut().writer();
-    for (sx) |s| {
-        try s.formatAst(0, outwr);
+        try writer.writeAll("  ");
+        for (0..c) |j| {
+            const ch = code[i + j];
+            if (ch < 32 or ch > 126) {
+                try ttyconf.setColor(writer, .bright_yellow);
+                try writer.writeByte('.');
+            } else {
+                try ttyconf.setColor(writer, .bright_green);
+                try writer.writeByte(ch);
+            }
+        }
+
+        try writer.writeByte('\n');
     }
-}
 
-fn mainPp(allocator: Allocator, inp: []const u8) !void {
-    var errorloc: loc.Loc = .{};
-    const sx = parse.parse(allocator, inp, &errorloc) catch |err| return handleErr(err, errorloc);
-    defer parse.free(allocator, sx);
-
-    const out = try print.print(allocator, sx);
-    defer allocator.free(out);
-
-    try std.io.getStdOut().writeAll(out);
+    try ttyconf.setColor(writer, .reset);
 }
 
 const RunEffects = struct {
