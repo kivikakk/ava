@@ -62,8 +62,8 @@ fn usage(executable_name: ?[:0]const u8, status: u8) noreturn {
     std.process.exit(status);
 }
 
-fn handleErr(err: anyerror, errorloc: loc.Loc) @TypeOf(err) {
-    std.debug.print("loc: ({d}:{d})\n", .{ errorloc.row, errorloc.col });
+fn handleErr(err: anyerror, errorloc: loc.Loc, writer: anytype) @TypeOf(err) {
+    std.fmt.format(writer, "loc: ({d}:{d})\n", .{ errorloc.row, errorloc.col }) catch unreachable;
     return err;
 }
 
@@ -72,7 +72,7 @@ fn mainRun(allocator: Allocator, filename: []const u8) !void {
     defer allocator.free(inp);
 
     var errorloc: loc.Loc = .{};
-    const sx = parse.parse(allocator, inp, &errorloc) catch |err| return handleErr(err, errorloc);
+    const sx = parse.parse(allocator, inp, &errorloc) catch |err| return handleErr(err, errorloc, std.io.getStdErr().writer());
     defer parse.free(allocator, sx);
 
     if (options.pp) {
@@ -114,7 +114,7 @@ fn mainInteractive(allocator: Allocator) !void {
     var stdinbuf = std.io.bufferedReader(stdin.reader());
     var stdinrd = stdinbuf.reader();
 
-    try ttyconf.setColor(stdoutwr, .bright_blue);
+    try ttyconf.setColor(stdoutwr, .bright_cyan);
     try stdoutwr.writeAll("Ava BASIC\n");
     try ttyconf.setColor(stdoutwr, .reset);
 
@@ -122,9 +122,10 @@ fn mainInteractive(allocator: Allocator) !void {
     defer m.deinit();
 
     while (true) {
+        // TODO: readline(-like).
         try stdout.writeAll("> ");
-        try stdout.sync();
         try ttyconf.setColor(stdoutwr, .bold);
+        try stdout.sync();
 
         const inp = try stdinrd.readUntilDelimiterOrEofAlloc(allocator, '\n', 1048576) orelse
             break;
@@ -134,28 +135,32 @@ fn mainInteractive(allocator: Allocator) !void {
 
         var errorloc: loc.Loc = .{};
         const sx = parse.parse(allocator, inp, &errorloc) catch |err| {
-            handleErr(err, errorloc) catch {};
-            std.debug.print("parse err: {any}\n\n", .{err});
+            handleErr(err, errorloc, stdoutwr) catch {};
+            try std.fmt.format(stdoutwr, "parse err: {any}\n\n", .{err});
             continue;
         };
         defer parse.free(allocator, sx);
-
-        if (options.ast) {
-            for (sx) |s|
-                try s.formatAst(0, stdout.writer());
-            try stdout.sync();
-        }
 
         if (options.pp) {
             const out = try print.print(allocator, sx);
             defer allocator.free(out);
 
+            try ttyconf.setColor(stdoutwr, .blue);
             try stdout.writeAll(out);
+            try ttyconf.setColor(stdoutwr, .reset);
+            try stdout.sync();
+        }
+
+        if (options.ast) {
+            try ttyconf.setColor(stdoutwr, .green);
+            for (sx) |s|
+                try s.formatAst(0, stdout.writer());
+            try ttyconf.setColor(stdoutwr, .reset);
             try stdout.sync();
         }
 
         const code = compile.compileStmts(allocator, sx) catch |err| {
-            std.debug.print("compile err: {any}\n\n", .{err});
+            try std.fmt.format(stdoutwr, "compile err: {any}\n\n", .{err});
             continue;
         };
         defer allocator.free(code);
@@ -164,12 +169,13 @@ fn mainInteractive(allocator: Allocator) !void {
             try xxd(code);
 
         m.run(code) catch |err| {
-            std.debug.print("run err: {any}\n\n", .{err});
+            try std.fmt.format(stdoutwr, "run err: {any}\n\n", .{err});
             continue;
         };
     }
 
-    std.debug.print("\ngoobai\n", .{});
+    try ttyconf.setColor(stdoutwr, .reset);
+    try stdout.writeAll("\ngoobai\n");
 }
 
 fn xxd(code: []const u8) !void {
