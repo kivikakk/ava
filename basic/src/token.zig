@@ -10,7 +10,7 @@ pub const TokenPayload = union(enum) {
     number: i64,
     label: []const u8,
     remark: []const u8, // includes leading "REM " or "'"
-    string: []const u8, // XXX: uninterpreted.
+    string: []const u8, // doesn't include surrounding quotes
     jumplabel: []const u8, // includes trailing ":"
     fileno: usize, // XXX: doesn't support variable
     linefeed,
@@ -235,7 +235,7 @@ const Tokenizer = struct {
                     } else if ((c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z')) {
                         state = .{ .bareword = .{ .loc = self.loc, .offset = i } };
                     } else if (c == '"') {
-                        state = .{ .string = .{ .loc = self.loc, .offset = i } };
+                        state = .{ .string = .{ .loc = self.loc, .offset = i + 1 } };
                     } else if (c == ' ') {
                         // nop
                     } else if (c == '\t') {
@@ -308,7 +308,7 @@ const Tokenizer = struct {
                 },
                 .string => |start| {
                     if (c == '"') {
-                        try tx.append(attach(.{ .string = inp[start.offset .. i + 1] }, start.loc, self.loc));
+                        try tx.append(attach(.{ .string = inp[start.offset..i] }, start.loc, self.loc));
                         state = .init;
                     } else {
                         // nop
@@ -433,5 +433,18 @@ test "tokenizes basics" {
         Token.initRange(.{ .remark = "REM Hiii :3" }, .{ 4, 1 }, .{ 4, 11 }),
         Token.initRange(.linefeed, .{ 4, 12 }, .{ 4, 12 }),
         Token.initRange(.{ .remark = "REM" }, .{ 5, 1 }, .{ 5, 3 }),
+    }, tx);
+}
+
+test "tokenizes strings" {
+    // There is no escape.
+    const tx = try tokenize(testing.allocator,
+        \\"abc" "!"
+    , null);
+    defer testing.allocator.free(tx);
+
+    try testing.expectEqualDeep(&[_]Token{
+        Token.initRange(.{ .string = "abc" }, .{ 1, 1 }, .{ 1, 5 }),
+        Token.initRange(.{ .string = "!" }, .{ 1, 7 }, .{ 1, 9 }),
     }, tx);
 }

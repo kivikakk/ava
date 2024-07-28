@@ -62,7 +62,7 @@ const Printer = struct {
         try self.advance(e.range);
         switch (e.payload) {
             .imm_number => |n| try std.fmt.format(self.writer, "{d}", .{n}),
-            .imm_string => |s| try self.writer.writeAll(s),
+            .imm_string => |s| try std.fmt.format(self.writer, "\"{s}\"", .{s}),
             .label => |l| try self.writer.writeAll(l),
             .binop => |b| {
                 try self.printExpr(b.lhs.*);
