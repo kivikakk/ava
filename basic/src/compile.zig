@@ -7,6 +7,8 @@ const ast = @import("ast.zig");
 const parse = @import("parse.zig");
 const isa = @import("isa.zig");
 
+const Error = error{};
+
 const Compiler = struct {
     const Self = @This();
 
