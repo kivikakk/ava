@@ -20,6 +20,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     b.installArtifact(exe);
+    const zigargs = b.dependency("zig-args", .{ .target = target, .optimize = optimize });
+    exe.root_module.addImport("args", zigargs.module("args"));
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());

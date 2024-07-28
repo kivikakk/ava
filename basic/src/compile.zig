@@ -124,14 +124,18 @@ const Compiler = struct {
     }
 };
 
-pub fn compile(allocator: Allocator, inp: []const u8, errorloc: ?*loc.Loc) ![]const u8 {
-    const sx = try parse.parse(allocator, inp, errorloc);
-    defer parse.free(allocator, sx);
-
+pub fn compileStmts(allocator: Allocator, sx: []ast.Stmt) ![]const u8 {
     var compiler = try Compiler.init(allocator);
     defer compiler.deinit();
 
     return try compiler.compile(sx);
+}
+
+pub fn compile(allocator: Allocator, inp: []const u8, errorloc: ?*loc.Loc) ![]const u8 {
+    const sx = try parse.parse(allocator, inp, errorloc);
+    defer parse.free(allocator, sx);
+
+    return compileStmts(allocator, sx);
 }
 
 test "compile shrimple" {

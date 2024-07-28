@@ -159,7 +159,7 @@ pub const StmtPayload = union(enum) {
                     try a.formatAst(indent + 1, writer);
                     if (i < p.args.len - 1) {
                         for (0..indent + 1) |_| try writer.writeAll("  ");
-                        try std.fmt.format(writer, "separated by '{c}'\n", .{p.separators[i]});
+                        try std.fmt.format(writer, "separated by '{c}'\n", .{p.separators[i].payload});
                     }
                 }
             },
