@@ -13,7 +13,9 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    if (std.os.argv.len == 2) {
+    if (std.os.argv.len == 1) {
+        return mainInteractive(allocator);
+    } else if (std.os.argv.len == 2) {
         return mainRun(allocator, std.mem.span(std.os.argv[1]));
     } else if (std.os.argv.len == 3) {
         const opt = std.mem.span(std.os.argv[1]);
@@ -35,6 +37,40 @@ fn usage() noreturn {
 fn handleErr(err: anyerror, errorloc: loc.Loc) @TypeOf(err) {
     std.debug.print("loc: ({d}:{d})\n", .{ errorloc.row, errorloc.col });
     return err;
+}
+
+fn mainInteractive(allocator: Allocator) !void {
+    const stdout = std.io.getStdOut();
+    const stdin = std.io.getStdIn();
+    var stdinBuffered = std.io.bufferedReader(stdin.reader());
+    var stdinReader = stdinBuffered.reader();
+
+    var m = stack.Machine(*RunEffects).init(allocator, try RunEffects.init(allocator, stdout));
+    defer m.deinit();
+
+    while (true) {
+        try stdout.writeAll("> ");
+        try stdout.sync();
+
+        const inp = try stdinReader.readUntilDelimiterOrEofAlloc(allocator, '\n', 1048576) orelse
+            break;
+        defer allocator.free(inp);
+
+        var errorloc: loc.Loc = .{};
+        const code = compile.compile(allocator, inp, &errorloc) catch |err| {
+            handleErr(err, errorloc) catch {};
+            std.debug.print("compile err: {any}\n\n", .{err});
+            continue;
+        };
+        defer allocator.free(code);
+
+        m.run(code) catch |err| {
+            std.debug.print("run err: {any}\n\n", .{err});
+            continue;
+        };
+    }
+
+    std.debug.print("\ngoobai\n", .{});
 }
 
 fn mainRun(allocator: Allocator, filename: []const u8) !void {
@@ -81,17 +117,19 @@ fn mainPp(allocator: Allocator, filename: []const u8) !void {
 
 const RunEffects = struct {
     const Self = @This();
+    const Writer = std.io.GenericWriter(*Self, std.fs.File.WriteError, writerFn);
 
     allocator: Allocator,
     out: std.fs.File,
-    outwr: std.fs.File.Writer,
+    outwr: Writer,
+    col: usize = 1,
 
     pub fn init(allocator: Allocator, out: std.fs.File) !*Self {
         const self = try allocator.create(Self);
         self.* = .{
             .allocator = allocator,
             .out = out,
-            .outwr = out.writer(),
+            .outwr = Writer{ .context = self },
         };
         return self;
     }
@@ -100,8 +138,55 @@ const RunEffects = struct {
         self.allocator.destroy(self);
     }
 
+    fn writerFn(self: *Self, m: []const u8) std.fs.File.WriteError!usize {
+        for (m) |c| {
+            if (c == '\n') {
+                self.col = 1;
+            } else {
+                self.col += 1;
+                if (self.col == 81)
+                    self.col = 80;
+            }
+        }
+        try self.out.writeAll(m);
+        try self.out.sync();
+        return m.len;
+    }
+
     pub fn print(self: *Self, v: isa.Value) !void {
         try isa.printFormat(self.outwr, v);
-        try self.out.sync();
+    }
+
+    // XXX: deduplicate with TestEffects pls.
+    pub fn printComma(self: *Self) !void {
+        // QBASIC splits the textmode screen up into 14 character "print zones".
+        // Comma advances to the next, ensuring at least one space is included.
+        // i.e. print zones start at column 1, 15, 29, 43, 57, 71.
+        // If you're at columns 1-13 and print a comma, you'll wind up at column
+        // 15. Columns 14-27 advance to 29. (14 included because 14 advancing to
+        // 15 wouldn't leave a space.)
+        // Why do arithmetic when just writing it out will do?
+        // TODO: this won't hold up for wider screens :)
+        const spaces =
+            if (self.col < 14)
+            15 - self.col
+        else if (self.col < 28)
+            29 - self.col
+        else if (self.col < 42)
+            43 - self.col
+        else if (self.col < 56)
+            57 - self.col
+        else if (self.col < 70)
+            71 - self.col
+        else {
+            try self.outwr.writeByte('\n');
+            return;
+        };
+
+        try self.outwr.writeByteNTimes(' ', spaces);
+    }
+
+    pub fn printLinefeed(self: *Self) !void {
+        try self.outwr.writeByte('\n');
     }
 };

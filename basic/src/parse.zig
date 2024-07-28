@@ -92,6 +92,9 @@ const Parser = struct {
     }
 
     fn peekTerminator(self: *Self) !bool {
+        if (self.eoi())
+            return true; // XXX ?
+
         if (self.accept(.remark)) |r| {
             std.debug.assert(self.pending_rem == null);
             self.pending_rem = ast.Stmt.init(.{ .remark = r.payload }, r.range);

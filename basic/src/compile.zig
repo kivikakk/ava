@@ -96,7 +96,7 @@ const Compiler = struct {
                             }
                         }
                     }
-                    if (p.separators.len == p.args.len) {
+                    if (p.separators.len == p.args.len and p.separators.len > 0) {
                         switch (p.separators[p.args.len - 1].payload) {
                             ';' => {},
                             ',' => try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT_COMMA}),
@@ -182,4 +182,13 @@ test "compile less shrimple" {
     defer testing.allocator.free(exp);
 
     try testing.expectEqualSlices(u8, exp, code);
+}
+
+test "compile error" {
+    var errorloc: loc.Loc = .{};
+    const eu = compile(testing.allocator,
+        \\1
+    , &errorloc);
+    try testing.expectError(error.UnexpectedToken, eu);
+    try testing.expectEqual(loc.Loc{ .row = 1, .col = 1 }, errorloc);
 }
