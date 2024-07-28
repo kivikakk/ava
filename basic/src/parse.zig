@@ -39,12 +39,14 @@ const Parser = struct {
     nti: usize = 0,
     sx: std.ArrayListUnmanaged(ast.Stmt) = .{},
     pending_rem: ?ast.Stmt = null,
+    errorloc: ?*loc.Loc,
 
     fn init(allocator: Allocator, inp: []const u8, errorloc: ?*loc.Loc) !Self {
         const tx = try token.tokenize(allocator, inp, errorloc);
         return .{
             .allocator = allocator,
             .tx = tx,
+            .errorloc = errorloc,
         };
     }
 
@@ -477,7 +479,13 @@ const Parser = struct {
     }
 
     fn parseAll(self: *Self) ![]ast.Stmt {
-        while (try self.parseOne()) |s| {
+        while (self.parseOne() catch |err| {
+            if (self.nt()) |t| {
+                if (self.errorloc) |el|
+                    el.* = t.range.start;
+            }
+            return err;
+        }) |s| {
             {
                 errdefer s.deinit(self.allocator);
                 try self.append(s);
@@ -495,18 +503,7 @@ pub fn parse(allocator: Allocator, inp: []const u8, errorloc: ?*loc.Loc) ![]ast.
     var p = try Parser.init(allocator, inp, errorloc);
     defer p.deinit();
 
-    return p.parseAll() catch |err| {
-        if (err == Allocator.Error.OutOfMemory)
-            return err;
-        if (p.nt()) |t| {
-            if (errorloc) |el|
-                el.* = t.range.start;
-            std.debug.print("last token: {any}\n", .{t});
-        } else {
-            std.debug.print("reached EOF\n", .{});
-        }
-        return err;
-    };
+    return try p.parseAll();
 }
 
 pub fn free(allocator: Allocator, sx: []ast.Stmt) void {
@@ -573,6 +570,7 @@ test "parses a PRINT statement with semicolons" {
         } }, .{ 1, 1 }, .{ 1, 16 }),
     }, sx);
 }
+
 test "parses a PRINT statement with trailing separator" {
     const sx = try parse(testing.allocator, "PRINT X$, Y%; Z&,\n", null);
     defer free(testing.allocator, sx);
@@ -591,4 +589,11 @@ test "parses a PRINT statement with trailing separator" {
             },
         } }, .{ 1, 1 }, .{ 1, 17 }),
     }, sx);
+}
+
+test "parse error" {
+    var errorloc: loc.Loc = .{};
+    const eu = parse(testing.allocator, "1", &errorloc);
+    try testing.expectError(error.UnexpectedToken, eu);
+    try testing.expectEqual(loc.Loc{ .row = 1, .col = 1 }, errorloc);
 }

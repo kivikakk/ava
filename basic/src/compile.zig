@@ -188,11 +188,9 @@ test "compile less shrimple" {
     try testing.expectEqualSlices(u8, exp, code);
 }
 
-test "compile error" {
+test "compile (parse) error" {
     var errorloc: loc.Loc = .{};
-    const eu = compile(testing.allocator,
-        \\1
-    , &errorloc);
+    const eu = compile(testing.allocator, "1", &errorloc);
     try testing.expectError(error.UnexpectedToken, eu);
     try testing.expectEqual(loc.Loc{ .row = 1, .col = 1 }, errorloc);
 }
