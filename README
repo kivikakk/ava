@@ -1,7 +1,7 @@
 Ava BASIC
 =========
 
-https://git.sr.ht/~kivikakk/ava
+https://sr.ht/~kivikakk/ava
 
 basic/
   Compiler and host-side stack machine interpreter.
