@@ -217,7 +217,7 @@ test "actually print a calculated thing" {
 }
 
 fn testout(comptime path: []const u8, expected: []const u8) !void {
-    const inp = @embedFile("testout/" ++ path);
+    const inp = @embedFile("bas/" ++ path);
 
     var m = try testRunBas(inp);
     defer m.deinit();

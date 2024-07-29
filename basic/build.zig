@@ -40,7 +40,7 @@ pub fn build(b: *std.Build) void {
     });
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
 
-    // XXX: early dev, not bothering with exe unit tests.
+    // XXX: early dev, not bothering with exe unit tests, just a repeat of library ones.
     // const exe_unit_tests = b.addTest(.{
     //     .root_source_file = b.path("src/main.zig"),
     //     .target = target,

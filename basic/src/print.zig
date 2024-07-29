@@ -222,7 +222,7 @@ fn testppInner(allocator: Allocator, inp: []const u8) !void {
 }
 
 fn testpp(comptime path: []const u8) !void {
-    const inp = @embedFile("testpp/" ++ path);
+    const inp = @embedFile("bas/" ++ path);
 
     try testing.checkAllAllocationFailures(testing.allocator, testppInner, .{inp});
 }
