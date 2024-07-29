@@ -2,7 +2,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
-const ast = @import("ast.zig");
+const Expr = @import("ast/Expr.zig");
+const Stmt = @import("ast/Stmt.zig");
 const Parser = @import("Parser.zig");
 const loc = @import("loc.zig");
 const Loc = loc.Loc;
@@ -58,7 +59,7 @@ const Printer = struct {
         try self.advanceLoc(r.start);
     }
 
-    fn printExpr(self: *Self, e: ast.Expr) !void {
+    fn printExpr(self: *Self, e: Expr) !void {
         try self.advance(e.range);
         switch (e.payload) {
             .imm_number => |n| try std.fmt.format(self.writer, "{d}", .{n}),
@@ -97,7 +98,7 @@ const Printer = struct {
         }
     }
 
-    fn printStmt(self: *Self, s: ast.Stmt) !void {
+    fn printStmt(self: *Self, s: Stmt) !void {
         try self.advance(s.range);
         switch (s.payload) {
             .remark => |r| try self.writer.writeAll(r),
@@ -195,7 +196,7 @@ const Printer = struct {
         }
     }
 
-    fn print(self: *Self, sx: []ast.Stmt) ![]const u8 {
+    fn print(self: *Self, sx: []Stmt) ![]const u8 {
         for (sx) |s|
             try self.printStmt(s);
         try self.buf.append(self.allocator, '\n');
@@ -203,7 +204,7 @@ const Printer = struct {
     }
 };
 
-pub fn print(allocator: Allocator, sx: []ast.Stmt) ![]const u8 {
+pub fn print(allocator: Allocator, sx: []Stmt) ![]const u8 {
     var p = try Printer.init(allocator);
     defer p.deinit();
 

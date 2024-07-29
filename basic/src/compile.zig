@@ -4,7 +4,8 @@ const testing = std.testing;
 
 const loc = @import("loc.zig");
 const Loc = loc.Loc;
-const ast = @import("ast.zig");
+const Stmt = @import("ast/Stmt.zig");
+const Expr = @import("ast/Expr.zig");
 const Parser = @import("Parser.zig");
 const isa = @import("isa.zig");
 
@@ -32,7 +33,7 @@ const Compiler = struct {
         self.allocator.destroy(self);
     }
 
-    fn push(self: *Self, e: ast.Expr) !void {
+    fn push(self: *Self, e: Expr) !void {
         switch (e.payload) {
             .imm_number => |n| {
                 // XXX: only handling INTEGER for now.
@@ -67,7 +68,7 @@ const Compiler = struct {
         }
     }
 
-    fn compile(self: *Self, sx: []ast.Stmt) ![]const u8 {
+    fn compile(self: *Self, sx: []Stmt) ![]const u8 {
         for (sx) |s| {
             switch (s.payload) {
                 .remark => {},
@@ -129,7 +130,7 @@ const Compiler = struct {
     }
 };
 
-pub fn compileStmts(allocator: Allocator, sx: []ast.Stmt) ![]const u8 {
+pub fn compileStmts(allocator: Allocator, sx: []Stmt) ![]const u8 {
     var compiler = try Compiler.init(allocator);
     defer compiler.deinit();
 
