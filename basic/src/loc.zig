@@ -22,6 +22,7 @@ pub const Range = struct {
             .end = .{ .row = end[0], .col = end[1] },
         };
     }
+
     pub fn initEnds(r1: Range, r2: Range) Self {
         return .{ .start = r1.start, .end = r2.end };
     }

@@ -2,7 +2,6 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
-const token = @import("token.zig");
 const ast = @import("ast.zig");
 const parse = @import("parse.zig");
 const loc = @import("loc.zig");

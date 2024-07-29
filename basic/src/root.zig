@@ -2,7 +2,8 @@ const std = @import("std");
 const testing = std.testing;
 
 comptime {
-    testing.refAllDeclsRecursive(@import("token.zig"));
+    testing.refAllDeclsRecursive(@import("Token.zig"));
+    testing.refAllDeclsRecursive(@import("Tokenizer.zig"));
     testing.refAllDeclsRecursive(@import("ast.zig"));
     testing.refAllDeclsRecursive(@import("parse.zig"));
     testing.refAllDeclsRecursive(@import("print.zig"));

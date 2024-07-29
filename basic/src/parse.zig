@@ -2,7 +2,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
-const token = @import("token.zig");
+const Tokenizer = @import("Tokenizer.zig");
+const Token = @import("Token.zig");
 const ast = @import("ast.zig");
 const loc = @import("loc.zig");
 const Range = loc.Range;
@@ -36,14 +37,14 @@ const Parser = struct {
     const Self = @This();
 
     allocator: Allocator,
-    tx: []token.Token,
+    tx: []Token,
     nti: usize = 0,
     sx: std.ArrayListUnmanaged(ast.Stmt) = .{},
     pending_rem: ?ast.Stmt = null,
     errorloc: ?*loc.Loc,
 
     fn init(allocator: Allocator, inp: []const u8, errorloc: ?*loc.Loc) !Self {
-        const tx = try token.tokenize(allocator, inp, errorloc);
+        const tx = try Tokenizer.tokenize(allocator, inp, errorloc);
         return .{
             .allocator = allocator,
             .tx = tx,
@@ -68,28 +69,28 @@ const Parser = struct {
         return self.nti == self.tx.len;
     }
 
-    fn nt(self: *const Self) ?token.Token {
+    fn nt(self: *const Self) ?Token {
         if (self.eoi())
             return null;
         return self.tx[self.nti];
     }
 
-    fn accept(self: *Self, comptime tt: token.TokenTag) ?WithRange(std.meta.TagPayload(token.TokenPayload, tt)) {
+    fn accept(self: *Self, comptime tt: Token.Tag) ?WithRange(std.meta.TagPayload(Token.Payload, tt)) {
         const t = self.nt() orelse return null;
         if (t.payload == tt) {
             self.nti += 1;
             const payload = @field(t.payload, @tagName(tt));
-            return WithRange(std.meta.TagPayload(token.TokenPayload, tt))
+            return WithRange(std.meta.TagPayload(Token.Payload, tt))
                 .init(payload, t.range);
         }
         return null;
     }
 
-    fn expect(self: *Self, comptime tt: token.TokenTag) !WithRange(std.meta.TagPayload(token.TokenPayload, tt)) {
+    fn expect(self: *Self, comptime tt: Token.Tag) !WithRange(std.meta.TagPayload(Token.Payload, tt)) {
         return self.accept(tt) orelse Error.UnexpectedToken;
     }
 
-    fn peek(self: *Self, comptime tt: token.TokenTag) bool {
+    fn peek(self: *Self, comptime tt: Token.Tag) bool {
         const t = self.nt() orelse return false;
         return t.payload == tt;
     }
@@ -228,7 +229,7 @@ const Parser = struct {
         } }, Range.initEnds(e.range, e2.range));
     }
 
-    fn acceptExprList(self: *Self, comptime septoks: []const token.TokenTag, separators: ?*std.ArrayListUnmanaged(token.Token), trailing: bool) !?[]ast.Expr {
+    fn acceptExprList(self: *Self, comptime septoks: []const Token.Tag, separators: ?*std.ArrayListUnmanaged(Token), trailing: bool) !?[]ast.Expr {
         var ex = std.ArrayList(ast.Expr).init(self.allocator);
         errdefer {
             for (ex.items) |i| i.deinit(self.allocator);
@@ -249,7 +250,7 @@ const Parser = struct {
             inline for (septoks) |st| {
                 if (self.accept(st)) |t| {
                     if (separators) |so|
-                        try so.append(self.allocator, token.Token.init(st, t.range));
+                        try so.append(self.allocator, Token.init(st, t.range));
                     found = true;
                     break;
                 }
@@ -290,7 +291,7 @@ const Parser = struct {
             } }, l.range);
         }
 
-        var separators = std.ArrayListUnmanaged(token.Token){};
+        var separators = std.ArrayListUnmanaged(Token){};
         defer separators.deinit(self.allocator);
 
         const ex = try self.acceptExprList(&.{ .comma, .semicolon }, &separators, true) orelse
