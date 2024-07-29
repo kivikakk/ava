@@ -265,7 +265,7 @@ const RunEffects = struct {
             } else {
                 self.col += 1;
                 if (self.col == 81)
-                    self.col = 80;
+                    self.col = 1;
             }
         }
         try self.out.writeAll(m);

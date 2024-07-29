@@ -134,7 +134,7 @@ const TestEffects = struct {
             } else {
                 self.col += 1;
                 if (self.col == 81)
-                    self.col = 80;
+                    self.col = 1;
             }
         }
         try self.printed.appendSlice(testing.allocator, m);
@@ -166,20 +166,19 @@ const TestEffects = struct {
         else if (self.col < 70)
             71 - self.col
         else {
-            try self.printed.append(testing.allocator, '\n');
+            try self.printedwr.writeByte('\n');
             return;
         };
 
-        try self.printed.appendNTimes(testing.allocator, ' ', spaces);
+        try self.printedwr.writeByteNTimes(' ', spaces);
     }
 
     pub fn printLinefeed(self: *Self) !void {
-        try self.printed.append(testing.allocator, '\n');
+        try self.printedwr.writeByte('\n');
     }
 
     pub fn expectPrinted(self: *Self, s: []const u8) !void {
         try testing.expectEqualStrings(s, self.printed.items);
-        self.printed.items.len = 0;
     }
 };
 
