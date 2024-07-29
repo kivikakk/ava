@@ -4,7 +4,7 @@ const args = @import("args");
 
 const loc = @import("loc.zig");
 const Loc = loc.Loc;
-const parse = @import("parse.zig");
+const Parser = @import("Parser.zig");
 const print = @import("print.zig");
 const isa = @import("isa.zig");
 const compile = @import("compile.zig");
@@ -68,12 +68,12 @@ fn mainRun(allocator: Allocator, filename: []const u8) !void {
     defer allocator.free(inp);
 
     var errorloc: Loc = .{};
-    const sx = parse.parse(allocator, inp, &errorloc) catch |err| {
+    const sx = Parser.parse(allocator, inp, &errorloc) catch |err| {
         if (errorloc.row != 0)
             std.fmt.format(std.io.getStdErr().writer(), "parse error loc: ({d}:{d})\n", .{ errorloc.row, errorloc.col }) catch unreachable;
         return err;
     };
-    defer parse.free(allocator, sx);
+    defer Parser.free(allocator, sx);
 
     if (options.pp) {
         const out = try print.print(allocator, sx);
@@ -135,13 +135,13 @@ fn mainInteractive(allocator: Allocator) !void {
         try ttyconf.setColor(stdoutwr, .reset);
 
         var errorloc: Loc = .{};
-        const sx = parse.parse(allocator, inp, &errorloc) catch |err| {
+        const sx = Parser.parse(allocator, inp, &errorloc) catch |err| {
             try ttyconf.setColor(stdoutwr, .bright_red);
             try showErrorCaret(errorloc, stdoutwr);
             try std.fmt.format(stdoutwr, "parse: {s}\n\n", .{@errorName(err)});
             continue;
         };
-        defer parse.free(allocator, sx);
+        defer Parser.free(allocator, sx);
 
         if (options.pp) {
             const out = try print.print(allocator, sx);

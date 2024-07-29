@@ -5,7 +5,7 @@ const testing = std.testing;
 const loc = @import("loc.zig");
 const Loc = loc.Loc;
 const ast = @import("ast.zig");
-const parse = @import("parse.zig");
+const Parser = @import("Parser.zig");
 const isa = @import("isa.zig");
 
 const Error = error{};
@@ -137,8 +137,8 @@ pub fn compileStmts(allocator: Allocator, sx: []ast.Stmt) ![]const u8 {
 }
 
 pub fn compile(allocator: Allocator, inp: []const u8, errorloc: ?*Loc) ![]const u8 {
-    const sx = try parse.parse(allocator, inp, errorloc);
-    defer parse.free(allocator, sx);
+    const sx = try Parser.parse(allocator, inp, errorloc);
+    defer Parser.free(allocator, sx);
 
     return compileStmts(allocator, sx);
 }

@@ -3,7 +3,7 @@ const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
 const ast = @import("ast.zig");
-const parse = @import("parse.zig");
+const Parser = @import("Parser.zig");
 const loc = @import("loc.zig");
 const Loc = loc.Loc;
 
@@ -211,8 +211,8 @@ pub fn print(allocator: Allocator, sx: []ast.Stmt) ![]const u8 {
 }
 
 fn testppInner(allocator: Allocator, inp: []const u8) !void {
-    const sx = try parse.parse(allocator, inp, null);
-    defer parse.free(allocator, sx);
+    const sx = try Parser.parse(allocator, inp, null);
+    defer Parser.free(allocator, sx);
 
     const out = try print(allocator, sx);
     defer allocator.free(out);
