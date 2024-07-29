@@ -11,8 +11,32 @@ pub const Loc = struct {
 };
 
 pub const Range = struct {
+    const Self = @This();
+
     start: Loc,
     end: Loc,
+
+    pub fn init(start: struct { usize, usize }, end: struct { usize, usize }) Self {
+        return .{
+            .start = .{ .row = start[0], .col = start[1] },
+            .end = .{ .row = end[0], .col = end[1] },
+        };
+    }
+    pub fn initEnds(r1: Range, r2: Range) Self {
+        return .{ .start = r1.start, .end = r2.end };
+    }
+
+    pub fn format(self: Self, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = fmt;
+        _ = options;
+
+        try std.fmt.format(writer, "<{d}:{d}-{d}:{d}>", .{
+            self.start.row,
+            self.start.col,
+            self.end.row,
+            self.end.col,
+        });
+    }
 };
 
 pub fn WithRange(comptime T: type) type {
@@ -27,55 +51,6 @@ pub fn WithRange(comptime T: type) type {
                 .payload = t,
                 .range = range,
             };
-        }
-
-        pub fn initEnds(t: T, r1: Range, r2: Range) Self {
-            return init(t, .{ .start = r1.start, .end = r2.end });
-        }
-
-        pub fn initRange(t: T, start: struct { usize, usize }, end: struct { usize, usize }) Self {
-            return init(t, .{
-                .start = .{ .row = start[0], .col = start[1] },
-                .end = .{ .row = end[0], .col = end[1] },
-            });
-        }
-
-        pub usingnamespace if (@typeInfo(T) == .Union and @hasDecl(T, "deinit")) struct {
-            pub fn deinit(self: *const Self, allocator: std.mem.Allocator) void {
-                self.payload.deinit(allocator);
-            }
-        } else struct {};
-
-        pub usingnamespace if (@typeInfo(T) == .Union and @hasDecl(T, "deinitAll")) struct {
-            pub fn deinitAll(allocator: std.mem.Allocator, a: []const Self) void {
-                T.deinitAll(allocator, a);
-            }
-        } else struct {};
-
-        pub usingnamespace if (@typeInfo(T) == .Union and @hasDecl(T, "formatAst")) struct {
-            pub fn formatAst(self: Self, indent: usize, writer: anytype) !void {
-                // TODO: get ast formatting working with ranges. It'd be nice to
-                // not have them so separate (and in this order).
-                try self.payload.formatAst(indent, writer);
-            }
-        } else struct {};
-
-        fn formatRange(self: Self, writer: anytype) !void {
-            try std.fmt.format(writer, "<{d}:{d}-{d}:{d}>", .{
-                self.range.start.row,
-                self.range.start.col,
-                self.range.end.row,
-                self.range.end.col,
-            });
-        }
-
-        pub fn format(self: Self, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
-            _ = fmt;
-            _ = options;
-            try self.formatRange(writer);
-            try std.fmt.format(writer, " {any}", .{
-                self.payload,
-            });
         }
     };
 }

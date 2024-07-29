@@ -5,6 +5,7 @@ const testing = std.testing;
 const token = @import("token.zig");
 const ast = @import("ast.zig");
 const loc = @import("loc.zig");
+const Range = loc.Range;
 const WithRange = loc.WithRange;
 
 pub const Error = error{
@@ -124,7 +125,7 @@ const Parser = struct {
 
             const expr = try self.allocator.create(ast.Expr);
             expr.* = e;
-            return ast.Expr.initEnds(.{ .negate = expr }, m.range, e.range);
+            return ast.Expr.init(.{ .negate = expr }, Range.initEnds(m.range, e.range));
         }
 
         if (self.accept(.pareno)) |p| {
@@ -134,7 +135,7 @@ const Parser = struct {
 
             const expr = try self.allocator.create(ast.Expr);
             expr.* = e;
-            return ast.Expr.initEnds(.{ .paren = expr }, p.range, tok_pc.range);
+            return ast.Expr.init(.{ .paren = expr }, Range.initEnds(p.range, tok_pc.range));
         }
 
         return null;
@@ -160,11 +161,11 @@ const Parser = struct {
         const rhs = try self.allocator.create(ast.Expr);
         rhs.* = f2;
 
-        return ast.Expr.initEnds(.{ .binop = .{
+        return ast.Expr.init(.{ .binop = .{
             .lhs = lhs,
             .op = op,
             .rhs = rhs,
-        } }, f.range, f2.range);
+        } }, Range.initEnds(f.range, f2.range));
     }
 
     fn acceptExpr(self: *Self) (Allocator.Error || Error)!?ast.Expr {
@@ -186,11 +187,11 @@ const Parser = struct {
         const rhs = try self.allocator.create(ast.Expr);
         rhs.* = t2;
 
-        return ast.Expr.initEnds(.{ .binop = .{
+        return ast.Expr.init(.{ .binop = .{
             .lhs = lhs,
             .op = op,
             .rhs = rhs,
-        } }, t.range, t2.range);
+        } }, Range.initEnds(t.range, t2.range));
     }
 
     fn acceptCond(self: *Self) !?ast.Expr {
@@ -220,11 +221,11 @@ const Parser = struct {
         const rhs = try self.allocator.create(ast.Expr);
         rhs.* = e2;
 
-        return ast.Expr.initEnds(.{ .binop = .{
+        return ast.Expr.init(.{ .binop = .{
             .lhs = lhs,
             .op = op,
             .rhs = rhs,
-        } }, e.range, e2.range);
+        } }, Range.initEnds(e.range, e2.range));
     }
 
     fn acceptExprList(self: *Self, comptime septoks: []const token.TokenTag, separators: ?*std.ArrayListUnmanaged(token.Token), trailing: bool) !?[]ast.Expr {
@@ -305,10 +306,10 @@ const Parser = struct {
             }, s.range);
         }
 
-        return ast.Stmt.initEnds(.{ .print = .{
+        return ast.Stmt.init(.{ .print = .{
             .args = ex,
             .separators = seps,
-        } }, l.range, if (seps.len == ex.len) seps[ex.len - 1].range else ex[ex.len - 1].range);
+        } }, Range.initEnds(l.range, if (seps.len == ex.len) seps[ex.len - 1].range else ex[ex.len - 1].range));
     }
 
     fn acceptStmtLabel(self: *Self) !?ast.Stmt {
@@ -325,20 +326,20 @@ const Parser = struct {
         }
 
         if (try self.acceptExprList(&.{.comma}, null, false)) |ex| {
-            return ast.Stmt.initEnds(.{ .call = .{
+            return ast.Stmt.init(.{ .call = .{
                 .name = l,
                 .args = ex,
-            } }, l.range, ex[ex.len - 1].range);
+            } }, Range.initEnds(l.range, ex[ex.len - 1].range));
         }
 
         if (self.accept(.equals)) |eq| {
             const rhs = try self.acceptExpr() orelse return Error.UnexpectedToken;
-            return ast.Stmt.initEnds(.{ .let = .{
+            return ast.Stmt.init(.{ .let = .{
                 .kw = false,
                 .lhs = l,
                 .tok_eq = eq,
                 .rhs = rhs,
-            } }, l.range, rhs.range);
+            } }, Range.initEnds(l.range, rhs.range));
         }
 
         if (self.eoi())
@@ -352,12 +353,12 @@ const Parser = struct {
         const lhs = try self.expect(.label);
         const eq = try self.expect(.equals);
         const rhs = try self.acceptExpr() orelse return Error.UnexpectedToken;
-        return ast.Stmt.initEnds(.{ .let = .{
+        return ast.Stmt.init(.{ .let = .{
             .kw = true,
             .lhs = lhs,
             .tok_eq = eq,
             .rhs = rhs,
-        } }, k.range, rhs.range);
+        } }, Range.initEnds(k.range, rhs.range));
     }
 
     fn acceptStmtIf(self: *Self) !?ast.Stmt {
@@ -366,10 +367,10 @@ const Parser = struct {
         errdefer cond.deinit(self.allocator);
         const tok_then = try self.expect(.kw_then);
         if (try self.peekTerminator()) {
-            return ast.Stmt.initEnds(.{ .@"if" = .{
+            return ast.Stmt.init(.{ .@"if" = .{
                 .cond = cond,
                 .tok_then = tok_then,
-            } }, k.range, cond.range);
+            } }, Range.initEnds(k.range, cond.range));
         }
         const st = try self.parseOne() orelse return Error.UnexpectedEnd;
         errdefer st.deinit(self.allocator);
@@ -384,20 +385,20 @@ const Parser = struct {
             errdefer self.allocator.destroy(stmt_f);
             stmt_f.* = sf;
 
-            return ast.Stmt.initEnds(.{ .if2 = .{
+            return ast.Stmt.init(.{ .if2 = .{
                 .cond = cond,
                 .tok_then = tok_then,
                 .stmt_t = stmt_t,
                 .tok_else = tok_else,
                 .stmt_f = stmt_f,
-            } }, k.range, stmt_f.range);
+            } }, Range.initEnds(k.range, stmt_f.range));
         }
 
-        return ast.Stmt.initEnds(.{ .if1 = .{
+        return ast.Stmt.init(.{ .if1 = .{
             .cond = cond,
             .tok_then = tok_then,
             .stmt_t = stmt_t,
-        } }, k.range, stmt_t.range);
+        } }, Range.initEnds(k.range, stmt_t.range));
     }
 
     fn acceptStmtFor(self: *Self) !?ast.Stmt {
@@ -412,7 +413,7 @@ const Parser = struct {
 
         if (self.accept(.kw_step)) |tok_step| {
             const step = try self.acceptExpr() orelse return Error.UnexpectedToken;
-            return ast.Stmt.initEnds(.{ .forstep = .{
+            return ast.Stmt.init(.{ .forstep = .{
                 .lv = lv,
                 .tok_eq = tok_eq,
                 .from = from,
@@ -420,37 +421,37 @@ const Parser = struct {
                 .to = to,
                 .tok_step = tok_step,
                 .step = step,
-            } }, k.range, step.range);
+            } }, Range.initEnds(k.range, step.range));
         }
 
-        return ast.Stmt.initEnds(.{ .@"for" = .{
+        return ast.Stmt.init(.{ .@"for" = .{
             .lv = lv,
             .tok_eq = tok_eq,
             .from = from,
             .tok_to = tok_to,
             .to = to,
-        } }, k.range, to.range);
+        } }, Range.initEnds(k.range, to.range));
     }
 
     fn acceptStmtNext(self: *Self) !?ast.Stmt {
         const k = self.accept(.kw_next) orelse return null;
         const lv = try self.expect(.label);
 
-        return ast.Stmt.initEnds(.{ .next = lv }, k.range, lv.range);
+        return ast.Stmt.init(.{ .next = lv }, Range.initEnds(k.range, lv.range));
     }
 
     fn acceptStmtGoto(self: *Self) !?ast.Stmt {
         const k = self.accept(.kw_goto) orelse return null;
         const l = try self.expect(.label);
 
-        return ast.Stmt.initEnds(.{ .goto = l }, k.range, l.range);
+        return ast.Stmt.init(.{ .goto = l }, Range.initEnds(k.range, l.range));
     }
 
     fn acceptStmtEnd(self: *Self) !?ast.Stmt {
         const k = self.accept(.kw_end) orelse return null;
         if (self.accept(.kw_if)) |k2| {
             _ = try self.expect(.linefeed);
-            return ast.Stmt.initEnds(.endif, k.range, k2.range);
+            return ast.Stmt.init(.endif, Range.initEnds(k.range, k2.range));
         }
         if (!try self.peekTerminator())
             return Error.ExpectedTerminator;
@@ -525,10 +526,10 @@ test "parses a nullary call" {
     defer free(testing.allocator, sx);
 
     try testing.expectEqualDeep(&[_]ast.Stmt{
-        ast.Stmt.initRange(.{ .call = .{
-            .name = WithRange([]const u8).initRange("NYONK", .{ 1, 1 }, .{ 1, 5 }),
+        ast.Stmt.init(.{ .call = .{
+            .name = WithRange([]const u8).init("NYONK", Range.init(.{ 1, 1 }, .{ 1, 5 })),
             .args = &.{},
-        } }, .{ 1, 1 }, .{ 1, 5 }),
+        } }, Range.init(.{ 1, 1 }, .{ 1, 5 })),
     }, sx);
 }
 
@@ -537,12 +538,12 @@ test "parses a unary statement" {
     defer free(testing.allocator, sx);
 
     try testing.expectEqualDeep(&[_]ast.Stmt{
-        ast.Stmt.initRange(.{ .call = .{
-            .name = WithRange([]const u8).initRange("NYONK", .{ 2, 2 }, .{ 2, 6 }),
+        ast.Stmt.init(.{ .call = .{
+            .name = WithRange([]const u8).init("NYONK", Range.init(.{ 2, 2 }, .{ 2, 6 })),
             .args = &.{
-                ast.Expr.initRange(.{ .imm_number = 42 }, .{ 2, 8 }, .{ 2, 9 }),
+                ast.Expr.init(.{ .imm_number = 42 }, Range.init(.{ 2, 8 }, .{ 2, 9 })),
             },
-        } }, .{ 2, 2 }, .{ 2, 9 }),
+        } }, Range.init(.{ 2, 2 }, .{ 2, 9 })),
     }, sx);
 }
 
@@ -551,13 +552,13 @@ test "parses a binary statement" {
     defer free(testing.allocator, sx);
 
     try testing.expectEqualDeep(&[_]ast.Stmt{
-        ast.Stmt.initRange(.{ .call = .{
-            .name = WithRange([]const u8).initRange("NYONK", .{ 1, 1 }, .{ 1, 5 }),
+        ast.Stmt.init(.{ .call = .{
+            .name = WithRange([]const u8).init("NYONK", Range.init(.{ 1, 1 }, .{ 1, 5 })),
             .args = &.{
-                ast.Expr.initRange(.{ .label = "X$" }, .{ 1, 7 }, .{ 1, 8 }),
-                ast.Expr.initRange(.{ .label = "Y%" }, .{ 1, 11 }, .{ 1, 12 }),
+                ast.Expr.init(.{ .label = "X$" }, Range.init(.{ 1, 7 }, .{ 1, 8 })),
+                ast.Expr.init(.{ .label = "Y%" }, Range.init(.{ 1, 11 }, .{ 1, 12 })),
             },
-        } }, .{ 1, 1 }, .{ 1, 12 }),
+        } }, Range.init(.{ 1, 1 }, .{ 1, 12 })),
     }, sx);
 }
 
@@ -566,17 +567,17 @@ test "parses a PRINT statement with semicolons" {
     defer free(testing.allocator, sx);
 
     try testing.expectEqualDeep(&[_]ast.Stmt{
-        ast.Stmt.initRange(.{ .print = .{
+        ast.Stmt.init(.{ .print = .{
             .args = &.{
-                ast.Expr.initRange(.{ .label = "X$" }, .{ 1, 7 }, .{ 1, 8 }),
-                ast.Expr.initRange(.{ .label = "Y%" }, .{ 1, 11 }, .{ 1, 12 }),
-                ast.Expr.initRange(.{ .label = "Z&" }, .{ 1, 15 }, .{ 1, 16 }),
+                ast.Expr.init(.{ .label = "X$" }, Range.init(.{ 1, 7 }, .{ 1, 8 })),
+                ast.Expr.init(.{ .label = "Y%" }, Range.init(.{ 1, 11 }, .{ 1, 12 })),
+                ast.Expr.init(.{ .label = "Z&" }, Range.init(.{ 1, 15 }, .{ 1, 16 })),
             },
             .separators = &.{
-                WithRange(u8).initRange(',', .{ 1, 9 }, .{ 1, 9 }),
-                WithRange(u8).initRange(';', .{ 1, 13 }, .{ 1, 13 }),
+                WithRange(u8).init(',', Range.init(.{ 1, 9 }, .{ 1, 9 })),
+                WithRange(u8).init(';', Range.init(.{ 1, 13 }, .{ 1, 13 })),
             },
-        } }, .{ 1, 1 }, .{ 1, 16 }),
+        } }, Range.init(.{ 1, 1 }, .{ 1, 16 })),
     }, sx);
 }
 
@@ -585,18 +586,18 @@ test "parses a PRINT statement with trailing separator" {
     defer free(testing.allocator, sx);
 
     try testing.expectEqualDeep(&[_]ast.Stmt{
-        ast.Stmt.initRange(.{ .print = .{
+        ast.Stmt.init(.{ .print = .{
             .args = &.{
-                ast.Expr.initRange(.{ .label = "X$" }, .{ 1, 7 }, .{ 1, 8 }),
-                ast.Expr.initRange(.{ .label = "Y%" }, .{ 1, 11 }, .{ 1, 12 }),
-                ast.Expr.initRange(.{ .label = "Z&" }, .{ 1, 15 }, .{ 1, 16 }),
+                ast.Expr.init(.{ .label = "X$" }, Range.init(.{ 1, 7 }, .{ 1, 8 })),
+                ast.Expr.init(.{ .label = "Y%" }, Range.init(.{ 1, 11 }, .{ 1, 12 })),
+                ast.Expr.init(.{ .label = "Z&" }, Range.init(.{ 1, 15 }, .{ 1, 16 })),
             },
             .separators = &.{
-                WithRange(u8).initRange(',', .{ 1, 9 }, .{ 1, 9 }),
-                WithRange(u8).initRange(';', .{ 1, 13 }, .{ 1, 13 }),
-                WithRange(u8).initRange(',', .{ 1, 17 }, .{ 1, 17 }),
+                WithRange(u8).init(',', Range.init(.{ 1, 9 }, .{ 1, 9 })),
+                WithRange(u8).init(';', Range.init(.{ 1, 13 }, .{ 1, 13 })),
+                WithRange(u8).init(',', Range.init(.{ 1, 17 }, .{ 1, 17 })),
             },
-        } }, .{ 1, 1 }, .{ 1, 17 }),
+        } }, Range.init(.{ 1, 1 }, .{ 1, 17 })),
     }, sx);
 }
 

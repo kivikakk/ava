@@ -2,6 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const loc = @import("loc.zig");
+const Range = loc.Range;
 const WithRange = loc.WithRange;
 
 pub const Op = enum {
@@ -79,14 +80,27 @@ pub const ExprPayload = union(enum) {
             },
         }
     }
+};
+
+pub const Expr = struct {
+    const Self = @This();
+
+    pub fn init(payload: ExprPayload, range: Range) Self {
+        return .{ .payload = payload, .range = range };
+    }
+
+    pub fn deinit(self: Self, allocator: Allocator) void {
+        self.payload.deinit(allocator);
+    }
 
     pub fn deinitAll(allocator: Allocator, ex: []const Expr) void {
         for (ex) |e| e.deinit(allocator);
         allocator.free(ex);
     }
-};
 
-pub const Expr = WithRange(ExprPayload);
+    payload: ExprPayload,
+    range: Range,
+};
 
 pub const StmtPayload = union(enum) {
     const Self = @This();
@@ -213,4 +227,17 @@ pub const StmtPayload = union(enum) {
     }
 };
 
-pub const Stmt = WithRange(StmtPayload);
+pub const Stmt = struct {
+    const Self = @This();
+
+    pub fn init(payload: StmtPayload, range: Range) Self {
+        return .{ .payload = payload, .range = range };
+    }
+
+    pub fn deinit(self: Self, allocator: Allocator) void {
+        self.payload.deinit(allocator);
+    }
+
+    payload: StmtPayload,
+    range: Range,
+};

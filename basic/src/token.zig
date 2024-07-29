@@ -3,7 +3,9 @@ const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
 const loc = @import("loc.zig");
+const Range = loc.Range;
 
+// Any references belong to the input string.
 pub const TokenPayload = union(enum) {
     const Self = @This();
 
@@ -110,8 +112,22 @@ pub const TokenPayload = union(enum) {
 
 pub const TokenTag = std.meta.Tag(TokenPayload);
 
-// Any references belong to the input string.
-pub const Token = loc.WithRange(TokenPayload);
+pub const Token = struct {
+    const Self = @This();
+
+    payload: TokenPayload,
+    range: Range,
+
+    pub fn init(payload: TokenPayload, range: Range) Self {
+        return .{ .payload = payload, .range = range };
+    }
+
+    pub fn format(self: Self, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = fmt;
+        _ = options;
+        try std.fmt.format(writer, "{any} {any}", .{ self.range, self.payload });
+    }
+};
 
 pub const Error = error{
     UnexpectedChar,
@@ -411,29 +427,29 @@ test "tokenizes basics" {
     defer testing.allocator.free(tx);
 
     try testing.expectEqualDeep(&[_]Token{
-        Token.initRange(.kw_if, .{ 1, 1 }, .{ 1, 2 }),
-        Token.initRange(.{ .number = 10 }, .{ 1, 4 }, .{ 1, 5 }),
-        Token.initRange(.kw_then, .{ 1, 7 }, .{ 1, 10 }),
-        Token.initRange(.kw_end, .{ 1, 12 }, .{ 1, 14 }),
-        Token.initRange(.semicolon, .{ 1, 15 }, .{ 1, 15 }),
-        Token.initRange(.linefeed, .{ 1, 16 }, .{ 1, 16 }),
-        Token.initRange(.{ .label = "tere" }, .{ 2, 3 }, .{ 2, 6 }),
-        Token.initRange(.{ .label = "maailm%" }, .{ 2, 8 }, .{ 2, 14 }),
-        Token.initRange(.comma, .{ 2, 15 }, .{ 2, 15 }),
-        Token.initRange(.{ .label = "ava$" }, .{ 2, 17 }, .{ 2, 20 }),
-        Token.initRange(.equals, .{ 2, 22 }, .{ 2, 22 }),
-        Token.initRange(.{ .label = "siin&" }, .{ 2, 24 }, .{ 2, 28 }),
-        Token.initRange(.{ .remark = "'okok" }, .{ 2, 30 }, .{ 2, 34 }),
-        Token.initRange(.linefeed, .{ 2, 35 }, .{ 2, 35 }),
-        Token.initRange(.{ .jumplabel = "Awawa:" }, .{ 3, 1 }, .{ 3, 6 }),
-        Token.initRange(.{ .fileno = 7 }, .{ 3, 8 }, .{ 3, 9 }),
-        Token.initRange(.angleo, .{ 3, 10 }, .{ 3, 10 }),
-        Token.initRange(.diamond, .{ 3, 11 }, .{ 3, 12 }),
-        Token.initRange(.anglec, .{ 3, 13 }, .{ 3, 13 }),
-        Token.initRange(.linefeed, .{ 3, 14 }, .{ 3, 14 }),
-        Token.initRange(.{ .remark = "REM Hiii :3" }, .{ 4, 1 }, .{ 4, 11 }),
-        Token.initRange(.linefeed, .{ 4, 12 }, .{ 4, 12 }),
-        Token.initRange(.{ .remark = "REM" }, .{ 5, 1 }, .{ 5, 3 }),
+        Token.init(.kw_if, Range.init(.{ 1, 1 }, .{ 1, 2 })),
+        Token.init(.{ .number = 10 }, Range.init(.{ 1, 4 }, .{ 1, 5 })),
+        Token.init(.kw_then, Range.init(.{ 1, 7 }, .{ 1, 10 })),
+        Token.init(.kw_end, Range.init(.{ 1, 12 }, .{ 1, 14 })),
+        Token.init(.semicolon, Range.init(.{ 1, 15 }, .{ 1, 15 })),
+        Token.init(.linefeed, Range.init(.{ 1, 16 }, .{ 1, 16 })),
+        Token.init(.{ .label = "tere" }, Range.init(.{ 2, 3 }, .{ 2, 6 })),
+        Token.init(.{ .label = "maailm%" }, Range.init(.{ 2, 8 }, .{ 2, 14 })),
+        Token.init(.comma, Range.init(.{ 2, 15 }, .{ 2, 15 })),
+        Token.init(.{ .label = "ava$" }, Range.init(.{ 2, 17 }, .{ 2, 20 })),
+        Token.init(.equals, Range.init(.{ 2, 22 }, .{ 2, 22 })),
+        Token.init(.{ .label = "siin&" }, Range.init(.{ 2, 24 }, .{ 2, 28 })),
+        Token.init(.{ .remark = "'okok" }, Range.init(.{ 2, 30 }, .{ 2, 34 })),
+        Token.init(.linefeed, Range.init(.{ 2, 35 }, .{ 2, 35 })),
+        Token.init(.{ .jumplabel = "Awawa:" }, Range.init(.{ 3, 1 }, .{ 3, 6 })),
+        Token.init(.{ .fileno = 7 }, Range.init(.{ 3, 8 }, .{ 3, 9 })),
+        Token.init(.angleo, Range.init(.{ 3, 10 }, .{ 3, 10 })),
+        Token.init(.diamond, Range.init(.{ 3, 11 }, .{ 3, 12 })),
+        Token.init(.anglec, Range.init(.{ 3, 13 }, .{ 3, 13 })),
+        Token.init(.linefeed, Range.init(.{ 3, 14 }, .{ 3, 14 })),
+        Token.init(.{ .remark = "REM Hiii :3" }, Range.init(.{ 4, 1 }, .{ 4, 11 })),
+        Token.init(.linefeed, Range.init(.{ 4, 12 }, .{ 4, 12 })),
+        Token.init(.{ .remark = "REM" }, Range.init(.{ 5, 1 }, .{ 5, 3 })),
     }, tx);
 }
 
@@ -445,7 +461,16 @@ test "tokenizes strings" {
     defer testing.allocator.free(tx);
 
     try testing.expectEqualDeep(&[_]Token{
-        Token.initRange(.{ .string = "abc" }, .{ 1, 1 }, .{ 1, 5 }),
-        Token.initRange(.{ .string = "!" }, .{ 1, 7 }, .{ 1, 9 }),
+        Token.init(.{ .string = "abc" }, Range.init(.{ 1, 1 }, .{ 1, 5 })),
+        Token.init(.{ .string = "!" }, Range.init(.{ 1, 7 }, .{ 1, 9 })),
     }, tx);
+}
+
+test "token formatting" {
+    const tx = try tokenize(testing.allocator,
+        \\'Hello!!!!
+    , null);
+    defer testing.allocator.free(tx);
+
+    try testing.expectFmt("<1:1-1:10> Remark('Hello!!!!)", "{any}", .{tx[0]});
 }
