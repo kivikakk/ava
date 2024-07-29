@@ -22,7 +22,11 @@ pub const Value = union(enum) {
 
 pub fn printFormat(writer: anytype, v: Value) !void {
     switch (v) {
-        .integer => |i| try std.fmt.format(writer, "{d}", .{i}),
+        .integer => |i| {
+            if (i >= 0)
+                try writer.writeByte(' ');
+            try std.fmt.format(writer, "{d} ", .{i});
+        },
         .string => |s| try writer.writeAll(s),
     }
 }

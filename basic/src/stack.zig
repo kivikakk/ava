@@ -231,7 +231,7 @@ test "actually print a thing" {
     defer m.deinit();
 
     try m.expectStack(&.{});
-    try m.effects.expectPrinted("123\n");
+    try m.effects.expectPrinted(" 123 \n");
 }
 
 test "actually print a calculated thing" {
@@ -241,7 +241,7 @@ test "actually print a calculated thing" {
     );
     defer m.deinit();
 
-    try m.effects.expectPrinted("7\n");
+    try m.effects.expectPrinted(" 7 \n");
 }
 
 fn testout(comptime path: []const u8, expected: []const u8) !void {
