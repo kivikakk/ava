@@ -57,8 +57,10 @@ const Compiler = struct {
                 };
                 try isa.assembleInto(self.writer, .{opc});
             },
-            .paren => |e2| {
+            .paren => |e2| try self.push(e2.*),
+            .negate => |e2| {
                 try self.push(e2.*);
+                try isa.assembleInto(self.writer, .{isa.Opcode.OPERATOR_NEGATE});
             },
             else => std.debug.panic("unhandled Expr type in Compiler.push: {s}", .{@tagName(e.payload)}),
         }

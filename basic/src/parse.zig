@@ -118,6 +118,15 @@ const Parser = struct {
         if (self.accept(.string)) |s|
             return ast.Expr.init(.{ .imm_string = s.payload }, s.range);
 
+        if (self.accept(.minus)) |m| {
+            const e = try self.acceptExpr() orelse return Error.UnexpectedToken;
+            errdefer e.deinit(self.allocator);
+
+            const expr = try self.allocator.create(ast.Expr);
+            expr.* = e;
+            return ast.Expr.initEnds(.{ .negate = expr }, m.range, e.range);
+        }
+
         if (self.accept(.pareno)) |p| {
             const e = try self.acceptExpr() orelse return Error.UnexpectedToken;
             errdefer e.deinit(self.allocator);

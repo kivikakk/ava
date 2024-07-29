@@ -50,6 +50,7 @@ pub fn Machine(comptime Effects: type) type {
                 const op = @as(isa.Opcode, @enumFromInt(b));
                 i += 1;
                 switch (op) {
+                    // TOOD: a lot of these things assume they work on INTEGERs only.
                     .PUSH_IMM_INTEGER => {
                         std.debug.assert(code.len - i + 1 >= 2);
                         const imm = code[i..][0..2];
@@ -79,7 +80,6 @@ pub fn Machine(comptime Effects: type) type {
                     .BUILTIN_PRINT_COMMA => try self.effects.printComma(),
                     .BUILTIN_PRINT_LINEFEED => try self.effects.printLinefeed(),
                     .OPERATOR_ADD => {
-                        std.debug.assert(code.len - i + 1 >= 0);
                         std.debug.assert(self.stack.items.len >= 2);
                         const vals = self.takeStack(2);
                         const lhs = vals[0].integer;
@@ -87,12 +87,17 @@ pub fn Machine(comptime Effects: type) type {
                         try self.stack.append(self.allocator, .{ .integer = lhs + rhs });
                     },
                     .OPERATOR_MULTIPLY => {
-                        std.debug.assert(code.len - i + 1 >= 0);
                         std.debug.assert(self.stack.items.len >= 2);
                         const vals = self.takeStack(2);
                         const lhs = vals[0].integer;
                         const rhs = vals[1].integer;
                         try self.stack.append(self.allocator, .{ .integer = lhs * rhs });
+                    },
+                    .OPERATOR_NEGATE => {
+                        std.debug.assert(self.stack.items.len >= 1);
+                        const val = self.takeStack(1);
+                        defer self.freeValues(val);
+                        try self.stack.append(self.allocator, .{ .integer = -val[0].integer });
                     },
                     else => std.debug.panic("unhandled opcode: {s}", .{@tagName(op)}),
                 }

@@ -90,6 +90,10 @@ const Printer = struct {
                 try self.advanceLoc(p.range.end.back());
                 try self.writer.writeByte(')');
             },
+            .negate => |m| {
+                try self.writer.writeByte('-');
+                try self.printExpr(m.*);
+            },
         }
     }
 

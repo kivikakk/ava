@@ -10,6 +10,7 @@ pub const Opcode = enum(u8) {
     BUILTIN_PRINT_LINEFEED = 0x82,
     OPERATOR_ADD = 0xd0,
     OPERATOR_MULTIPLY = 0xd1,
+    OPERATOR_NEGATE = 0xd2,
     WE_MADE_IT_UP = 0xff, // XXX: not impl for this on purpose so else prongs can remain
 };
 

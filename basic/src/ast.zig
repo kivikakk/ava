@@ -35,6 +35,7 @@ pub const ExprPayload = union(enum) {
     // doesn't know when an expression needs to be parenthesised/it does if we
     // want to preserve the user's formatting. AST CST blahST DST
     paren: *Expr,
+    negate: *Expr,
 
     pub fn formatAst(self: Self, indent: usize, writer: anytype) @TypeOf(writer).Error!void {
         switch (self) {
@@ -49,6 +50,11 @@ pub const ExprPayload = union(enum) {
             },
             .paren => |e| {
                 try writer.writeAll("Paren\n");
+                for (0..indent + 1) |_| try writer.writeAll("  ");
+                try e.formatAst(indent + 1, writer);
+            },
+            .negate => |e| {
+                try writer.writeAll("Negate\n");
                 for (0..indent + 1) |_| try writer.writeAll("  ");
                 try e.formatAst(indent + 1, writer);
             },
@@ -67,7 +73,7 @@ pub const ExprPayload = union(enum) {
                 allocator.destroy(b.lhs);
                 allocator.destroy(b.rhs);
             },
-            .paren => |e| {
+            .paren, .negate => |e| {
                 e.deinit(allocator);
                 allocator.destroy(e);
             },
