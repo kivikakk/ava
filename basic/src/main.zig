@@ -9,6 +9,7 @@ const print = @import("print.zig");
 const isa = @import("isa.zig");
 const Compiler = @import("Compiler.zig");
 const stack = @import("stack.zig");
+const PrintLoc = @import("PrintLoc.zig");
 
 const Options = struct {
     pp: bool = false,
@@ -243,7 +244,7 @@ const RunEffects = struct {
     allocator: Allocator,
     out: std.fs.File,
     outwr: Writer,
-    col: usize = 1,
+    printloc: PrintLoc = .{},
 
     pub fn init(allocator: Allocator, out: std.fs.File) !*Self {
         const self = try allocator.create(Self);
@@ -260,15 +261,7 @@ const RunEffects = struct {
     }
 
     fn writerFn(self: *Self, m: []const u8) std.fs.File.WriteError!usize {
-        for (m) |c| {
-            if (c == '\n') {
-                self.col = 1;
-            } else {
-                self.col += 1;
-                if (self.col == 81)
-                    self.col = 1;
-            }
-        }
+        self.printloc.write(m);
         try self.out.writeAll(m);
         try self.out.sync();
         return m.len;
@@ -278,33 +271,11 @@ const RunEffects = struct {
         try isa.printFormat(self.outwr, v);
     }
 
-    // XXX: deduplicate with TestEffects pls.
     pub fn printComma(self: *Self) !void {
-        // QBASIC splits the textmode screen up into 14 character "print zones".
-        // Comma advances to the next, ensuring at least one space is included.
-        // i.e. print zones start at column 1, 15, 29, 43, 57, 71.
-        // If you're at columns 1-13 and print a comma, you'll wind up at column
-        // 15. Columns 14-27 advance to 29. (14 included because 14 advancing to
-        // 15 wouldn't leave a space.)
-        // Why do arithmetic when just writing it out will do?
-        // TODO: this won't hold up for wider screens :)
-        const spaces =
-            if (self.col < 14)
-            15 - self.col
-        else if (self.col < 28)
-            29 - self.col
-        else if (self.col < 42)
-            43 - self.col
-        else if (self.col < 56)
-            57 - self.col
-        else if (self.col < 70)
-            71 - self.col
-        else {
-            try self.outwr.writeByte('\n');
-            return;
-        };
-
-        try self.outwr.writeByteNTimes(' ', spaces);
+        switch (self.printloc.comma()) {
+            .newline => try self.outwr.writeByte('\n'),
+            .spaces => |s| try self.outwr.writeByteNTimes(' ', s),
+        }
     }
 
     pub fn printLinefeed(self: *Self) !void {
