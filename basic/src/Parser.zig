@@ -10,6 +10,7 @@ const loc = @import("loc.zig");
 const Loc = loc.Loc;
 const Range = loc.Range;
 const WithRange = loc.WithRange;
+const ErrorInfo = @import("ErrorInfo.zig");
 
 const Parser = @This();
 
@@ -18,7 +19,7 @@ tx: []Token,
 nti: usize = 0,
 sx: std.ArrayListUnmanaged(Stmt) = .{},
 pending_rem: ?Stmt = null,
-errorloc: ?*Loc,
+errorinfo: ?*ErrorInfo,
 
 pub const Error = error{
     ExpectedTerminator,
@@ -44,8 +45,8 @@ const State = union(enum) {
     }
 };
 
-pub fn parse(allocator: Allocator, inp: []const u8, errorloc: ?*Loc) ![]Stmt {
-    var p = try init(allocator, inp, errorloc);
+pub fn parse(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo) ![]Stmt {
+    var p = try init(allocator, inp, errorinfo);
     defer p.deinit();
 
     return try p.parseAll();
@@ -56,12 +57,12 @@ pub fn free(allocator: Allocator, sx: []Stmt) void {
     allocator.free(sx);
 }
 
-fn init(allocator: Allocator, inp: []const u8, errorloc: ?*Loc) !Parser {
-    const tx = try Tokenizer.tokenize(allocator, inp, errorloc);
+fn init(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo) !Parser {
+    const tx = try Tokenizer.tokenize(allocator, inp, errorinfo);
     return .{
         .allocator = allocator,
         .tx = tx,
-        .errorloc = errorloc,
+        .errorinfo = errorinfo,
     };
 }
 
@@ -77,8 +78,8 @@ fn deinit(self: *Parser) void {
 fn parseAll(self: *Parser) ![]Stmt {
     while (self.parseOne() catch |err| {
         if (self.nt()) |t| {
-            if (self.errorloc) |el|
-                el.* = t.range.start;
+            if (self.errorinfo) |ei|
+                ei.loc = t.range.start;
         }
         return err;
     }) |s| {
@@ -603,8 +604,8 @@ test "parses a PRINT statement with trailing separator" {
 }
 
 test "parse error" {
-    var errorloc: Loc = .{};
-    const eu = parse(testing.allocator, "1", &errorloc);
+    var errorinfo: ErrorInfo = .{};
+    const eu = parse(testing.allocator, "\n\"x\"", &errorinfo);
     try testing.expectError(error.UnexpectedToken, eu);
-    try testing.expectEqual(Loc{ .row = 1, .col = 1 }, errorloc);
+    try testing.expectEqual(ErrorInfo{ .loc = .{ .row = 2, .col = 1 } }, errorinfo);
 }

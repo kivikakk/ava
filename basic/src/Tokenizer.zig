@@ -6,6 +6,7 @@ const Token = @import("Token.zig");
 const loc = @import("loc.zig");
 const Loc = loc.Loc;
 const Range = loc.Range;
+const ErrorInfo = @import("ErrorInfo.zig");
 
 const Tokenizer = @This();
 
@@ -32,11 +33,11 @@ const State = union(enum) {
     anglec,
 };
 
-pub fn tokenize(allocator: Allocator, inp: []const u8, errorloc: ?*Loc) ![]Token {
+pub fn tokenize(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo) ![]Token {
     var t = Tokenizer{};
     return t.feed(allocator, inp) catch |err| {
-        if (errorloc) |el|
-            el.* = t.loc;
+        if (errorinfo) |ei|
+            ei.loc = t.loc;
         return err;
     };
 }

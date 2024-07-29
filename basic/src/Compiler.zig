@@ -8,6 +8,7 @@ const Stmt = @import("ast/Stmt.zig");
 const Expr = @import("ast/Expr.zig");
 const Parser = @import("Parser.zig");
 const isa = @import("isa.zig");
+const ErrorInfo = @import("ErrorInfo.zig");
 
 const Compiler = @This();
 
@@ -24,8 +25,8 @@ pub fn compileStmts(allocator: Allocator, sx: []Stmt) ![]const u8 {
     return try compiler.compileSx(sx);
 }
 
-pub fn compile(allocator: Allocator, inp: []const u8, errorloc: ?*Loc) ![]const u8 {
-    const sx = try Parser.parse(allocator, inp, errorloc);
+pub fn compile(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo) ![]const u8 {
+    const sx = try Parser.parse(allocator, inp, errorinfo);
     defer Parser.free(allocator, sx);
 
     return compileStmts(allocator, sx);
@@ -193,8 +194,8 @@ test "compile less shrimple" {
 }
 
 test "compile (parse) error" {
-    var errorloc: Loc = .{};
-    const eu = compile(testing.allocator, "1", &errorloc);
+    var errorinfo: ErrorInfo = .{};
+    const eu = compile(testing.allocator, " 1", &errorinfo);
     try testing.expectError(error.UnexpectedToken, eu);
-    try testing.expectEqual(Loc{ .row = 1, .col = 1 }, errorloc);
+    try testing.expectEqual(ErrorInfo{ .loc = Loc{ .row = 1, .col = 2 } }, errorinfo);
 }

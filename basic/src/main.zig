@@ -10,6 +10,7 @@ const isa = @import("isa.zig");
 const Compiler = @import("Compiler.zig");
 const stack = @import("stack.zig");
 const PrintLoc = @import("PrintLoc.zig");
+const ErrorInfo = @import("ErrorInfo.zig");
 
 const Options = struct {
     pp: bool = false,
@@ -68,10 +69,10 @@ fn mainRun(allocator: Allocator, filename: []const u8) !void {
     const inp = try std.fs.cwd().readFileAlloc(allocator, filename, 1048576);
     defer allocator.free(inp);
 
-    var errorloc: Loc = .{};
-    const sx = Parser.parse(allocator, inp, &errorloc) catch |err| {
-        if (errorloc.row != 0)
-            std.fmt.format(std.io.getStdErr().writer(), "parse error loc: ({d}:{d})\n", .{ errorloc.row, errorloc.col }) catch unreachable;
+    var errorinfo: ErrorInfo = .{};
+    const sx = Parser.parse(allocator, inp, &errorinfo) catch |err| {
+        if (errorinfo.loc.row != 0)
+            std.fmt.format(std.io.getStdErr().writer(), "parse error loc: ({d}:{d})\n", .{ errorinfo.loc.row, errorinfo.loc.col }) catch unreachable;
         return err;
     };
     defer Parser.free(allocator, sx);
@@ -135,10 +136,10 @@ fn mainInteractive(allocator: Allocator) !void {
 
         try ttyconf.setColor(stdoutwr, .reset);
 
-        var errorloc: Loc = .{};
-        const sx = Parser.parse(allocator, inp, &errorloc) catch |err| {
+        var errorinfo: ErrorInfo = .{};
+        const sx = Parser.parse(allocator, inp, &errorinfo) catch |err| {
             try ttyconf.setColor(stdoutwr, .bright_red);
-            try showErrorCaret(errorloc, stdoutwr);
+            try showErrorCaret(errorinfo, stdoutwr);
             try std.fmt.format(stdoutwr, "parse: {s}\n\n", .{@errorName(err)});
             continue;
         };
@@ -164,7 +165,7 @@ fn mainInteractive(allocator: Allocator) !void {
 
         const code = Compiler.compileStmts(allocator, sx) catch |err| {
             try ttyconf.setColor(stdoutwr, .bright_red);
-            try showErrorCaret(errorloc, stdoutwr);
+            try showErrorCaret(errorinfo, stdoutwr);
             try std.fmt.format(stdoutwr, "compile: {s}\n\n", .{@errorName(err)});
             continue;
         };
@@ -184,10 +185,10 @@ fn mainInteractive(allocator: Allocator) !void {
     try stdout.writeAll("\ngoobai\n");
 }
 
-fn showErrorCaret(errorloc: Loc, writer: anytype) !void {
-    if (errorloc.row == 0) return;
+fn showErrorCaret(errorinfo: ErrorInfo, writer: anytype) !void {
+    if (errorinfo.loc.row == 0) return;
 
-    try writer.writeByteNTimes(' ', errorloc.col + 1);
+    try writer.writeByteNTimes(' ', errorinfo.loc.col + 1);
     try writer.writeAll("^-- ");
 }
 
