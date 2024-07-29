@@ -68,10 +68,9 @@ pub fn Machine(comptime Effects: type) type {
                         const len = std.mem.readInt(u16, lenb, .little);
                         const str = code[i..][0..len];
                         i += len;
-                        try self.stack.append(
-                            self.allocator,
-                            .{ .string = try self.allocator.dupe(u8, str) },
-                        );
+                        const s = try self.allocator.dupe(u8, str);
+                        errdefer self.allocator.free(s);
+                        try self.stack.append(self.allocator, .{ .string = s });
                     },
                     .BUILTIN_PRINT => {
                         const val = self.takeStack(1);
@@ -170,19 +169,6 @@ fn testRun(inp: anytype) !Machine(*TestEffects) {
     return m;
 }
 
-fn testRunBas(inp: []const u8) !Machine(*TestEffects) {
-    const code = try Compiler.compile(testing.allocator, inp, null);
-    defer testing.allocator.free(code);
-
-    var m = Machine(*TestEffects).init(testing.allocator, try TestEffects.init());
-    errdefer m.deinit();
-
-    try m.run(code);
-    try m.expectStack(&.{});
-
-    return m;
-}
-
 test "simple push" {
     var m = try testRun(.{
         isa.Opcode.PUSH_IMM_INTEGER,
@@ -206,8 +192,21 @@ test "actually print a thing" {
     try m.effects.expectPrinted(" 123 \n");
 }
 
+fn testRunBas(allocator: Allocator, inp: []const u8) !Machine(*TestEffects) {
+    const code = try Compiler.compile(allocator, inp, null);
+    defer allocator.free(code);
+
+    var m = Machine(*TestEffects).init(allocator, try TestEffects.init());
+    errdefer m.deinit();
+
+    try m.run(code);
+    try m.expectStack(&.{});
+
+    return m;
+}
+
 test "actually print a calculated thing" {
-    var m = try testRunBas(
+    var m = try testRunBas(testing.allocator,
         \\PRINT 1 + 2 * 3
         \\
     );
@@ -216,16 +215,19 @@ test "actually print a calculated thing" {
     try m.effects.expectPrinted(" 7 \n");
 }
 
-fn testout(comptime path: []const u8, expected: []const u8) !void {
-    const inp = @embedFile("bas/" ++ path);
-
-    var m = try testRunBas(inp);
+fn testoutInner(allocator: Allocator, inp: []const u8, expected: []const u8) !void {
+    var m = try testRunBas(allocator, inp);
     defer m.deinit();
 
     try m.effects.expectPrinted(expected);
 }
 
-test "testout" {
+fn testout(comptime path: []const u8, expected: []const u8) !void {
+    const inp = @embedFile("bas/" ++ path);
+    try testing.checkAllAllocationFailures(testing.allocator, testoutInner, .{ inp, expected });
+}
+
+test "test expected program output" {
     try testout("printzones.bas",
     //    123456789012345678901234567890
         \\a             b             c
