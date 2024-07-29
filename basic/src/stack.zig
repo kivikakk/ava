@@ -202,6 +202,8 @@ fn testRunBas(inp: []const u8) !Machine(*TestEffects) {
     errdefer m.deinit();
 
     try m.run(code);
+    try m.expectStack(&.{});
+
     return m;
 }
 
@@ -235,6 +237,22 @@ test "actually print a calculated thing" {
     );
     defer m.deinit();
 
-    try m.expectStack(&.{});
     try m.effects.expectPrinted("7\n");
+}
+
+fn testout(comptime path: []const u8, expected: []const u8) !void {
+    const inp = @embedFile("testout/" ++ path);
+
+    var m = try testRunBas(inp);
+    defer m.deinit();
+
+    try m.effects.expectPrinted(expected);
+}
+
+test "testout" {
+    try testout("printzones.bas",
+    //    123456789012345678901234567890
+        \\a             b             c
+        \\ 1 -2  3 
+    );
 }

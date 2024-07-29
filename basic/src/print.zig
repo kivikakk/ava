@@ -223,6 +223,6 @@ fn testpp(comptime path: []const u8) !void {
 }
 
 test "testpp" {
-    try testpp("01.bas");
-    try testpp("02.bas");
+    try testpp("printif.bas");
+    try testpp("loopslabels.bas");
 }
