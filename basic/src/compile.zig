@@ -3,6 +3,7 @@ const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
 const loc = @import("loc.zig");
+const Loc = loc.Loc;
 const ast = @import("ast.zig");
 const parse = @import("parse.zig");
 const isa = @import("isa.zig");
@@ -135,7 +136,7 @@ pub fn compileStmts(allocator: Allocator, sx: []ast.Stmt) ![]const u8 {
     return try compiler.compile(sx);
 }
 
-pub fn compile(allocator: Allocator, inp: []const u8, errorloc: ?*loc.Loc) ![]const u8 {
+pub fn compile(allocator: Allocator, inp: []const u8, errorloc: ?*Loc) ![]const u8 {
     const sx = try parse.parse(allocator, inp, errorloc);
     defer parse.free(allocator, sx);
 
@@ -193,8 +194,8 @@ test "compile less shrimple" {
 }
 
 test "compile (parse) error" {
-    var errorloc: loc.Loc = .{};
+    var errorloc: Loc = .{};
     const eu = compile(testing.allocator, "1", &errorloc);
     try testing.expectError(error.UnexpectedToken, eu);
-    try testing.expectEqual(loc.Loc{ .row = 1, .col = 1 }, errorloc);
+    try testing.expectEqual(Loc{ .row = 1, .col = 1 }, errorloc);
 }

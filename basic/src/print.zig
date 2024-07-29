@@ -5,6 +5,7 @@ const testing = std.testing;
 const ast = @import("ast.zig");
 const parse = @import("parse.zig");
 const loc = @import("loc.zig");
+const Loc = loc.Loc;
 
 const Printer = struct {
     const Self = @This();
@@ -45,7 +46,7 @@ const Printer = struct {
         return m.len;
     }
 
-    fn advanceLoc(self: *Self, l: loc.Loc) !void {
+    fn advanceLoc(self: *Self, l: Loc) !void {
         while (self.row < l.row)
             try self.writer.writeByte('\n');
 

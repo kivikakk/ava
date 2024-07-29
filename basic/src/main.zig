@@ -3,6 +3,7 @@ const Allocator = std.mem.Allocator;
 const args = @import("args");
 
 const loc = @import("loc.zig");
+const Loc = loc.Loc;
 const parse = @import("parse.zig");
 const print = @import("print.zig");
 const isa = @import("isa.zig");
@@ -66,7 +67,7 @@ fn mainRun(allocator: Allocator, filename: []const u8) !void {
     const inp = try std.fs.cwd().readFileAlloc(allocator, filename, 1048576);
     defer allocator.free(inp);
 
-    var errorloc: loc.Loc = .{};
+    var errorloc: Loc = .{};
     const sx = parse.parse(allocator, inp, &errorloc) catch |err| {
         if (errorloc.row != 0)
             std.fmt.format(std.io.getStdErr().writer(), "parse error loc: ({d}:{d})\n", .{ errorloc.row, errorloc.col }) catch unreachable;
@@ -133,7 +134,7 @@ fn mainInteractive(allocator: Allocator) !void {
 
         try ttyconf.setColor(stdoutwr, .reset);
 
-        var errorloc: loc.Loc = .{};
+        var errorloc: Loc = .{};
         const sx = parse.parse(allocator, inp, &errorloc) catch |err| {
             try ttyconf.setColor(stdoutwr, .bright_red);
             try showErrorCaret(errorloc, stdoutwr);
@@ -182,7 +183,7 @@ fn mainInteractive(allocator: Allocator) !void {
     try stdout.writeAll("\ngoobai\n");
 }
 
-fn showErrorCaret(errorloc: loc.Loc, writer: anytype) !void {
+fn showErrorCaret(errorloc: Loc, writer: anytype) !void {
     if (errorloc.row == 0) return;
 
     try writer.writeByteNTimes(' ', errorloc.col + 1);

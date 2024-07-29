@@ -4,11 +4,12 @@ const testing = std.testing;
 
 const Token = @import("Token.zig");
 const loc = @import("loc.zig");
+const Loc = loc.Loc;
 const Range = loc.Range;
 
 const Tokenizer = @This();
 
-loc: loc.Loc = .{ .row = 1, .col = 1 },
+loc: Loc = .{ .row = 1, .col = 1 },
 
 pub const Error = error{
     UnexpectedChar,
@@ -16,7 +17,7 @@ pub const Error = error{
 };
 
 const LocOffset = struct {
-    loc: loc.Loc,
+    loc: Loc,
     offset: usize,
 };
 
@@ -31,7 +32,7 @@ const State = union(enum) {
     anglec,
 };
 
-pub fn tokenize(allocator: Allocator, inp: []const u8, errorloc: ?*loc.Loc) ![]Token {
+pub fn tokenize(allocator: Allocator, inp: []const u8, errorloc: ?*Loc) ![]Token {
     var t = Tokenizer{};
     return t.feed(allocator, inp) catch |err| {
         if (errorloc) |el|
@@ -228,7 +229,7 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
     return tx.toOwnedSlice();
 }
 
-fn attach(payload: Token.Payload, start: loc.Loc, end: loc.Loc) Token {
+fn attach(payload: Token.Payload, start: Loc, end: Loc) Token {
     return .{
         .payload = payload,
         .range = .{

@@ -6,6 +6,7 @@ const Tokenizer = @import("Tokenizer.zig");
 const Token = @import("Token.zig");
 const ast = @import("ast.zig");
 const loc = @import("loc.zig");
+const Loc = loc.Loc;
 const Range = loc.Range;
 const WithRange = loc.WithRange;
 
@@ -41,9 +42,9 @@ const Parser = struct {
     nti: usize = 0,
     sx: std.ArrayListUnmanaged(ast.Stmt) = .{},
     pending_rem: ?ast.Stmt = null,
-    errorloc: ?*loc.Loc,
+    errorloc: ?*Loc,
 
-    fn init(allocator: Allocator, inp: []const u8, errorloc: ?*loc.Loc) !Self {
+    fn init(allocator: Allocator, inp: []const u8, errorloc: ?*Loc) !Self {
         const tx = try Tokenizer.tokenize(allocator, inp, errorloc);
         return .{
             .allocator = allocator,
@@ -510,7 +511,7 @@ const Parser = struct {
     }
 };
 
-pub fn parse(allocator: Allocator, inp: []const u8, errorloc: ?*loc.Loc) ![]ast.Stmt {
+pub fn parse(allocator: Allocator, inp: []const u8, errorloc: ?*Loc) ![]ast.Stmt {
     var p = try Parser.init(allocator, inp, errorloc);
     defer p.deinit();
 
@@ -603,8 +604,8 @@ test "parses a PRINT statement with trailing separator" {
 }
 
 test "parse error" {
-    var errorloc: loc.Loc = .{};
+    var errorloc: Loc = .{};
     const eu = parse(testing.allocator, "1", &errorloc);
     try testing.expectError(error.UnexpectedToken, eu);
-    try testing.expectEqual(loc.Loc{ .row = 1, .col = 1 }, errorloc);
+    try testing.expectEqual(Loc{ .row = 1, .col = 1 }, errorloc);
 }
