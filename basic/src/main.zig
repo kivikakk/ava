@@ -7,7 +7,7 @@ const Loc = loc.Loc;
 const Parser = @import("Parser.zig");
 const print = @import("print.zig");
 const isa = @import("isa.zig");
-const compile = @import("compile.zig");
+const Compiler = @import("Compiler.zig");
 const stack = @import("stack.zig");
 
 const Options = struct {
@@ -89,14 +89,14 @@ fn mainRun(allocator: Allocator, filename: []const u8) !void {
     }
 
     if (options.bc) {
-        const code = try compile.compileStmts(allocator, sx);
+        const code = try Compiler.compileStmts(allocator, sx);
         defer allocator.free(code);
 
         try xxd(code);
     }
 
     if (!options.ast and !options.pp and !options.bc) {
-        const code = try compile.compileStmts(allocator, sx);
+        const code = try Compiler.compileStmts(allocator, sx);
         defer allocator.free(code);
 
         var m = stack.Machine(*RunEffects).init(allocator, try RunEffects.init(allocator, std.io.getStdOut()));
@@ -161,7 +161,7 @@ fn mainInteractive(allocator: Allocator) !void {
             try stdout.sync();
         }
 
-        const code = compile.compileStmts(allocator, sx) catch |err| {
+        const code = Compiler.compileStmts(allocator, sx) catch |err| {
             try ttyconf.setColor(stdoutwr, .bright_red);
             try showErrorCaret(errorloc, stdoutwr);
             try std.fmt.format(stdoutwr, "compile: {s}\n\n", .{@errorName(err)});

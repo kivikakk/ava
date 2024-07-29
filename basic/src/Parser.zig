@@ -45,7 +45,7 @@ const State = union(enum) {
 };
 
 pub fn parse(allocator: Allocator, inp: []const u8, errorloc: ?*Loc) ![]Stmt {
-    var p = try Parser.init(allocator, inp, errorloc);
+    var p = try init(allocator, inp, errorloc);
     defer p.deinit();
 
     return try p.parseAll();

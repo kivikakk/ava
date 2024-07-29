@@ -9,6 +9,6 @@ comptime {
     testing.refAllDeclsRecursive(@import("Parser.zig"));
     testing.refAllDeclsRecursive(@import("print.zig"));
     testing.refAllDeclsRecursive(@import("isa.zig"));
-    testing.refAllDeclsRecursive(@import("compile.zig"));
+    testing.refAllDeclsRecursive(@import("Compiler.zig"));
     testing.refAllDeclsRecursive(@import("stack.zig"));
 }

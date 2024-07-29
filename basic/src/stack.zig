@@ -3,7 +3,7 @@ const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
 const isa = @import("isa.zig");
-const compile = @import("compile.zig");
+const Compiler = @import("Compiler.zig");
 
 pub fn Machine(comptime Effects: type) type {
     return struct {
@@ -199,7 +199,7 @@ fn testRun(inp: anytype) !Machine(*TestEffects) {
 }
 
 fn testRunBas(inp: []const u8) !Machine(*TestEffects) {
-    const code = try compile.compile(testing.allocator, inp, null);
+    const code = try Compiler.compile(testing.allocator, inp, null);
     defer testing.allocator.free(code);
 
     var m = Machine(*TestEffects).init(testing.allocator, try TestEffects.init());
