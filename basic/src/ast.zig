@@ -98,6 +98,10 @@ pub const Expr = struct {
         allocator.free(ex);
     }
 
+    pub fn formatAst(self: Self, indent: usize, writer: anytype) !void {
+        try self.payload.formatAst(indent, writer);
+    }
+
     payload: ExprPayload,
     range: Range,
 };
@@ -236,6 +240,10 @@ pub const Stmt = struct {
 
     pub fn deinit(self: Self, allocator: Allocator) void {
         self.payload.deinit(allocator);
+    }
+
+    pub fn formatAst(self: Self, indent: usize, writer: anytype) !void {
+        try self.payload.formatAst(indent, writer);
     }
 
     payload: StmtPayload,
