@@ -97,9 +97,7 @@ pub fn Machine(comptime Effects: type) type {
                             },
                             else => {
                                 // TODO: need locinfo from bytecode.
-                                if (self.errorinfo) |ei|
-                                    ei.msg = try std.fmt.allocPrint(self.allocator, "unhandled add: {s}", .{@tagName(vals[0])});
-                                return Error.Unimplemented;
+                                return ErrorInfo.ret(self, Error.Unimplemented, "unhandled add: {s}", .{@tagName(vals[0])});
                             },
                         }
                     },
@@ -112,7 +110,7 @@ pub fn Machine(comptime Effects: type) type {
                                 const rhs = vals[1].integer;
                                 try self.stack.append(self.allocator, .{ .integer = lhs * rhs });
                             },
-                            else => std.debug.panic("unhandled multiply: {s}", .{@tagName(vals[0])}),
+                            else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled multiply: {s}", .{@tagName(vals[0])}),
                         }
                     },
                     .OPERATOR_NEGATE => {
@@ -121,7 +119,7 @@ pub fn Machine(comptime Effects: type) type {
                         defer self.freeValues(val);
                         try self.stack.append(self.allocator, .{ .integer = -val[0].integer });
                     },
-                    else => std.debug.panic("unhandled opcode: {s}", .{@tagName(op)}),
+                    else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled opcode: {s}", .{@tagName(op)}),
                 }
             }
         }

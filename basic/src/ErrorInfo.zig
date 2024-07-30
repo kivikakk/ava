@@ -14,3 +14,16 @@ pub fn clear(self: *ErrorInfo, allocator: Allocator) void {
         allocator.free(m);
     self.msg = null;
 }
+
+pub fn ret(target: anytype, err: anytype, comptime fmt: []const u8, args: anytype) (Allocator.Error || @TypeOf(err)) {
+    comptime {
+        if (!@hasField(@TypeOf(target.*), "allocator"))
+            @compileError("ErrorInfo.ret target must have allocator field");
+        if (!@hasField(@TypeOf(target.*), "errorinfo"))
+            @compileError("ErrorInfo.ret target must have errorinfo field");
+    }
+
+    if (target.errorinfo) |ei|
+        ei.msg = try std.fmt.allocPrint(target.allocator, fmt, args);
+    return err;
+}

@@ -73,7 +73,7 @@ fn push(self: *Compiler, e: Expr) !void {
             const opc: isa.Opcode = switch (b.op.payload) {
                 .add => .OPERATOR_ADD,
                 .mul => .OPERATOR_MULTIPLY,
-                else => return self.reterr(Error.Unimplemented, "unhandled opcode: {s}", .{@tagName(b.op.payload)}),
+                else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled opcode: {s}", .{@tagName(b.op.payload)}),
             };
             try isa.assembleInto(self.writer, .{opc});
         },
@@ -82,7 +82,7 @@ fn push(self: *Compiler, e: Expr) !void {
             try self.push(e2.*);
             try isa.assembleInto(self.writer, .{isa.Opcode.OPERATOR_NEGATE});
         },
-        else => return self.reterr(Error.Unimplemented, "unhandled Expr type in Compiler.push: {s}", .{@tagName(e.payload)}),
+        else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled Expr type in Compiler.push: {s}", .{@tagName(e.payload)}),
     }
 }
 
@@ -100,7 +100,7 @@ fn compileSx(self: *Compiler, sx: []Stmt) ![]const u8 {
                         @as(u8, @intCast(c.args.len)),
                     });
                 } else {
-                    std.debug.panic("call to \"{s}\"", .{c.name.payload});
+                    return ErrorInfo.ret(self, Error.Unimplemented, "call to \"{s}\"", .{c.name.payload});
                 }
             },
             .print => |p| {
@@ -130,17 +130,11 @@ fn compileSx(self: *Compiler, sx: []Stmt) ![]const u8 {
                     try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT_LINEFEED});
                 }
             },
-            else => return self.reterr(Error.Unimplemented, "unhandled stmt: {s}", .{@tagName(s.payload)}),
+            else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled stmt: {s}", .{@tagName(s.payload)}),
         }
     }
 
     return self.buf.toOwnedSlice(self.allocator);
-}
-
-fn reterr(self: *Compiler, err: Error, comptime fmt: []const u8, args: anytype) (Allocator.Error || Error) {
-    if (self.errorinfo) |ei|
-        ei.msg = try std.fmt.allocPrint(self.allocator, fmt, args);
-    return err;
 }
 
 test "compile shrimple" {
