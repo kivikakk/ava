@@ -360,7 +360,7 @@ fn acceptBuiltinPrint(self: *Parser, l: WithRange([]const u8)) !?Stmt {
 
     const ex = try self.acceptExprList(&.{ .comma, .semicolon }, &separators, true) orelse
         return Error.UnexpectedToken;
-    errdefer Expr.deinitAll(self.allocator, ex);
+    errdefer Expr.deinitSlice(self.allocator, ex);
 
     var seps = try self.allocator.alloc(WithRange(u8), separators.items.len);
     for (separators.items, 0..) |s, i| {

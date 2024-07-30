@@ -9,6 +9,7 @@ const Expr = @import("ast/Expr.zig");
 const Parser = @import("Parser.zig");
 const isa = @import("isa.zig");
 const ErrorInfo = @import("ErrorInfo.zig");
+const ty = @import("ty.zig");
 
 const Compiler = @This();
 
@@ -23,18 +24,18 @@ const Error = error{
     Overflow,
 };
 
-pub fn compileStmts(allocator: Allocator, sx: []Stmt, errorinfo: ?*ErrorInfo) ![]const u8 {
+pub fn compile(allocator: Allocator, sx: []Stmt, errorinfo: ?*ErrorInfo) ![]const u8 {
     var compiler = try init(allocator, errorinfo);
     defer compiler.deinit();
 
     return try compiler.compileSx(sx);
 }
 
-pub fn compile(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo) ![]const u8 {
+pub fn compileText(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo) ![]const u8 {
     const sx = try Parser.parse(allocator, inp, errorinfo);
     defer Parser.free(allocator, sx);
 
-    return compileStmts(allocator, sx, errorinfo);
+    return compile(allocator, sx, errorinfo);
 }
 
 fn init(allocator: Allocator, errorinfo: ?*ErrorInfo) !*Compiler {
@@ -98,6 +99,10 @@ fn compileSx(self: *Compiler, sx: []Stmt) ![]const u8 {
                 }
             },
             .let => |l| {
+                const typ = ty.Type.forLabel(l.lhs.payload);
+                const rhsTyp = try self.typeInfer(l.rhs);
+                if (rhsTyp != typ)
+                    return ErrorInfo.ret(self, Error.TypeMismatch, "expected type {any}, got {any}", .{ typ, rhsTyp });
                 try self.push(l.rhs);
                 try isa.assembleInto(self.writer, .{
                     isa.Opcode.LET,
@@ -160,29 +165,35 @@ fn push(self: *Compiler, e: Expr) !void {
     }
 }
 
-// XXX: DEFINT/DEFLNG/DEFSNG/DEFDBL/DEFSTR
-const Type = enum {
-    integer, // % or none
-    long, // &
-    single, // !
-    double, // #
-    string, // $
-};
-
-fn varType(label: []const u8) Type {
-    std.debug.assert(label.len > 0);
-    return switch (label[label.len - 1]) {
-        '%' => .integer,
-        '&' => .long,
-        '!' => .single,
-        '#' => .double,
-        '$' => .string,
-        else => .integer,
+pub fn typeInfer(self: *const Compiler, e: Expr) !ty.Type {
+    return switch (e.payload) {
+        .imm_number => |i| if (i >= -std.math.pow(isize, 2, 15) and i <= -std.math.pow(isize, 2, 15) - 1)
+            .integer
+        else if (i >= -std.math.pow(isize, 2, 31) and i <= -std.math.pow(isize, 2, 31) - 1)
+            .long
+        else
+            // XXX: double? See Compiler.push.
+            error.Overflow,
+        .imm_string => .string,
+        .label => |l| l: {
+            // XXX consult slot list
+            break :l ty.Type.forLabel(l);
+        },
+        .binop => |b| b: {
+            // XXX: 2 * 2.5? 2.5 * 2? 2.0 * 2?
+            // XXX: For now, accept same type only.
+            const l = try self.typeInfer(b.lhs.*);
+            const r = try self.typeInfer(b.rhs.*);
+            if (l != r)
+                return ErrorInfo.ret(self, Error.TypeMismatch, "binop type mismatch XXX {any} != {any}", .{ l, r });
+            break :b l;
+        },
+        .paren, .negate => |e2| self.typeInfer(e2.*),
     };
 }
 
 test "compile shrimple" {
-    const code = try compile(testing.allocator,
+    const code = try compileText(testing.allocator,
         \\PRINT 123
         \\
     , null);
@@ -200,7 +211,7 @@ test "compile shrimple" {
 }
 
 test "compile less shrimple" {
-    const code = try compile(testing.allocator,
+    const code = try compileText(testing.allocator,
         \\PRINT 6 + 5 * 4, 3; 2
         \\
     , null);
@@ -233,7 +244,7 @@ test "compile less shrimple" {
 
 test "compile (parse) error" {
     var errorinfo: ErrorInfo = .{};
-    const eu = compile(testing.allocator, " 1", &errorinfo);
+    const eu = compileText(testing.allocator, " 1", &errorinfo);
     try testing.expectError(error.UnexpectedToken, eu);
     try testing.expectEqual(ErrorInfo{ .loc = Loc{ .row = 1, .col = 2 } }, errorinfo);
 }
@@ -241,7 +252,7 @@ test "compile (parse) error" {
 fn testerr(inp: []const u8, err: anyerror, msg: ?[]const u8) !void {
     var errorinfo: ErrorInfo = .{};
     defer errorinfo.clear(testing.allocator);
-    const eu = compile(testing.allocator, inp, &errorinfo);
+    const eu = compileText(testing.allocator, inp, &errorinfo);
     defer if (eu) |code| {
         testing.allocator.free(code);
     } else |_| {};
@@ -252,5 +263,5 @@ fn testerr(inp: []const u8, err: anyerror, msg: ?[]const u8) !void {
 test "variable type match" {
     try testerr(
         \\a="x"
-    , Error.TypeMismatch, "expected type integer, got string");
+    , Error.TypeMismatch, "expected type INTEGER, got STRING");
 }

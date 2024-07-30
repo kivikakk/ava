@@ -95,7 +95,7 @@ fn mainRun(allocator: Allocator, filename: []const u8) !void {
     }
 
     if (options.bc) {
-        const code = Compiler.compileStmts(allocator, sx, &errorinfo) catch |err| {
+        const code = Compiler.compile(allocator, sx, &errorinfo) catch |err| {
             try ttyconf.setColor(stdoutwr, .bright_red);
             try showErrorInfo(errorinfo, stdoutwr, .loc);
             try std.fmt.format(stdoutwr, "compile: {s}\n\n", .{@errorName(err)});
@@ -107,7 +107,7 @@ fn mainRun(allocator: Allocator, filename: []const u8) !void {
     }
 
     if (!options.ast and !options.pp and !options.bc) {
-        const code = Compiler.compileStmts(allocator, sx, &errorinfo) catch |err| {
+        const code = Compiler.compile(allocator, sx, &errorinfo) catch |err| {
             try ttyconf.setColor(stdoutwr, .bright_red);
             try showErrorInfo(errorinfo, stdoutwr, .loc);
             try std.fmt.format(stdoutwr, "compile: {s}\n\n", .{@errorName(err)});
@@ -185,7 +185,7 @@ fn mainInteractive(allocator: Allocator) !void {
             try stdout.sync();
         }
 
-        const code = Compiler.compileStmts(allocator, sx, &errorinfo) catch |err| {
+        const code = Compiler.compile(allocator, sx, &errorinfo) catch |err| {
             try ttyconf.setColor(stdoutwr, .bright_red);
             try showErrorInfo(errorinfo, stdoutwr, .caret);
             try std.fmt.format(stdoutwr, "compile: {s}\n\n", .{@errorName(err)});

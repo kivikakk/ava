@@ -33,28 +33,28 @@ pub fn Machine(comptime Effects: type) type {
 
         pub fn deinit(self: *Self) void {
             self.effects.deinit();
-            self.freeValues(self.stack.items);
+            self.valueFreeMany(self.stack.items);
             self.stack.deinit(self.allocator);
             var it = self.vars.iterator();
             while (it.next()) |e| {
                 self.allocator.free(e.key_ptr.*);
-                self.freeValue(e.value_ptr.*);
+                self.valueFree(e.value_ptr.*);
             }
             self.vars.deinit(self.allocator);
         }
 
-        fn freeValues(self: *Self, vx: []const isa.Value) void {
-            for (vx) |v| self.freeValue(v);
+        fn valueFreeMany(self: *Self, vx: []const isa.Value) void {
+            for (vx) |v| self.valueFree(v);
         }
 
-        fn freeValue(self: *Self, v: isa.Value) void {
+        fn valueFree(self: *Self, v: isa.Value) void {
             switch (v) {
                 .integer, .long => {},
                 .string => |s| self.allocator.free(s),
             }
         }
 
-        fn takeStack(self: *Self, comptime n: usize) [n]isa.Value {
+        fn stackTake(self: *Self, comptime n: usize) [n]isa.Value {
             std.debug.assert(self.stack.items.len >= n);
             defer self.stack.items.len -= n;
             return self.stack.items[self.stack.items.len - n ..][0..n].*;
@@ -68,7 +68,7 @@ pub fn Machine(comptime Effects: type) type {
 
         fn variableOwn(self: *Self, label: []const u8, v: isa.Value) !void {
             if (self.vars.getEntry(label)) |e| {
-                self.freeValue(e.value_ptr.*);
+                self.valueFree(e.value_ptr.*);
                 e.value_ptr.* = v;
             } else {
                 const ownedLabel = try self.allocator.dupe(u8, label);
@@ -120,7 +120,7 @@ pub fn Machine(comptime Effects: type) type {
                         const label = code[i..][0..len];
                         i += len;
                         const v = try self.variableGet(label);
-                        errdefer self.freeValue(v);
+                        errdefer self.valueFree(v);
                         try self.stack.append(self.allocator, v);
                     },
                     .LET => {
@@ -130,21 +130,21 @@ pub fn Machine(comptime Effects: type) type {
                         i += 1;
                         const label = code[i..][0..len];
                         i += len;
-                        const val = self.takeStack(1);
-                        errdefer self.freeValues(&val);
+                        const val = self.stackTake(1);
+                        errdefer self.valueFreeMany(&val);
                         try self.variableOwn(label, val[0]);
                     },
                     .BUILTIN_PRINT => {
-                        const val = self.takeStack(1);
-                        defer self.freeValues(&val);
+                        const val = self.stackTake(1);
+                        defer self.valueFreeMany(&val);
                         try self.effects.print(val[0]);
                     },
                     .BUILTIN_PRINT_COMMA => try self.effects.printComma(),
                     .BUILTIN_PRINT_LINEFEED => try self.effects.printLinefeed(),
                     .OPERATOR_ADD => {
                         std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.takeStack(2);
-                        defer self.freeValues(&vals);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
                         switch (vals[0]) {
                             .integer => |lhs| {
                                 const rhs = try self.assertType(vals[1], .integer);
@@ -170,8 +170,8 @@ pub fn Machine(comptime Effects: type) type {
                     },
                     .OPERATOR_MULTIPLY => {
                         std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.takeStack(2);
-                        defer self.freeValues(&vals);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
                         switch (vals[0]) {
                             .integer => |lhs| {
                                 const rhs = vals[1].integer;
@@ -182,8 +182,8 @@ pub fn Machine(comptime Effects: type) type {
                     },
                     .OPERATOR_NEGATE => {
                         std.debug.assert(self.stack.items.len >= 1);
-                        const val = self.takeStack(1);
-                        defer self.freeValues(&val);
+                        const val = self.stackTake(1);
+                        defer self.valueFreeMany(&val);
                         try self.stack.append(self.allocator, .{ .integer = -val[0].integer });
                     },
                     // else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled opcode: {s}", .{@tagName(op)}),
@@ -287,7 +287,7 @@ test "actually print a thing" {
 }
 
 fn testRunBas(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo) !Machine(TestEffects) {
-    const code = try Compiler.compile(allocator, inp, errorinfo);
+    const code = try Compiler.compileText(allocator, inp, errorinfo);
     defer allocator.free(code);
 
     var m = Machine(TestEffects).init(allocator, try TestEffects.init(), errorinfo);
@@ -381,11 +381,4 @@ test "variable reassignment" {
 //         \\a$ = "x" + b$
 //         \\print a; b$
 //     , "0x\n", null);
-// }
-
-// XXX: this should be a compile error, not a runtime one.
-// test "variable type match" {
-//     try testerr(
-//         \\a="x"
-//     , Error.TypeMismatch, "expected type integer, got string");
 // }

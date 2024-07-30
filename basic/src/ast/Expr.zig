@@ -18,7 +18,7 @@ pub fn deinit(self: Expr, allocator: Allocator) void {
     self.payload.deinit(allocator);
 }
 
-pub fn deinitAll(allocator: Allocator, ex: []const Expr) void {
+pub fn deinitSlice(allocator: Allocator, ex: []const Expr) void {
     for (ex) |e| e.deinit(allocator);
     allocator.free(ex);
 }

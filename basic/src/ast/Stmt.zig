@@ -111,9 +111,9 @@ pub const Payload = union(enum) {
     pub fn deinit(self: Self, allocator: Allocator) void {
         switch (self) {
             .remark => {},
-            .call => |c| Expr.deinitAll(allocator, c.args),
+            .call => |c| Expr.deinitSlice(allocator, c.args),
             .print => |p| {
-                Expr.deinitAll(allocator, p.args);
+                Expr.deinitSlice(allocator, p.args);
                 allocator.free(p.separators);
             },
             .let => |l| l.rhs.deinit(allocator),
