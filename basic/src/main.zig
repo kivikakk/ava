@@ -66,17 +66,18 @@ fn usage(executable_name: ?[:0]const u8, status: u8) noreturn {
 }
 
 fn mainRun(allocator: Allocator, filename: []const u8) !void {
+    const stdout = std.io.getStdOut();
+    const stdoutwr = stdout.writer();
+    var ttyconf = std.io.tty.detectConfig(stdout);
+
     const inp = try std.fs.cwd().readFileAlloc(allocator, filename, 1048576);
     defer allocator.free(inp);
 
     var errorinfo: ErrorInfo = .{};
     const sx = Parser.parse(allocator, inp, &errorinfo) catch |err| {
-        if (errorinfo.loc) |errloc|
-            std.fmt.format(
-                std.io.getStdErr().writer(),
-                "parse error loc: ({d}:{d})\n",
-                .{ errloc.row, errloc.col },
-            ) catch unreachable;
+        try ttyconf.setColor(stdoutwr, .bright_red);
+        try showErrorInfo(errorinfo, stdoutwr, .loc);
+        try std.fmt.format(stdoutwr, "parse: {s}\n\n", .{@errorName(err)});
         return err;
     };
     defer Parser.free(allocator, sx);
@@ -85,36 +86,50 @@ fn mainRun(allocator: Allocator, filename: []const u8) !void {
         const out = try print.print(allocator, sx);
         defer allocator.free(out);
 
-        try std.io.getStdOut().writeAll(out);
+        try stdout.writeAll(out);
     }
 
     if (options.ast) {
-        const outwr = std.io.getStdOut().writer();
         for (sx) |s|
-            try s.formatAst(0, outwr);
+            try s.formatAst(0, stdoutwr);
     }
 
     if (options.bc) {
-        const code = try Compiler.compileStmts(allocator, sx);
+        const code = Compiler.compileStmts(allocator, sx, &errorinfo) catch |err| {
+            try ttyconf.setColor(stdoutwr, .bright_red);
+            try showErrorInfo(errorinfo, stdoutwr, .loc);
+            try std.fmt.format(stdoutwr, "compile: {s}\n\n", .{@errorName(err)});
+            return err;
+        };
         defer allocator.free(code);
 
         try xxd(code);
     }
 
     if (!options.ast and !options.pp and !options.bc) {
-        const code = try Compiler.compileStmts(allocator, sx);
+        const code = Compiler.compileStmts(allocator, sx, &errorinfo) catch |err| {
+            try ttyconf.setColor(stdoutwr, .bright_red);
+            try showErrorInfo(errorinfo, stdoutwr, .loc);
+            try std.fmt.format(stdoutwr, "compile: {s}\n\n", .{@errorName(err)});
+            return err;
+        };
         defer allocator.free(code);
 
         var m = stack.Machine(RunEffects).init(allocator, try RunEffects.init(allocator, std.io.getStdOut()), &errorinfo);
         defer m.deinit();
 
-        try m.run(code);
+        m.run(code) catch |err| {
+            try ttyconf.setColor(stdoutwr, .bright_red);
+            try showErrorInfo(errorinfo, stdoutwr, .loc);
+            try std.fmt.format(stdoutwr, "run error: {s}\n\n", .{@errorName(err)});
+            return err;
+        };
     }
 }
 
 fn mainInteractive(allocator: Allocator) !void {
     const stdout = std.io.getStdOut();
-    var stdoutwr = stdout.writer();
+    const stdoutwr = stdout.writer();
     var ttyconf = std.io.tty.detectConfig(stdout);
     const stdin = std.io.getStdIn();
     var stdinbuf = std.io.bufferedReader(stdin.reader());
@@ -146,7 +161,7 @@ fn mainInteractive(allocator: Allocator) !void {
         errorinfo = .{};
         const sx = Parser.parse(allocator, inp, &errorinfo) catch |err| {
             try ttyconf.setColor(stdoutwr, .bright_red);
-            try showErrorInfo(errorinfo, stdoutwr);
+            try showErrorInfo(errorinfo, stdoutwr, .caret);
             try std.fmt.format(stdoutwr, "parse: {s}\n\n", .{@errorName(err)});
             continue;
         };
@@ -170,9 +185,9 @@ fn mainInteractive(allocator: Allocator) !void {
             try stdout.sync();
         }
 
-        const code = Compiler.compileStmts(allocator, sx) catch |err| {
+        const code = Compiler.compileStmts(allocator, sx, &errorinfo) catch |err| {
             try ttyconf.setColor(stdoutwr, .bright_red);
-            try showErrorInfo(errorinfo, stdoutwr);
+            try showErrorInfo(errorinfo, stdoutwr, .caret);
             try std.fmt.format(stdoutwr, "compile: {s}\n\n", .{@errorName(err)});
             continue;
         };
@@ -183,7 +198,7 @@ fn mainInteractive(allocator: Allocator) !void {
 
         m.run(code) catch |err| {
             try ttyconf.setColor(stdoutwr, .bright_red);
-            try showErrorInfo(errorinfo, stdoutwr);
+            try showErrorInfo(errorinfo, stdoutwr, .loc);
             try std.fmt.format(stdoutwr, "run error: {s}\n\n", .{@errorName(err)});
             continue;
         };
@@ -193,14 +208,21 @@ fn mainInteractive(allocator: Allocator) !void {
     try stdout.writeAll("\ngoobai\n");
 }
 
-fn showErrorInfo(errorinfo: ErrorInfo, writer: anytype) !void {
+fn showErrorInfo(errorinfo: ErrorInfo, writer: anytype, lockind: enum { caret, loc }) !void {
     if (errorinfo.loc) |errloc| {
-        try writer.writeByteNTimes(' ', errloc.col + 1);
-        try writer.writeAll("^-- ");
+        switch (lockind) {
+            .caret => {
+                try writer.writeByteNTimes(' ', errloc.col + 1);
+                try writer.writeAll("^-- ");
+            },
+            .loc => try std.fmt.format(writer, "({d}:{d}) ", .{ errloc.row, errloc.col }),
+        }
     }
     if (errorinfo.msg) |m| {
         try writer.writeAll(m);
         try writer.writeByte('\n');
+    } else {
+        try writer.writeAll("(no info)\n");
     }
 }
 

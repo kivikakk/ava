@@ -134,5 +134,5 @@ test "formatting" {
     , null);
     defer testing.allocator.free(tx);
 
-    try testing.expectFmt("<1:1-1:10> Remark('Hello!!!!)", "{any}", .{tx[0]});
+    try testing.expectFmt("(1:1)-(1:10) Remark('Hello!!!!)", "{any}", .{tx[0]});
 }

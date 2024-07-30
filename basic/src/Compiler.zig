@@ -15,11 +15,14 @@ const Compiler = @This();
 allocator: Allocator,
 buf: std.ArrayListUnmanaged(u8) = .{},
 writer: std.ArrayListUnmanaged(u8).Writer,
+errorinfo: ?*ErrorInfo,
 
-const Error = error{};
+const Error = error{
+    Unimplemented,
+};
 
-pub fn compileStmts(allocator: Allocator, sx: []Stmt) ![]const u8 {
-    var compiler = try init(allocator);
+pub fn compileStmts(allocator: Allocator, sx: []Stmt, errorinfo: ?*ErrorInfo) ![]const u8 {
+    var compiler = try init(allocator, errorinfo);
     defer compiler.deinit();
 
     return try compiler.compileSx(sx);
@@ -29,14 +32,15 @@ pub fn compile(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo) ![
     const sx = try Parser.parse(allocator, inp, errorinfo);
     defer Parser.free(allocator, sx);
 
-    return compileStmts(allocator, sx);
+    return compileStmts(allocator, sx, errorinfo);
 }
 
-fn init(allocator: Allocator) !*Compiler {
+fn init(allocator: Allocator, errorinfo: ?*ErrorInfo) !*Compiler {
     const self = try allocator.create(Compiler);
     self.* = .{
         .allocator = allocator,
         .writer = undefined,
+        .errorinfo = errorinfo,
     };
     self.writer = self.buf.writer(allocator);
     return self;
@@ -69,7 +73,7 @@ fn push(self: *Compiler, e: Expr) !void {
             const opc: isa.Opcode = switch (b.op.payload) {
                 .add => .OPERATOR_ADD,
                 .mul => .OPERATOR_MULTIPLY,
-                else => std.debug.panic("unhandled opcode: {s}", .{@tagName(b.op.payload)}),
+                else => return self.reterr(Error.Unimplemented, "unhandled opcode: {s}", .{@tagName(b.op.payload)}),
             };
             try isa.assembleInto(self.writer, .{opc});
         },
@@ -78,7 +82,7 @@ fn push(self: *Compiler, e: Expr) !void {
             try self.push(e2.*);
             try isa.assembleInto(self.writer, .{isa.Opcode.OPERATOR_NEGATE});
         },
-        else => std.debug.panic("unhandled Expr type in Compiler.push: {s}", .{@tagName(e.payload)}),
+        else => return self.reterr(Error.Unimplemented, "unhandled Expr type in Compiler.push: {s}", .{@tagName(e.payload)}),
     }
 }
 
@@ -126,21 +130,17 @@ fn compileSx(self: *Compiler, sx: []Stmt) ![]const u8 {
                     try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT_LINEFEED});
                 }
             },
-            .let => unreachable,
-            .@"if" => unreachable,
-            .if1 => unreachable,
-            .if2 => unreachable,
-            .@"for" => unreachable,
-            .forstep => unreachable,
-            .next => unreachable,
-            .jumplabel => unreachable,
-            .goto => unreachable,
-            .end => unreachable,
-            .endif => unreachable,
+            else => return self.reterr(Error.Unimplemented, "unhandled stmt: {s}", .{@tagName(s.payload)}),
         }
     }
 
     return self.buf.toOwnedSlice(self.allocator);
+}
+
+fn reterr(self: *Compiler, err: Error, comptime fmt: []const u8, args: anytype) (Allocator.Error || Error) {
+    if (self.errorinfo) |ei|
+        ei.msg = try std.fmt.allocPrint(self.allocator, fmt, args);
+    return err;
 }
 
 test "compile shrimple" {
