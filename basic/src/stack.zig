@@ -35,7 +35,7 @@ pub fn Machine(comptime Effects: type) type {
             self.effects.deinit();
         }
 
-        fn freeValues(self: *Self, vx: []isa.Value) void {
+        fn freeValues(self: *Self, vx: []const isa.Value) void {
             for (vx) |v| self.freeValue(v);
         }
 
@@ -46,10 +46,10 @@ pub fn Machine(comptime Effects: type) type {
             }
         }
 
-        fn takeStack(self: *Self, n: usize) []isa.Value {
+        fn takeStack(self: *Self, comptime n: usize) [n]isa.Value {
             std.debug.assert(self.stack.items.len >= n);
             defer self.stack.items.len -= n;
-            return self.stack.items[self.stack.items.len - n ..];
+            return self.stack.items[self.stack.items.len - n ..][0..n].*;
         }
 
         pub fn run(self: *Self, code: []const u8) (Error || Allocator.Error || Effects.Error)!void {
@@ -81,7 +81,7 @@ pub fn Machine(comptime Effects: type) type {
                     },
                     .BUILTIN_PRINT => {
                         const val = self.takeStack(1);
-                        defer self.freeValues(val);
+                        defer self.freeValues(&val);
                         try self.effects.print(val[0]);
                     },
                     .BUILTIN_PRINT_COMMA => try self.effects.printComma(),
@@ -89,22 +89,30 @@ pub fn Machine(comptime Effects: type) type {
                     .OPERATOR_ADD => {
                         std.debug.assert(self.stack.items.len >= 2);
                         const vals = self.takeStack(2);
-                        defer self.freeValues(vals);
+                        defer self.freeValues(&vals);
                         switch (vals[0]) {
                             .integer => |lhs| {
-                                const rhs = vals[1].integer;
+                                const rhs = try self.assertType(vals[1], .integer);
                                 try self.stack.append(self.allocator, .{ .integer = lhs + rhs });
                             },
-                            else => {
-                                // TODO: need locinfo from bytecode.
-                                return ErrorInfo.ret(self, Error.Unimplemented, "unhandled add: {s}", .{@tagName(vals[0])});
+                            .string => |lhs| {
+                                const rhs = try self.assertType(vals[1], .string);
+                                const v = try self.allocator.alloc(u8, lhs.len + rhs.len);
+                                errdefer self.allocator.free(v);
+                                @memcpy(v[0..lhs.len], lhs);
+                                @memcpy(v[lhs.len..], rhs);
+                                try self.stack.append(self.allocator, .{ .string = v });
                             },
+                            // else => {
+                            //     // TODO: need locinfo from bytecode.
+                            //     return ErrorInfo.ret(self, Error.Unimplemented, "unhandled add: {s}", .{@tagName(vals[0])});
+                            // },
                         }
                     },
                     .OPERATOR_MULTIPLY => {
                         std.debug.assert(self.stack.items.len >= 2);
                         const vals = self.takeStack(2);
-                        defer self.freeValues(vals);
+                        defer self.freeValues(&vals);
                         switch (vals[0]) {
                             .integer => |lhs| {
                                 const rhs = vals[1].integer;
@@ -116,12 +124,18 @@ pub fn Machine(comptime Effects: type) type {
                     .OPERATOR_NEGATE => {
                         std.debug.assert(self.stack.items.len >= 1);
                         const val = self.takeStack(1);
-                        defer self.freeValues(val);
+                        defer self.freeValues(&val);
                         try self.stack.append(self.allocator, .{ .integer = -val[0].integer });
                     },
                     else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled opcode: {s}", .{@tagName(op)}),
                 }
             }
+        }
+
+        fn assertType(self: *Self, v: isa.Value, comptime t: std.meta.Tag(isa.Value)) !std.meta.TagPayload(isa.Value, t) {
+            if (v != t)
+                return ErrorInfo.ret(self, Error.TypeMismatch, "expected type {s}, got {s}", .{ @tagName(t), @tagName(v) });
+            return @field(v, @tagName(t));
         }
 
         fn expectStack(self: *const Self, vx: []const isa.Value) !void {
@@ -213,11 +227,11 @@ test "actually print a thing" {
     try m.effects.expectPrinted(" 123 \n");
 }
 
-fn testRunBas(allocator: Allocator, inp: []const u8) !Machine(TestEffects) {
-    const code = try Compiler.compile(allocator, inp, null);
+fn testRunBas(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo) !Machine(TestEffects) {
+    const code = try Compiler.compile(allocator, inp, errorinfo);
     defer allocator.free(code);
 
-    var m = Machine(TestEffects).init(allocator, try TestEffects.init(), null);
+    var m = Machine(TestEffects).init(allocator, try TestEffects.init(), errorinfo);
     errdefer m.deinit();
 
     try m.run(code);
@@ -230,28 +244,53 @@ test "actually print a calculated thing" {
     var m = try testRunBas(testing.allocator,
         \\PRINT 1 + 2 * 3
         \\
-    );
+    , null);
     defer m.deinit();
 
     try m.effects.expectPrinted(" 7 \n");
 }
 
-fn testoutInner(allocator: Allocator, inp: []const u8, expected: []const u8) !void {
-    var m = try testRunBas(allocator, inp);
+fn testoutInner(allocator: Allocator, inp: []const u8, expected: []const u8, errorinfo: ?*ErrorInfo) !void {
+    var m = try testRunBas(allocator, inp, errorinfo);
     defer m.deinit();
 
     try m.effects.expectPrinted(expected);
 }
 
-fn testout(comptime path: []const u8, expected: []const u8) !void {
-    const inp = @embedFile("bas/" ++ path);
-    try testing.checkAllAllocationFailures(testing.allocator, testoutInner, .{ inp, expected });
+fn testout(inp: []const u8, expected: []const u8, errorinfo: ?*ErrorInfo) !void {
+    try testing.checkAllAllocationFailures(
+        testing.allocator,
+        testoutInner,
+        .{ inp, expected, errorinfo },
+    );
 }
 
-test "test expected program output" {
-    try testout("printzones.bas",
+test "print zones" {
+    try testout(
+        \\print "a", "b", "c"
+        \\print 1;-2;3;
+    ,
     //    123456789012345678901234567890
         \\a             b             c
         \\ 1 -2  3 
-    );
+    , null);
+}
+
+test "string concat" {
+    try testoutInner(testing.allocator,
+        \\print "a"+"b"
+    ,
+        \\ab
+        \\
+    , null);
+}
+
+test "type mismatch" {
+    var errorinfo: ErrorInfo = .{};
+    defer errorinfo.clear(testing.allocator);
+    const eu = testout(
+        \\print "a"+2
+    , "", &errorinfo);
+    try testing.expectError(Error.TypeMismatch, eu);
+    try testing.expectEqualStrings("expected type string, got integer", errorinfo.msg.?);
 }
