@@ -67,11 +67,14 @@ pub fn Machine(comptime Effects: type) type {
         }
 
         fn variableOwn(self: *Self, label: []const u8, v: isa.Value) !void {
-            // TODO: overwrite.
-            std.debug.assert(self.vars.getEntry(label) == null);
-            const ownedLabel = try self.allocator.dupe(u8, label);
-            errdefer self.allocator.free(ownedLabel);
-            try self.vars.putNoClobber(self.allocator, ownedLabel, v);
+            if (self.vars.getEntry(label)) |e| {
+                self.freeValue(e.value_ptr.*);
+                e.value_ptr.* = v;
+            } else {
+                const ownedLabel = try self.allocator.dupe(u8, label);
+                errdefer self.allocator.free(ownedLabel);
+                try self.vars.putNoClobber(self.allocator, ownedLabel, v);
+            }
         }
 
         pub fn run(self: *Self, code: []const u8) (Error || Allocator.Error || Effects.Error)!void {
@@ -351,8 +354,17 @@ test "variable assign and recall" {
     , null);
 }
 
-test "variable type match" {
-    try testerr(
-        \\a="x"
-    , Error.TypeMismatch, "expected type integer, got string");
+test "variable reassignment" {
+    try testout(
+        \\a$ = "koer"
+        \\a$ = a$ + "akass"
+        \\print a$
+    , "koerakass\n", null);
 }
+
+// XXX: this should be a compile error, not a runtime one.
+// test "variable type match" {
+//     try testerr(
+//         \\a="x"
+//     , Error.TypeMismatch, "expected type integer, got string");
+// }
