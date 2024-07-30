@@ -15,7 +15,6 @@ pub const Opcode = enum(u8) {
     OPERATOR_NEGATE = 0xd2,
 };
 
-// XXX: feels complected
 pub const Value = union(enum) {
     const Self = @This();
 

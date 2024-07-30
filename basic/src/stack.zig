@@ -308,6 +308,14 @@ fn testout(inp: []const u8, expected: []const u8, errorinfo: ?*ErrorInfo) !void 
     );
 }
 
+fn testerr(inp: []const u8, err: anyerror, msg: ?[]const u8) !void {
+    var errorinfo: ErrorInfo = .{};
+    defer errorinfo.clear(testing.allocator);
+    const eu = testout(inp, "", &errorinfo);
+    try testing.expectError(err, eu);
+    try testing.expectEqualDeep(msg, errorinfo.msg);
+}
+
 test "print zones" {
     try testout(
         \\print "a", "b", "c"
@@ -329,13 +337,9 @@ test "string concat" {
 }
 
 test "type mismatch" {
-    var errorinfo: ErrorInfo = .{};
-    defer errorinfo.clear(testing.allocator);
-    const eu = testout(
+    try testerr(
         \\print "a"+2
-    , "", &errorinfo);
-    try testing.expectError(Error.TypeMismatch, eu);
-    try testing.expectEqualStrings("expected type string, got integer", errorinfo.msg.?);
+    , Error.TypeMismatch, "expected type string, got integer");
 }
 
 test "variable assign and recall" {
@@ -345,4 +349,10 @@ test "variable assign and recall" {
     ,
         \\koerakoer
     , null);
+}
+
+test "variable type match" {
+    try testerr(
+        \\a="x"
+    , Error.TypeMismatch, "expected type integer, got string");
 }
