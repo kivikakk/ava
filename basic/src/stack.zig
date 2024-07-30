@@ -17,9 +17,11 @@ pub fn Machine(comptime Effects: type) type {
         const Self = @This();
 
         allocator: Allocator,
-        stack: std.ArrayListUnmanaged(isa.Value) = .{},
         effects: *Effects,
         errorinfo: ?*ErrorInfo,
+
+        stack: std.ArrayListUnmanaged(isa.Value) = .{},
+        vars: std.StringHashMapUnmanaged(isa.Value) = .{},
 
         pub fn init(allocator: Allocator, effects: *Effects, errorinfo: ?*ErrorInfo) Self {
             return .{
@@ -30,9 +32,15 @@ pub fn Machine(comptime Effects: type) type {
         }
 
         pub fn deinit(self: *Self) void {
+            self.effects.deinit();
             self.freeValues(self.stack.items);
             self.stack.deinit(self.allocator);
-            self.effects.deinit();
+            var it = self.vars.iterator();
+            while (it.next()) |e| {
+                self.allocator.free(e.key_ptr.*);
+                self.freeValue(e.value_ptr.*);
+            }
+            self.vars.deinit(self.allocator);
         }
 
         fn freeValues(self: *Self, vx: []const isa.Value) void {
@@ -50,6 +58,20 @@ pub fn Machine(comptime Effects: type) type {
             std.debug.assert(self.stack.items.len >= n);
             defer self.stack.items.len -= n;
             return self.stack.items[self.stack.items.len - n ..][0..n].*;
+        }
+
+        fn variableGet(self: *Self, label: []const u8) !isa.Value {
+            const v = self.vars.get(label) orelse
+                return ErrorInfo.ret(self, Error.Unimplemented, "variable {s} requested, need to reify zero", .{label});
+            return try v.clone(self.allocator);
+        }
+
+        fn variableOwn(self: *Self, label: []const u8, v: isa.Value) !void {
+            // TODO: overwrite.
+            std.debug.assert(self.vars.getEntry(label) == null);
+            const ownedLabel = try self.allocator.dupe(u8, label);
+            errdefer self.allocator.free(ownedLabel);
+            try self.vars.putNoClobber(self.allocator, ownedLabel, v);
         }
 
         pub fn run(self: *Self, code: []const u8) (Error || Allocator.Error || Effects.Error)!void {
@@ -78,6 +100,27 @@ pub fn Machine(comptime Effects: type) type {
                         const s = try self.allocator.dupe(u8, str);
                         errdefer self.allocator.free(s);
                         try self.stack.append(self.allocator, .{ .string = s });
+                    },
+                    .PUSH_VARIABLE => {
+                        std.debug.assert(code.len - i + 1 >= 1);
+                        const len = code[i];
+                        i += 1;
+                        const label = code[i..][0..len];
+                        i += len;
+                        const v = try self.variableGet(label);
+                        errdefer self.freeValue(v);
+                        try self.stack.append(self.allocator, v);
+                    },
+                    .LET => {
+                        std.debug.assert(code.len - i + 1 >= 1);
+                        std.debug.assert(self.stack.items.len >= 1);
+                        const len = code[i];
+                        i += 1;
+                        const label = code[i..][0..len];
+                        i += len;
+                        const val = self.takeStack(1);
+                        errdefer self.freeValues(&val);
+                        try self.variableOwn(label, val[0]);
                     },
                     .BUILTIN_PRINT => {
                         const val = self.takeStack(1);
@@ -127,7 +170,7 @@ pub fn Machine(comptime Effects: type) type {
                         defer self.freeValues(&val);
                         try self.stack.append(self.allocator, .{ .integer = -val[0].integer });
                     },
-                    else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled opcode: {s}", .{@tagName(op)}),
+                    // else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled opcode: {s}", .{@tagName(op)}),
                 }
             }
         }
@@ -277,7 +320,7 @@ test "print zones" {
 }
 
 test "string concat" {
-    try testoutInner(testing.allocator,
+    try testout(
         \\print "a"+"b"
     ,
         \\ab
@@ -293,4 +336,13 @@ test "type mismatch" {
     , "", &errorinfo);
     try testing.expectError(Error.TypeMismatch, eu);
     try testing.expectEqualStrings("expected type string, got integer", errorinfo.msg.?);
+}
+
+test "variable assign and recall" {
+    try testout(
+        \\a$ = "koer"
+        \\print a$;"a";a$;
+    ,
+        \\koerakoer
+    , null);
 }

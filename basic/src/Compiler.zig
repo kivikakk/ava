@@ -67,6 +67,12 @@ fn push(self: *Compiler, e: Expr) !void {
                 isa.Value{ .string = s },
             });
         },
+        .label => |l| {
+            try isa.assembleInto(self.writer, .{
+                isa.Opcode.PUSH_VARIABLE,
+                l,
+            });
+        },
         .binop => |b| {
             try self.push(b.lhs.*);
             try self.push(b.rhs.*);
@@ -82,7 +88,7 @@ fn push(self: *Compiler, e: Expr) !void {
             try self.push(e2.*);
             try isa.assembleInto(self.writer, .{isa.Opcode.OPERATOR_NEGATE});
         },
-        else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled Expr type in Compiler.push: {s}", .{@tagName(e.payload)}),
+        // else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled Expr type in Compiler.push: {s}", .{@tagName(e.payload)}),
     }
 }
 
@@ -129,6 +135,13 @@ fn compileSx(self: *Compiler, sx: []Stmt) ![]const u8 {
                 } else {
                     try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT_LINEFEED});
                 }
+            },
+            .let => |l| {
+                try self.push(l.rhs);
+                try isa.assembleInto(self.writer, .{
+                    isa.Opcode.LET,
+                    l.lhs.payload,
+                });
             },
             else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled stmt: {s}", .{@tagName(s.payload)}),
         }

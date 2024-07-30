@@ -5,19 +5,29 @@ const testing = std.testing;
 pub const Opcode = enum(u8) {
     PUSH_IMM_INTEGER = 0x01,
     PUSH_IMM_STRING = 0x02,
+    PUSH_VARIABLE = 0x0a,
+    LET = 0x10,
     BUILTIN_PRINT = 0x80,
     BUILTIN_PRINT_COMMA = 0x81,
     BUILTIN_PRINT_LINEFEED = 0x82,
     OPERATOR_ADD = 0xd0,
     OPERATOR_MULTIPLY = 0xd1,
     OPERATOR_NEGATE = 0xd2,
-    WE_MADE_IT_UP = 0xff, // XXX: not impl for this on purpose so else prongs can remain
 };
 
 // XXX: feels complected
 pub const Value = union(enum) {
+    const Self = @This();
+
     integer: i16,
     string: []const u8,
+
+    pub fn clone(self: Self, allocator: Allocator) !Self {
+        return switch (self) {
+            .integer => self,
+            .string => |s| .{ .string = try allocator.dupe(u8, s) },
+        };
+    }
 };
 
 pub fn printFormat(writer: anytype, v: Value) !void {
@@ -44,6 +54,11 @@ pub fn assembleOne(e: anytype, writer: anytype) !void {
             }
         },
         u8, comptime_int => try writer.writeByte(e),
+        []const u8 => {
+            // label; one byte for length.
+            try writer.writeByte(@intCast(e.len));
+            try writer.writeAll(e);
+        },
         else => @panic("unhandled type: " ++ @typeName(@TypeOf(e))),
     }
 }
