@@ -4,7 +4,10 @@ const testing = std.testing;
 
 pub const Opcode = enum(u8) {
     PUSH_IMM_INTEGER = 0x01,
-    PUSH_IMM_STRING = 0x02,
+    PUSH_IMM_LONG = 0x02,
+    // PUSH_IMM_SINGLE
+    // PUSH_IMM_DOUBLE
+    PUSH_IMM_STRING = 0x05,
     PUSH_VARIABLE = 0x0a,
     LET = 0x10,
     BUILTIN_PRINT = 0x80,
@@ -19,11 +22,12 @@ pub const Value = union(enum) {
     const Self = @This();
 
     integer: i16,
+    long: i32,
     string: []const u8,
 
     pub fn clone(self: Self, allocator: Allocator) !Self {
         return switch (self) {
-            .integer => self,
+            .integer, .long => self,
             .string => |s| .{ .string = try allocator.dupe(u8, s) },
         };
     }
@@ -31,7 +35,7 @@ pub const Value = union(enum) {
 
 pub fn printFormat(writer: anytype, v: Value) !void {
     switch (v) {
-        .integer => |i| {
+        .integer, .long => |i| {
             if (i >= 0)
                 try writer.writeByte(' ');
             try std.fmt.format(writer, "{d} ", .{i});
@@ -46,6 +50,7 @@ pub fn assembleOne(e: anytype, writer: anytype) !void {
         Value => {
             switch (e) {
                 .integer => |i| try writer.writeInt(i16, i, .little),
+                .long => |i| try writer.writeInt(i32, i, .little),
                 .string => |s| {
                     try writer.writeInt(u16, @as(u16, @intCast(s.len)), .little);
                     try writer.writeAll(s);

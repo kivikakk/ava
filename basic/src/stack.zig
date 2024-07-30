@@ -49,7 +49,7 @@ pub fn Machine(comptime Effects: type) type {
 
         fn freeValue(self: *Self, v: isa.Value) void {
             switch (v) {
-                .integer => {},
+                .integer, .long => {},
                 .string => |s| self.allocator.free(s),
             }
         }
@@ -91,6 +91,15 @@ pub fn Machine(comptime Effects: type) type {
                         try self.stack.append(
                             self.allocator,
                             .{ .integer = std.mem.readInt(i16, imm, .little) },
+                        );
+                    },
+                    .PUSH_IMM_LONG => {
+                        std.debug.assert(code.len - i + 1 >= 4);
+                        const imm = code[i..][0..4];
+                        i += 4;
+                        try self.stack.append(
+                            self.allocator,
+                            .{ .long = std.mem.readInt(i32, imm, .little) },
                         );
                     },
                     .PUSH_IMM_STRING => {
@@ -140,6 +149,10 @@ pub fn Machine(comptime Effects: type) type {
                             .integer => |lhs| {
                                 const rhs = try self.assertType(vals[1], .integer);
                                 try self.stack.append(self.allocator, .{ .integer = lhs + rhs });
+                            },
+                            .long => |lhs| {
+                                const rhs = try self.assertType(vals[1], .long);
+                                try self.stack.append(self.allocator, .{ .long = lhs + rhs });
                             },
                             .string => |lhs| {
                                 const rhs = try self.assertType(vals[1], .string);
@@ -361,6 +374,14 @@ test "variable reassignment" {
         \\print a$
     , "koerakass\n", null);
 }
+
+// test "variable autovivification" {
+//     try testout(
+//         \\a = 1 * b
+//         \\a$ = "x" + b$
+//         \\print a; b$
+//     , "0x\n", null);
+// }
 
 // XXX: this should be a compile error, not a runtime one.
 // test "variable type match" {

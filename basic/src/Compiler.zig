@@ -19,6 +19,8 @@ errorinfo: ?*ErrorInfo,
 
 const Error = error{
     Unimplemented,
+    TypeMismatch,
+    Overflow,
 };
 
 pub fn compileStmts(allocator: Allocator, sx: []Stmt, errorinfo: ?*ErrorInfo) ![]const u8 {
@@ -49,47 +51,6 @@ fn init(allocator: Allocator, errorinfo: ?*ErrorInfo) !*Compiler {
 fn deinit(self: *Compiler) void {
     self.buf.deinit(self.allocator);
     self.allocator.destroy(self);
-}
-
-fn push(self: *Compiler, e: Expr) !void {
-    switch (e.payload) {
-        .imm_number => |n| {
-            // XXX: only handling INTEGER for now.
-            std.debug.assert(n >= -32768 and n <= 32767);
-            try isa.assembleInto(self.writer, .{
-                isa.Opcode.PUSH_IMM_INTEGER,
-                isa.Value{ .integer = @truncate(n) },
-            });
-        },
-        .imm_string => |s| {
-            try isa.assembleInto(self.writer, .{
-                isa.Opcode.PUSH_IMM_STRING,
-                isa.Value{ .string = s },
-            });
-        },
-        .label => |l| {
-            try isa.assembleInto(self.writer, .{
-                isa.Opcode.PUSH_VARIABLE,
-                l,
-            });
-        },
-        .binop => |b| {
-            try self.push(b.lhs.*);
-            try self.push(b.rhs.*);
-            const opc: isa.Opcode = switch (b.op.payload) {
-                .add => .OPERATOR_ADD,
-                .mul => .OPERATOR_MULTIPLY,
-                else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled opcode: {s}", .{@tagName(b.op.payload)}),
-            };
-            try isa.assembleInto(self.writer, .{opc});
-        },
-        .paren => |e2| try self.push(e2.*),
-        .negate => |e2| {
-            try self.push(e2.*);
-            try isa.assembleInto(self.writer, .{isa.Opcode.OPERATOR_NEGATE});
-        },
-        // else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled Expr type in Compiler.push: {s}", .{@tagName(e.payload)}),
-    }
 }
 
 fn compileSx(self: *Compiler, sx: []Stmt) ![]const u8 {
@@ -150,6 +111,76 @@ fn compileSx(self: *Compiler, sx: []Stmt) ![]const u8 {
     return self.buf.toOwnedSlice(self.allocator);
 }
 
+fn push(self: *Compiler, e: Expr) !void {
+    switch (e.payload) {
+        .imm_number => |n| {
+            if (n >= -std.math.pow(isize, 2, 15) and n <= std.math.pow(isize, 2, 15) - 1) {
+                try isa.assembleInto(self.writer, .{
+                    isa.Opcode.PUSH_IMM_INTEGER,
+                    isa.Value{ .integer = @truncate(n) },
+                });
+            } else if (n >= std.math.pow(isize, 2, 31) and n <= std.math.pow(isize, 2, 31) - 1) {
+                try isa.assembleInto(self.writer, .{
+                    isa.Opcode.PUSH_IMM_LONG,
+                    isa.Value{ .long = @truncate(n) },
+                });
+            } else {
+                // XXX: QBASIC normalises these to doubles.
+                return Error.Overflow;
+            }
+        },
+        .imm_string => |s| {
+            try isa.assembleInto(self.writer, .{
+                isa.Opcode.PUSH_IMM_STRING,
+                isa.Value{ .string = s },
+            });
+        },
+        .label => |l| {
+            try isa.assembleInto(self.writer, .{
+                isa.Opcode.PUSH_VARIABLE,
+                l,
+            });
+        },
+        .binop => |b| {
+            try self.push(b.lhs.*);
+            try self.push(b.rhs.*);
+            const opc: isa.Opcode = switch (b.op.payload) {
+                .add => .OPERATOR_ADD,
+                .mul => .OPERATOR_MULTIPLY,
+                else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled opcode: {s}", .{@tagName(b.op.payload)}),
+            };
+            try isa.assembleInto(self.writer, .{opc});
+        },
+        .paren => |e2| try self.push(e2.*),
+        .negate => |e2| {
+            try self.push(e2.*);
+            try isa.assembleInto(self.writer, .{isa.Opcode.OPERATOR_NEGATE});
+        },
+        // else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled Expr type in Compiler.push: {s}", .{@tagName(e.payload)}),
+    }
+}
+
+// XXX: DEFINT/DEFLNG/DEFSNG/DEFDBL/DEFSTR
+const Type = enum {
+    integer, // % or none
+    long, // &
+    single, // !
+    double, // #
+    string, // $
+};
+
+fn varType(label: []const u8) Type {
+    std.debug.assert(label.len > 0);
+    return switch (label[label.len - 1]) {
+        '%' => .integer,
+        '&' => .long,
+        '!' => .single,
+        '#' => .double,
+        '$' => .string,
+        else => .integer,
+    };
+}
+
 test "compile shrimple" {
     const code = try compile(testing.allocator,
         \\PRINT 123
@@ -205,4 +236,21 @@ test "compile (parse) error" {
     const eu = compile(testing.allocator, " 1", &errorinfo);
     try testing.expectError(error.UnexpectedToken, eu);
     try testing.expectEqual(ErrorInfo{ .loc = Loc{ .row = 1, .col = 2 } }, errorinfo);
+}
+
+fn testerr(inp: []const u8, err: anyerror, msg: ?[]const u8) !void {
+    var errorinfo: ErrorInfo = .{};
+    defer errorinfo.clear(testing.allocator);
+    const eu = compile(testing.allocator, inp, &errorinfo);
+    defer if (eu) |code| {
+        testing.allocator.free(code);
+    } else |_| {};
+    try testing.expectError(err, eu);
+    try testing.expectEqualDeep(msg, errorinfo.msg);
+}
+
+test "variable type match" {
+    try testerr(
+        \\a="x"
+    , Error.TypeMismatch, "expected type integer, got string");
 }
