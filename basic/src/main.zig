@@ -71,8 +71,12 @@ fn mainRun(allocator: Allocator, filename: []const u8) !void {
 
     var errorinfo: ErrorInfo = .{};
     const sx = Parser.parse(allocator, inp, &errorinfo) catch |err| {
-        if (errorinfo.loc.row != 0)
-            std.fmt.format(std.io.getStdErr().writer(), "parse error loc: ({d}:{d})\n", .{ errorinfo.loc.row, errorinfo.loc.col }) catch unreachable;
+        if (errorinfo.loc) |errloc|
+            std.fmt.format(
+                std.io.getStdErr().writer(),
+                "parse error loc: ({d}:{d})\n",
+                .{ errloc.row, errloc.col },
+            ) catch unreachable;
         return err;
     };
     defer Parser.free(allocator, sx);
@@ -101,7 +105,7 @@ fn mainRun(allocator: Allocator, filename: []const u8) !void {
         const code = try Compiler.compileStmts(allocator, sx);
         defer allocator.free(code);
 
-        var m = stack.Machine(*RunEffects).init(allocator, try RunEffects.init(allocator, std.io.getStdOut()));
+        var m = stack.Machine(RunEffects).init(allocator, try RunEffects.init(allocator, std.io.getStdOut()), &errorinfo);
         defer m.deinit();
 
         try m.run(code);
@@ -120,10 +124,13 @@ fn mainInteractive(allocator: Allocator) !void {
     try stdoutwr.writeAll("Ava BASIC\n");
     try ttyconf.setColor(stdoutwr, .reset);
 
-    var m = stack.Machine(*RunEffects).init(allocator, try RunEffects.init(allocator, stdout));
+    var errorinfo: ErrorInfo = .{};
+    var m = stack.Machine(RunEffects).init(allocator, try RunEffects.init(allocator, stdout), &errorinfo);
     defer m.deinit();
 
     while (true) {
+        defer errorinfo.clear(allocator);
+
         // TODO: readline(-like).
         try ttyconf.setColor(stdoutwr, .reset);
         try stdout.writeAll("> ");
@@ -136,10 +143,10 @@ fn mainInteractive(allocator: Allocator) !void {
 
         try ttyconf.setColor(stdoutwr, .reset);
 
-        var errorinfo: ErrorInfo = .{};
+        errorinfo = .{};
         const sx = Parser.parse(allocator, inp, &errorinfo) catch |err| {
             try ttyconf.setColor(stdoutwr, .bright_red);
-            try showErrorCaret(errorinfo, stdoutwr);
+            try showErrorInfo(errorinfo, stdoutwr);
             try std.fmt.format(stdoutwr, "parse: {s}\n\n", .{@errorName(err)});
             continue;
         };
@@ -165,7 +172,7 @@ fn mainInteractive(allocator: Allocator) !void {
 
         const code = Compiler.compileStmts(allocator, sx) catch |err| {
             try ttyconf.setColor(stdoutwr, .bright_red);
-            try showErrorCaret(errorinfo, stdoutwr);
+            try showErrorInfo(errorinfo, stdoutwr);
             try std.fmt.format(stdoutwr, "compile: {s}\n\n", .{@errorName(err)});
             continue;
         };
@@ -176,6 +183,7 @@ fn mainInteractive(allocator: Allocator) !void {
 
         m.run(code) catch |err| {
             try ttyconf.setColor(stdoutwr, .bright_red);
+            try showErrorInfo(errorinfo, stdoutwr);
             try std.fmt.format(stdoutwr, "run error: {s}\n\n", .{@errorName(err)});
             continue;
         };
@@ -185,11 +193,15 @@ fn mainInteractive(allocator: Allocator) !void {
     try stdout.writeAll("\ngoobai\n");
 }
 
-fn showErrorCaret(errorinfo: ErrorInfo, writer: anytype) !void {
-    if (errorinfo.loc.row == 0) return;
-
-    try writer.writeByteNTimes(' ', errorinfo.loc.col + 1);
-    try writer.writeAll("^-- ");
+fn showErrorInfo(errorinfo: ErrorInfo, writer: anytype) !void {
+    if (errorinfo.loc) |errloc| {
+        try writer.writeByteNTimes(' ', errloc.col + 1);
+        try writer.writeAll("^-- ");
+    }
+    if (errorinfo.msg) |m| {
+        try writer.writeAll(m);
+        try writer.writeByte('\n');
+    }
 }
 
 fn xxd(code: []const u8) !void {
@@ -240,6 +252,7 @@ fn xxd(code: []const u8) !void {
 
 const RunEffects = struct {
     const Self = @This();
+    pub const Error = std.fs.File.WriteError;
     const Writer = std.io.GenericWriter(*Self, std.fs.File.WriteError, writerFn);
 
     allocator: Allocator,
