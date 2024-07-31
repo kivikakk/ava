@@ -18,6 +18,10 @@ buf: std.ArrayListUnmanaged(u8) = .{},
 writer: std.ArrayListUnmanaged(u8).Writer,
 errorinfo: ?*ErrorInfo,
 
+deftypes: [26]ty.Type = [_]ty.Type{.single} ** 26,
+slots: std.StringHashMapUnmanaged(u8) = .{}, // key is UPPERCASE with sigil
+nextslot: u8 = 0,
+
 const Error = error{
     Unimplemented,
     TypeMismatch,
@@ -51,6 +55,10 @@ fn init(allocator: Allocator, errorinfo: ?*ErrorInfo) !*Compiler {
 
 fn deinit(self: *Compiler) void {
     self.buf.deinit(self.allocator);
+    var it = self.slots.keyIterator();
+    while (it.next()) |k|
+        self.allocator.free(k.*);
+    self.slots.deinit(self.allocator);
     self.allocator.destroy(self);
 }
 
@@ -99,14 +107,14 @@ fn compileSx(self: *Compiler, sx: []Stmt) ![]const u8 {
                 }
             },
             .let => |l| {
-                const typ = ty.Type.forLabel(l.lhs.payload);
-                const rhsTyp = try self.typeInfer(l.rhs);
-                if (rhsTyp != typ)
-                    return ErrorInfo.ret(self, Error.TypeMismatch, "expected type {any}, got {any}", .{ typ, rhsTyp });
+                const resolved = try self.labelResolve(l.lhs.payload);
+                const rhsType = try self.typeInfer(l.rhs);
+                if (rhsType != resolved.type)
+                    return ErrorInfo.ret(self, Error.TypeMismatch, "expected type {any}, got {any}", .{ resolved.type, rhsType });
                 try self.push(l.rhs);
                 try isa.assembleInto(self.writer, .{
                     isa.Opcode.LET,
-                    l.lhs.payload,
+                    resolved.slot,
                 });
             },
             else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled stmt: {s}", .{@tagName(s.payload)}),
@@ -141,9 +149,10 @@ fn push(self: *Compiler, e: Expr) !void {
             });
         },
         .label => |l| {
+            const resolved = try self.labelResolve(l);
             try isa.assembleInto(self.writer, .{
                 isa.Opcode.PUSH_VARIABLE,
-                l,
+                resolved.slot,
             });
         },
         .binop => |b| {
@@ -165,11 +174,53 @@ fn push(self: *Compiler, e: Expr) !void {
     }
 }
 
+const ResolvedLabel = struct {
+    slot: u8,
+    type: ty.Type,
+};
+
+pub fn labelResolve(self: *Compiler, l: []const u8) !ResolvedLabel {
+    std.debug.assert(l.len > 0);
+
+    var key: []u8 = undefined;
+    var typ: ty.Type = undefined;
+
+    if (ty.Type.fromSigil(l[l.len - 1])) |t| {
+        key = try self.allocator.alloc(u8, l.len);
+        _ = std.ascii.upperString(key, l);
+
+        typ = t;
+    } else {
+        key = try self.allocator.alloc(u8, l.len + 1);
+        _ = std.ascii.upperString(key, l);
+
+        std.debug.assert(key[0] >= 'A' and key[0] <= 'Z');
+        typ = self.deftypes[key[0] - 'A'];
+        key[l.len] = typ.sigil();
+    }
+
+    var slot: u8 = undefined;
+
+    if (self.slots.getEntry(key)) |e| {
+        self.allocator.free(key);
+        slot = e.value_ptr.*;
+    } else {
+        errdefer self.allocator.free(key);
+        slot = self.nextslot;
+        self.nextslot += 1;
+
+        try self.slots.putNoClobber(self.allocator, key, slot);
+    }
+
+    return .{ .slot = slot, .type = typ };
+}
+
 pub fn typeInfer(self: *const Compiler, e: Expr) !ty.Type {
+    // XXX awful.
     return switch (e.payload) {
-        .imm_number => |i| if (i >= -std.math.pow(isize, 2, 15) and i <= -std.math.pow(isize, 2, 15) - 1)
+        .imm_number => |i| if (i >= -std.math.pow(isize, 2, 15) and i <= std.math.pow(isize, 2, 15) - 1)
             .integer
-        else if (i >= -std.math.pow(isize, 2, 31) and i <= -std.math.pow(isize, 2, 31) - 1)
+        else if (i >= -std.math.pow(isize, 2, 31) and i <= std.math.pow(isize, 2, 31) - 1)
             .long
         else
             // XXX: double? See Compiler.push.
@@ -217,8 +268,7 @@ test "compile less shrimple" {
     , null);
     defer testing.allocator.free(code);
 
-    const exp =
-        try isa.assemble(testing.allocator, .{
+    const exp = try isa.assemble(testing.allocator, .{
         isa.Opcode.PUSH_IMM_INTEGER,
         isa.Value{ .integer = 6 },
         isa.Opcode.PUSH_IMM_INTEGER,
@@ -236,6 +286,36 @@ test "compile less shrimple" {
         isa.Value{ .integer = 2 },
         isa.Opcode.BUILTIN_PRINT,
         isa.Opcode.BUILTIN_PRINT_LINEFEED,
+    });
+    defer testing.allocator.free(exp);
+
+    try testing.expectEqualSlices(u8, exp, code);
+}
+
+test "compile variable access" {
+    const code = try compileText(testing.allocator,
+        \\a% = 12
+        \\b% = 34
+        \\c% = a% + b%
+    , null);
+    defer testing.allocator.free(code);
+
+    const exp = try isa.assemble(testing.allocator, .{
+        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Value{ .integer = 12 },
+        isa.Opcode.LET,
+        0,
+        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Value{ .integer = 34 },
+        isa.Opcode.LET,
+        1,
+        isa.Opcode.PUSH_VARIABLE,
+        0,
+        isa.Opcode.PUSH_VARIABLE,
+        1,
+        isa.Opcode.OPERATOR_ADD,
+        isa.Opcode.LET,
+        2,
     });
     defer testing.allocator.free(exp);
 
@@ -263,5 +343,5 @@ fn testerr(inp: []const u8, err: anyerror, msg: ?[]const u8) !void {
 test "variable type match" {
     try testerr(
         \\a="x"
-    , Error.TypeMismatch, "expected type INTEGER, got STRING");
+    , Error.TypeMismatch, "expected type SINGLE, got STRING");
 }

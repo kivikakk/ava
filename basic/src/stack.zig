@@ -21,7 +21,7 @@ pub fn Machine(comptime Effects: type) type {
         errorinfo: ?*ErrorInfo,
 
         stack: std.ArrayListUnmanaged(isa.Value) = .{},
-        vars: std.StringHashMapUnmanaged(isa.Value) = .{},
+        slots: std.ArrayListUnmanaged(isa.Value) = .{},
 
         pub fn init(allocator: Allocator, effects: *Effects, errorinfo: ?*ErrorInfo) Self {
             return .{
@@ -35,12 +35,8 @@ pub fn Machine(comptime Effects: type) type {
             self.effects.deinit();
             self.valueFreeMany(self.stack.items);
             self.stack.deinit(self.allocator);
-            var it = self.vars.iterator();
-            while (it.next()) |e| {
-                self.allocator.free(e.key_ptr.*);
-                self.valueFree(e.value_ptr.*);
-            }
-            self.vars.deinit(self.allocator);
+            self.valueFreeMany(self.slots.items);
+            self.slots.deinit(self.allocator);
         }
 
         fn valueFreeMany(self: *Self, vx: []const isa.Value) void {
@@ -60,20 +56,18 @@ pub fn Machine(comptime Effects: type) type {
             return self.stack.items[self.stack.items.len - n ..][0..n].*;
         }
 
-        fn variableGet(self: *Self, label: []const u8) !isa.Value {
-            const v = self.vars.get(label) orelse
-                return ErrorInfo.ret(self, Error.Unimplemented, "variable {s} requested, need to reify zero", .{label});
-            return try v.clone(self.allocator);
+        fn variableGet(self: *Self, slot: u8) !isa.Value {
+            return self.slots.items[slot].clone(self.allocator);
         }
 
-        fn variableOwn(self: *Self, label: []const u8, v: isa.Value) !void {
-            if (self.vars.getEntry(label)) |e| {
-                self.valueFree(e.value_ptr.*);
-                e.value_ptr.* = v;
+        fn variableOwn(self: *Self, slot: u8, v: isa.Value) !void {
+            if (slot < self.slots.items.len) {
+                self.valueFree(self.slots.items[slot]);
+                self.slots.items[slot] = v;
             } else {
-                const ownedLabel = try self.allocator.dupe(u8, label);
-                errdefer self.allocator.free(ownedLabel);
-                try self.vars.putNoClobber(self.allocator, ownedLabel, v);
+                // Assuming no random new slot access (e.g. 0, then 2).
+                std.debug.assert(slot == self.slots.items.len);
+                try self.slots.append(self.allocator, v);
             }
         }
 
@@ -115,24 +109,20 @@ pub fn Machine(comptime Effects: type) type {
                     },
                     .PUSH_VARIABLE => {
                         std.debug.assert(code.len - i + 1 >= 1);
-                        const len = code[i];
+                        const slot = code[i];
                         i += 1;
-                        const label = code[i..][0..len];
-                        i += len;
-                        const v = try self.variableGet(label);
+                        const v = try self.variableGet(slot);
                         errdefer self.valueFree(v);
                         try self.stack.append(self.allocator, v);
                     },
                     .LET => {
                         std.debug.assert(code.len - i + 1 >= 1);
                         std.debug.assert(self.stack.items.len >= 1);
-                        const len = code[i];
+                        const slot = code[i];
                         i += 1;
-                        const label = code[i..][0..len];
-                        i += len;
                         const val = self.stackTake(1);
                         errdefer self.valueFreeMany(&val);
-                        try self.variableOwn(label, val[0]);
+                        try self.variableOwn(slot, val[0]);
                     },
                     .BUILTIN_PRINT => {
                         const val = self.stackTake(1);
