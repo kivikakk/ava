@@ -140,6 +140,9 @@ fn mainInteractive(allocator: Allocator) !void {
     try ttyconf.setColor(stdoutwr, .reset);
 
     var errorinfo: ErrorInfo = .{};
+    var c = try Compiler.init(allocator, &errorinfo);
+    defer c.deinit();
+
     var m = stack.Machine(RunEffects).init(allocator, try RunEffects.init(allocator, stdout), &errorinfo);
     defer m.deinit();
 
@@ -185,7 +188,7 @@ fn mainInteractive(allocator: Allocator) !void {
             try stdout.sync();
         }
 
-        const code = Compiler.compile(allocator, sx, &errorinfo) catch |err| {
+        const code = c.compileSx(sx) catch |err| {
             try ttyconf.setColor(stdoutwr, .bright_red);
             try showErrorInfo(errorinfo, stdoutwr, .caret);
             try std.fmt.format(stdoutwr, "compile: {s}\n\n", .{@errorName(err)});

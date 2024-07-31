@@ -42,7 +42,7 @@ pub fn compileText(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo
     return compile(allocator, sx, errorinfo);
 }
 
-fn init(allocator: Allocator, errorinfo: ?*ErrorInfo) !*Compiler {
+pub fn init(allocator: Allocator, errorinfo: ?*ErrorInfo) !*Compiler {
     const self = try allocator.create(Compiler);
     self.* = .{
         .allocator = allocator,
@@ -53,7 +53,7 @@ fn init(allocator: Allocator, errorinfo: ?*ErrorInfo) !*Compiler {
     return self;
 }
 
-fn deinit(self: *Compiler) void {
+pub fn deinit(self: *Compiler) void {
     self.buf.deinit(self.allocator);
     var it = self.slots.keyIterator();
     while (it.next()) |k|
@@ -62,7 +62,7 @@ fn deinit(self: *Compiler) void {
     self.allocator.destroy(self);
 }
 
-fn compileSx(self: *Compiler, sx: []Stmt) ![]const u8 {
+pub fn compileSx(self: *Compiler, sx: []Stmt) ![]const u8 {
     for (sx) |s| {
         switch (s.payload) {
             .remark => {},
