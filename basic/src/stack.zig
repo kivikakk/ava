@@ -45,7 +45,7 @@ pub fn Machine(comptime Effects: type) type {
 
         fn valueFree(self: *Self, v: isa.Value) void {
             switch (v) {
-                .integer, .long => {},
+                .integer, .long, .single, .double => {},
                 .string => |s| self.allocator.free(s),
             }
         }

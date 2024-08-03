@@ -46,7 +46,10 @@ pub const Op = enum {
 pub const Payload = union(enum) {
     const Self = @This();
 
-    imm_integer: isize,
+    imm_integer: i16,
+    imm_long: i32,
+    imm_single: f32,
+    imm_double: f64,
     imm_string: []const u8,
     label: []const u8,
     binop: struct {
@@ -63,6 +66,9 @@ pub const Payload = union(enum) {
     pub fn formatAst(self: Self, indent: usize, writer: anytype) @TypeOf(writer).Error!void {
         switch (self) {
             .imm_integer => |n| try std.fmt.format(writer, "Integer({d})\n", .{n}),
+            .imm_long => |n| try std.fmt.format(writer, "Long({d})\n", .{n}),
+            .imm_single => |n| try std.fmt.format(writer, "Single({d})\n", .{n}),
+            .imm_double => |n| try std.fmt.format(writer, "Double({d})\n", .{n}),
             .imm_string => |s| try std.fmt.format(writer, "String({s})\n", .{s}),
             .binop => |b| {
                 try std.fmt.format(writer, "Binop({s})\n", .{@tagName(b.op.payload)});
@@ -88,6 +94,9 @@ pub const Payload = union(enum) {
     pub fn deinit(self: Self, allocator: Allocator) void {
         switch (self) {
             .imm_integer => {},
+            .imm_long => {},
+            .imm_single => {},
+            .imm_double => {},
             .imm_string => {},
             .label => {},
             .binop => |b| {

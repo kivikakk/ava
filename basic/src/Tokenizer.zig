@@ -129,9 +129,11 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                     }, start.loc, self.loc));
                     state = .init;
                 } else {
-                    try tx.append(attach(.{
-                        .integer = try std.fmt.parseInt(isize, inp[start.offset..i], 10),
-                    }, start.loc, self.loc.back()));
+                    try tx.append(attach(
+                        try resolveIntegral(inp[start.offset..i]),
+                        start.loc,
+                        self.loc.back(),
+                    ));
                     state = .init;
                     rewind = true;
                 }
@@ -233,9 +235,11 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
 
     switch (state) {
         .init => {},
-        .integer => |start| try tx.append(attach(.{
-            .integer = try std.fmt.parseInt(isize, inp[start.offset..], 10),
-        }, start.loc, self.loc.back())),
+        .integer => |start| try tx.append(attach(
+            try resolveIntegral(inp[start.offset..]),
+            start.loc,
+            self.loc.back(),
+        )),
         .floating => |start| try tx.append(attach(.{
             .single = try std.fmt.parseFloat(f32, inp[start.offset..]),
         }, start.loc, self.loc.back())),
@@ -270,6 +274,17 @@ fn attach(payload: Token.Payload, start: Loc, end: Loc) Token {
             .end = end,
         },
     };
+}
+
+fn resolveIntegral(s: []const u8) !Token.Payload {
+    const n = try std.fmt.parseInt(isize, s, 10);
+    if (n >= std.math.minInt(i16) and n <= std.math.maxInt(i16)) {
+        return .{ .integer = @intCast(n) };
+    } else if (n >= std.math.minInt(i32) and n <= std.math.maxInt(i32)) {
+        return .{ .long = @intCast(n) };
+    } else {
+        return .{ .double = @floatFromInt(n) };
+    }
 }
 
 // TODO: replace with table (same with other direction above).

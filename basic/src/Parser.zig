@@ -178,6 +178,15 @@ fn acceptFactor(self: *Parser) !?Expr {
     if (self.accept(.integer)) |n|
         return Expr.init(.{ .imm_integer = n.payload }, n.range);
 
+    if (self.accept(.long)) |n|
+        return Expr.init(.{ .imm_long = n.payload }, n.range);
+
+    if (self.accept(.single)) |n|
+        return Expr.init(.{ .imm_single = n.payload }, n.range);
+
+    if (self.accept(.double)) |n|
+        return Expr.init(.{ .imm_double = n.payload }, n.range);
+
     if (self.accept(.label)) |l|
         return Expr.init(.{ .label = l.payload }, l.range);
 

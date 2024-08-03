@@ -53,11 +53,13 @@ pub const Value = union(enum) {
 
     integer: i16,
     long: i32,
+    single: f32,
+    double: f64,
     string: []const u8,
 
     pub fn clone(self: Self, allocator: Allocator) !Self {
         return switch (self) {
-            .integer, .long => self,
+            .integer, .long, .single, .double => self,
             .string => |s| .{ .string = try allocator.dupe(u8, s) },
         };
     }
@@ -65,10 +67,25 @@ pub const Value = union(enum) {
 
 pub fn printFormat(writer: anytype, v: Value) !void {
     switch (v) {
-        .integer, .long => |i| {
-            if (i >= 0)
+        .integer => |n| {
+            if (n >= 0)
                 try writer.writeByte(' ');
-            try std.fmt.format(writer, "{d} ", .{i});
+            try std.fmt.format(writer, "{d} ", .{n});
+        },
+        .long => |n| {
+            if (n >= 0)
+                try writer.writeByte(' ');
+            try std.fmt.format(writer, "{d} ", .{n});
+        },
+        .single => |n| {
+            if (n >= 0)
+                try writer.writeByte(' ');
+            try std.fmt.format(writer, "{d} ", .{n});
+        },
+        .double => |n| {
+            if (n >= 0)
+                try writer.writeByte(' ');
+            try std.fmt.format(writer, "{d} ", .{n});
         },
         .string => |s| try writer.writeAll(s),
     }
@@ -81,6 +98,8 @@ pub fn assembleOne(e: anytype, writer: anytype) !void {
             switch (e) {
                 .integer => |i| try writer.writeInt(i16, i, .little),
                 .long => |i| try writer.writeInt(i32, i, .little),
+                .single => |n| try writer.writeStruct(packed struct { n: f32 }{ .n = n }),
+                .double => |n| try writer.writeStruct(packed struct { n: f64 }{ .n = n }),
                 .string => |s| {
                     try writer.writeInt(u16, @as(u16, @intCast(s.len)), .little);
                     try writer.writeAll(s);

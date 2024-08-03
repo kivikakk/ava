@@ -122,21 +122,32 @@ fn compileStmt(self: *Compiler, s: Stmt) !void {
 fn compileExpr(self: *Compiler, e: Expr) (Allocator.Error || Error)!ty.Type {
     switch (e.payload) {
         .imm_integer => |n| {
-            if (n >= -std.math.pow(isize, 2, 15) and n <= std.math.pow(isize, 2, 15) - 1) {
-                try isa.assembleInto(self.writer, .{
-                    isa.Opcode.PUSH_IMM_INTEGER,
-                    isa.Value{ .integer = @truncate(n) },
-                });
-                return .integer;
-            } else if (n >= std.math.pow(isize, 2, 31) and n <= std.math.pow(isize, 2, 31) - 1) {
-                try isa.assembleInto(self.writer, .{
-                    isa.Opcode.PUSH_IMM_LONG,
-                    isa.Value{ .long = @truncate(n) },
-                });
-                return .long;
-            } else {
-                return ErrorInfo.ret(self, Error.Unimplemented, "unhandled imm_integer compile: {d}", .{n});
-            }
+            try isa.assembleInto(self.writer, .{
+                isa.Opcode.PUSH_IMM_INTEGER,
+                isa.Value{ .integer = n },
+            });
+            return .integer;
+        },
+        .imm_long => |n| {
+            try isa.assembleInto(self.writer, .{
+                isa.Opcode.PUSH_IMM_LONG,
+                isa.Value{ .long = n },
+            });
+            return .long;
+        },
+        .imm_single => |n| {
+            try isa.assembleInto(self.writer, .{
+                isa.Opcode.PUSH_IMM_SINGLE,
+                isa.Value{ .single = n },
+            });
+            return .single;
+        },
+        .imm_double => |n| {
+            try isa.assembleInto(self.writer, .{
+                isa.Opcode.PUSH_IMM_DOUBLE,
+                isa.Value{ .double = n },
+            });
+            return .double;
         },
         .imm_string => |s| {
             try isa.assembleInto(self.writer, .{
@@ -336,32 +347,33 @@ fn labelResolve(self: *Compiler, l: []const u8) !ResolvedLabel {
     return .{ .slot = slot, .type = typ };
 }
 
-test "compile shrimple" {
-    const code = try compileText(testing.allocator,
-        \\PRINT 123
-        \\
-    , null);
+fn expectCompile(input: []const u8, assembly: anytype) !void {
+    const code = try compileText(testing.allocator, input, null);
     defer testing.allocator.free(code);
 
-    const exp = try isa.assemble(testing.allocator, .{
-        isa.Opcode.PUSH_IMM_INTEGER,
-        isa.Value{ .integer = 123 },
-        isa.Opcode.BUILTIN_PRINT,
-        isa.Opcode.BUILTIN_PRINT_LINEFEED,
-    });
+    const exp = try isa.assemble(testing.allocator, assembly);
     defer testing.allocator.free(exp);
 
     try testing.expectEqualSlices(u8, exp, code);
 }
 
+test "compile shrimple" {
+    try expectCompile(
+        \\PRINT 123
+        \\
+    , .{
+        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Value{ .integer = 123 },
+        isa.Opcode.BUILTIN_PRINT,
+        isa.Opcode.BUILTIN_PRINT_LINEFEED,
+    });
+}
+
 test "compile less shrimple" {
-    const code = try compileText(testing.allocator,
+    try expectCompile(
         \\PRINT 6 + 5 * 4, 3; 2
         \\
-    , null);
-    defer testing.allocator.free(code);
-
-    const exp = try isa.assemble(testing.allocator, .{
+    , .{
         isa.Opcode.PUSH_IMM_INTEGER,
         isa.Value{ .integer = 6 },
         isa.Opcode.PUSH_IMM_INTEGER,
@@ -380,20 +392,14 @@ test "compile less shrimple" {
         isa.Opcode.BUILTIN_PRINT,
         isa.Opcode.BUILTIN_PRINT_LINEFEED,
     });
-    defer testing.allocator.free(exp);
-
-    try testing.expectEqualSlices(u8, exp, code);
 }
 
 test "compile variable access" {
-    const code = try compileText(testing.allocator,
+    try expectCompile(
         \\a% = 12
         \\b% = 34
         \\c% = a% + b%
-    , null);
-    defer testing.allocator.free(code);
-
-    const exp = try isa.assemble(testing.allocator, .{
+    , .{
         isa.Opcode.PUSH_IMM_INTEGER,
         isa.Value{ .integer = 12 },
         isa.Opcode.LET,
@@ -410,9 +416,6 @@ test "compile variable access" {
         isa.Opcode.LET,
         2,
     });
-    defer testing.allocator.free(exp);
-
-    try testing.expectEqualSlices(u8, exp, code);
 }
 
 test "compile (parse) error" {
@@ -422,7 +425,7 @@ test "compile (parse) error" {
     try testing.expectEqual(ErrorInfo{ .loc = Loc{ .row = 1, .col = 2 } }, errorinfo);
 }
 
-fn testerr(inp: []const u8, err: anyerror, msg: ?[]const u8) !void {
+fn expectCompileErr(inp: []const u8, err: anyerror, msg: ?[]const u8) !void {
     var errorinfo: ErrorInfo = .{};
     defer errorinfo.clear(testing.allocator);
     const eu = compileText(testing.allocator, inp, &errorinfo);
@@ -433,8 +436,28 @@ fn testerr(inp: []const u8, err: anyerror, msg: ?[]const u8) !void {
     try testing.expectEqualDeep(msg, errorinfo.msg);
 }
 
-test "variable type match" {
-    try testerr(
+test "variable type mismatch" {
+    try expectCompileErr(
         \\a="x"
     , Error.TypeMismatch, "cannot coerce STRING to SINGLE");
+}
+
+test "promotion and coercion" {
+    try expectCompile(
+        \\a% = 1 + 1.5 * 100000
+    , .{
+        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Value{ .integer = 1 },
+        isa.Opcode.COERCE_INTEGER_SINGLE,
+        isa.Opcode.PUSH_IMM_SINGLE,
+        isa.Value{ .single = 1.5 },
+        isa.Opcode.PUSH_IMM_LONG,
+        isa.Value{ .long = 100000 },
+        isa.Opcode.COERCE_LONG_SINGLE,
+        isa.Opcode.OPERATOR_MULTIPLY_SINGLE,
+        isa.Opcode.OPERATOR_ADD_SINGLE,
+        isa.Opcode.COERCE_SINGLE_INTEGER,
+        isa.Opcode.LET,
+        0,
+    });
 }
