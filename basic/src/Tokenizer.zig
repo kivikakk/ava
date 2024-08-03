@@ -163,7 +163,7 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                     // nop
                 } else if ((c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z')) {
                     // nop
-                } else if (c == '$' or c == '%' or c == '&') {
+                } else if (c == '%' or c == '&' or c == '!' or c == '#' or c == '$') {
                     try tx.append(attach(.{ .label = inp[start.offset .. i + 1] }, start.loc, self.loc));
                     state = .init;
                 } else if (c == ':') {

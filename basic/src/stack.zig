@@ -10,6 +10,7 @@ const ErrorInfo = @import("ErrorInfo.zig");
 const Error = error{
     TypeMismatch,
     Unimplemented,
+    Overflow,
 };
 
 pub fn Machine(comptime Effects: type) type {
@@ -96,6 +97,22 @@ pub fn Machine(comptime Effects: type) type {
                             .{ .long = std.mem.readInt(i32, imm, .little) },
                         );
                     },
+                    .PUSH_IMM_SINGLE => {
+                        std.debug.assert(code.len - i + 1 >= 4);
+                        const imm = code[i..][0..4];
+                        i += 4;
+                        var r: [1]f32 = undefined;
+                        @memcpy(std.mem.sliceAsBytes(r[0..]), imm);
+                        try self.stack.append(self.allocator, .{ .single = r[0] });
+                    },
+                    .PUSH_IMM_DOUBLE => {
+                        std.debug.assert(code.len - i + 1 >= 8);
+                        const imm = code[i..][0..8];
+                        i += 8;
+                        var r: [1]f64 = undefined;
+                        @memcpy(std.mem.sliceAsBytes(r[0..]), imm);
+                        try self.stack.append(self.allocator, .{ .double = r[0] });
+                    },
                     .PUSH_IMM_STRING => {
                         std.debug.assert(code.len - i + 1 >= 2);
                         const lenb = code[i..][0..2];
@@ -115,6 +132,36 @@ pub fn Machine(comptime Effects: type) type {
                         errdefer self.valueFree(v);
                         try self.stack.append(self.allocator, v);
                     },
+                    .PROMOTE_INTEGER_LONG => {
+                        std.debug.assert(self.stack.items.len >= 1);
+                        const val = self.stackTake(1);
+                        defer self.valueFreeMany(&val);
+                        try self.stack.append(self.allocator, .{ .long = val[0].integer });
+                    },
+                    .COERCE_INTEGER_SINGLE => {
+                        std.debug.assert(self.stack.items.len >= 1);
+                        const val = self.stackTake(1);
+                        defer self.valueFreeMany(&val);
+                        try self.stack.append(self.allocator, .{ .single = @floatFromInt(val[0].integer) });
+                    },
+                    // .COERCE_INTEGER_DOUBLE => {
+                    .COERCE_LONG_INTEGER => {
+                        std.debug.assert(self.stack.items.len >= 1);
+                        const val = self.stackTake(1);
+                        defer self.valueFreeMany(&val);
+                        const n = val[0].long;
+                        if (n < std.math.minInt(i16) or n > std.math.maxInt(i16))
+                            return ErrorInfo.ret(self, Error.Overflow, "overflow coercing LONG to INTEGER", .{});
+                        try self.stack.append(self.allocator, .{ .integer = @intCast(n) });
+                    },
+                    // .COERCE_LONG_SINGLE => {
+                    // .COERCE_LONG_DOUBLE => {
+                    // .COERCE_SINGLE_INTEGER => {
+                    // .COERCE_SINGLE_LONG => {
+                    // .PROMOTE_SINGLE_DOUBLE => {
+                    // .COERCE_DOUBLE_INTEGER => {
+                    // .COERCE_DOUBLE_LONG => {
+                    // .COERCE_DOUBLE_SINGLE => {
                     .LET => {
                         std.debug.assert(code.len - i + 1 >= 1);
                         std.debug.assert(self.stack.items.len >= 1);
@@ -140,6 +187,32 @@ pub fn Machine(comptime Effects: type) type {
                         const rhs = try self.assertType(vals[1], .integer);
                         try self.stack.append(self.allocator, .{ .integer = lhs + rhs });
                     },
+                    .OPERATOR_ADD_LONG => {
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        // TODO: catch overflow and return error.
+                        const lhs = try self.assertType(vals[0], .long);
+                        const rhs = try self.assertType(vals[1], .long);
+                        try self.stack.append(self.allocator, .{ .long = lhs + rhs });
+                    },
+                    .OPERATOR_ADD_SINGLE => {
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        // TODO: catch overflow and return error.
+                        const lhs = try self.assertType(vals[0], .single);
+                        const rhs = try self.assertType(vals[1], .single);
+                        try self.stack.append(self.allocator, .{ .single = lhs + rhs });
+                    },
+                    .OPERATOR_ADD_DOUBLE => {
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        // TODO: catch overflow and return error.
+                        const lhs = try self.assertType(vals[0], .double);
+                        const rhs = try self.assertType(vals[1], .double);
+                        try self.stack.append(self.allocator, .{ .double = lhs + rhs });
+                    },
                     .OPERATOR_ADD_STRING => {
                         std.debug.assert(self.stack.items.len >= 2);
                         const vals = self.stackTake(2);
@@ -161,12 +234,26 @@ pub fn Machine(comptime Effects: type) type {
                         const rhs = try self.assertType(vals[1], .integer);
                         try self.stack.append(self.allocator, .{ .integer = lhs * rhs });
                     },
+                    // .OPERATOR_MULTIPLY_LONG => {
+                    // .OPERATOR_MULTIPLY_SINGLE => {
+                    // .OPERATOR_MULTIPLY_DOUBLE => {
+                    // .OPERATOR_SUBTRACT_INTEGER => {
+                    // .OPERATOR_SUBTRACT_LONG => {
+                    // .OPERATOR_SUBTRACT_SINGLE => {
+                    // .OPERATOR_SUBTRACT_DOUBLE => {
+                    // .OPERATOR_DIVIDE_INTEGER => {
+                    // .OPERATOR_DIVIDE_LONG => {
+                    // .OPERATOR_DIVIDE_SINGLE => {
+                    // .OPERATOR_DIVIDE_DOUBLE => {
                     .OPERATOR_NEGATE_INTEGER => {
                         std.debug.assert(self.stack.items.len >= 1);
                         const val = self.stackTake(1);
                         defer self.valueFreeMany(&val);
                         try self.stack.append(self.allocator, .{ .integer = -val[0].integer });
                     },
+                    // .OPERATOR_NEGATE_LONG => {
+                    // .OPERATOR_NEGATE_SINGLE => {
+                    // .OPERATOR_NEGATE_DOUBLE => {
                     else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled opcode: {s}", .{@tagName(op)}),
                 }
             }
@@ -297,7 +384,7 @@ fn testoutInner(allocator: Allocator, inp: []const u8, expected: []const u8, err
     try m.effects.expectPrinted(expected);
 }
 
-fn testout(inp: []const u8, expected: []const u8, errorinfo: ?*ErrorInfo) !void {
+fn expectRunOutput(inp: []const u8, expected: []const u8, errorinfo: ?*ErrorInfo) !void {
     try testing.checkAllAllocationFailures(
         testing.allocator,
         testoutInner,
@@ -305,16 +392,16 @@ fn testout(inp: []const u8, expected: []const u8, errorinfo: ?*ErrorInfo) !void 
     );
 }
 
-fn testerr(inp: []const u8, err: anyerror, msg: ?[]const u8) !void {
+fn expectRunError(inp: []const u8, err: anyerror, msg: ?[]const u8) !void {
     var errorinfo: ErrorInfo = .{};
     defer errorinfo.clear(testing.allocator);
-    const eu = testout(inp, "", &errorinfo);
+    const eu = expectRunOutput(inp, "", &errorinfo);
     try testing.expectError(err, eu);
     try testing.expectEqualDeep(msg, errorinfo.msg);
 }
 
 test "print zones" {
-    try testout(
+    try expectRunOutput(
         \\print "a", "b", "c"
         \\print 1;-2;3;
     ,
@@ -325,7 +412,7 @@ test "print zones" {
 }
 
 test "string concat" {
-    try testout(
+    try expectRunOutput(
         \\print "a"+"b"
     ,
         \\ab
@@ -334,13 +421,13 @@ test "string concat" {
 }
 
 test "type mismatch" {
-    try testerr(
+    try expectRunError(
         \\print "a"+2
     , Error.TypeMismatch, "cannot coerce INTEGER to STRING");
 }
 
 test "variable assign and recall" {
-    try testout(
+    try expectRunOutput(
         \\a$ = "koer"
         \\print a$;"a";a$;
     ,
@@ -349,11 +436,19 @@ test "variable assign and recall" {
 }
 
 test "variable reassignment" {
-    try testout(
+    try expectRunOutput(
         \\a$ = "koer"
         \\a$ = a$ + "akass"
         \\print a$
     , "koerakass\n", null);
+}
+
+test "coercion" {
+    try expectRunOutput(
+        \\a! = 1 + 1.5
+        \\b& = 1 + 32768     ' deliberately not testing overflow here
+        \\PRINT a!; b&
+    , " 2.5  32769 \n", null);
 }
 
 // test "variable autovivification" {
