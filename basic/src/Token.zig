@@ -25,7 +25,8 @@ pub fn format(self: Token, comptime fmt: []const u8, options: std.fmt.FormatOpti
 pub const Payload = union(enum) {
     const Self = @This();
 
-    number: i64,
+    integer: i64,
+    single: f32,
     label: []const u8,
     remark: []const u8, // includes leading "REM " or "'"
     string: []const u8, // doesn't include surrounding quotes
@@ -76,7 +77,8 @@ pub const Payload = union(enum) {
         _ = fmt;
         _ = options;
         switch (self) {
-            .number => |n| try std.fmt.format(writer, "Number({d})", .{n}),
+            .integer => |n| try std.fmt.format(writer, "Integer({d})", .{n}),
+            .single => |n| try std.fmt.format(writer, "Single({d})", .{n}),
             .label => |l| try std.fmt.format(writer, "Label({s})", .{l}),
             .remark => |r| try std.fmt.format(writer, "Remark({s})", .{r}),
             .string => |s| try std.fmt.format(writer, "String({s})", .{s}),

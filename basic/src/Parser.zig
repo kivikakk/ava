@@ -175,8 +175,8 @@ fn peekTerminator(self: *Parser) !bool {
 }
 
 fn acceptFactor(self: *Parser) !?Expr {
-    if (self.accept(.number)) |n|
-        return Expr.init(.{ .imm_number = n.payload }, n.range);
+    if (self.accept(.integer)) |n|
+        return Expr.init(.{ .imm_integer = n.payload }, n.range);
 
     if (self.accept(.label)) |l|
         return Expr.init(.{ .label = l.payload }, l.range);
@@ -543,7 +543,7 @@ test "parses a unary statement" {
         Stmt.init(.{ .call = .{
             .name = WithRange([]const u8).init("NYONK", Range.init(.{ 2, 2 }, .{ 2, 6 })),
             .args = &.{
-                Expr.init(.{ .imm_number = 42 }, Range.init(.{ 2, 8 }, .{ 2, 9 })),
+                Expr.init(.{ .imm_integer = 42 }, Range.init(.{ 2, 8 }, .{ 2, 9 })),
             },
         } }, Range.init(.{ 2, 2 }, .{ 2, 9 })),
     }, sx);

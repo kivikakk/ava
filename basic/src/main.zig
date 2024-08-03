@@ -188,7 +188,7 @@ fn mainInteractive(allocator: Allocator) !void {
             try stdout.sync();
         }
 
-        const code = c.compileSx(sx) catch |err| {
+        const code = c.compileStmts(sx) catch |err| {
             try ttyconf.setColor(stdoutwr, .bright_red);
             try showErrorInfo(errorinfo, stdoutwr, .caret);
             try std.fmt.format(stdoutwr, "compile: {s}\n\n", .{@errorName(err)});

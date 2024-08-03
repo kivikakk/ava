@@ -24,7 +24,8 @@ const LocOffset = struct {
 
 const State = union(enum) {
     init,
-    number: LocOffset,
+    integer: LocOffset,
+    floating: LocOffset,
     bareword: LocOffset,
     string: LocOffset,
     fileno: LocOffset,
@@ -71,7 +72,7 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
         switch (state) {
             .init => {
                 if (c >= '0' and c <= '9') {
-                    state = .{ .number = .{ .loc = self.loc, .offset = i } };
+                    state = .{ .integer = .{ .loc = self.loc, .offset = i } };
                 } else if ((c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z')) {
                     state = .{ .bareword = .{ .loc = self.loc, .offset = i } };
                 } else if (c == '"') {
@@ -114,14 +115,42 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                     return Error.UnexpectedChar;
                 }
             },
-            .number => |start| {
+            .integer => |start| {
                 if (c >= '0' and c <= '9') {
                     // nop
                 } else if ((c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z')) {
+                    // XXX: 1e2 / 1d2 ?
                     return Error.UnexpectedChar;
+                } else if (c == '.') {
+                    state = .{ .floating = start };
+                } else if (c == '!') {
+                    try tx.append(attach(.{
+                        .single = try std.fmt.parseFloat(f32, inp[start.offset..i]),
+                    }, start.loc, self.loc));
+                    state = .init;
                 } else {
                     try tx.append(attach(.{
-                        .number = try std.fmt.parseInt(isize, inp[start.offset..i], 10),
+                        .integer = try std.fmt.parseInt(isize, inp[start.offset..i], 10),
+                    }, start.loc, self.loc.back()));
+                    state = .init;
+                    rewind = true;
+                }
+            },
+            .floating => |start| {
+                if (c >= '0' and c <= '9') {
+                    // nop
+                } else if ((c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z')) {
+                    // XXX: 1.0e2 / 1.0d2
+                    return Error.UnexpectedChar;
+                } else if (c == '!') {
+                    try tx.append(attach(.{
+                        .single = try std.fmt.parseFloat(f32, inp[start.offset..i]),
+                    }, start.loc, self.loc));
+                    state = .init;
+                } else {
+                    // XXX: #
+                    try tx.append(attach(.{
+                        .single = try std.fmt.parseFloat(f32, inp[start.offset..i]),
                     }, start.loc, self.loc.back()));
                     state = .init;
                     rewind = true;
@@ -204,8 +233,11 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
 
     switch (state) {
         .init => {},
-        .number => |start| try tx.append(attach(.{
-            .number = try std.fmt.parseInt(isize, inp[start.offset..], 10),
+        .integer => |start| try tx.append(attach(.{
+            .integer = try std.fmt.parseInt(isize, inp[start.offset..], 10),
+        }, start.loc, self.loc.back())),
+        .floating => |start| try tx.append(attach(.{
+            .single = try std.fmt.parseFloat(f32, inp[start.offset..]),
         }, start.loc, self.loc.back())),
         .bareword => |start| {
             if (std.ascii.eqlIgnoreCase(inp[start.offset..], "rem")) {
@@ -295,19 +327,23 @@ fn classifyBareword(bw: []const u8) Token.Payload {
     }
 }
 
+fn expectTokens(input: []const u8, expected: []const Token) !void {
+    const tx = try tokenize(testing.allocator, input, null);
+    defer testing.allocator.free(tx);
+
+    try testing.expectEqualDeep(expected, tx);
+}
+
 test "tokenizes basics" {
-    const tx = try tokenize(testing.allocator,
+    try expectTokens(
         \\if 10 Then END;
         \\  tere maailm%, ava$ = siin& 'okok
         \\Awawa: #7<<>>
         \\REM Hiii :3
         \\REM
-    , null);
-    defer testing.allocator.free(tx);
-
-    try testing.expectEqualDeep(&[_]Token{
+    , &.{
         Token.init(.kw_if, Range.init(.{ 1, 1 }, .{ 1, 2 })),
-        Token.init(.{ .number = 10 }, Range.init(.{ 1, 4 }, .{ 1, 5 })),
+        Token.init(.{ .integer = 10 }, Range.init(.{ 1, 4 }, .{ 1, 5 })),
         Token.init(.kw_then, Range.init(.{ 1, 7 }, .{ 1, 10 })),
         Token.init(.kw_end, Range.init(.{ 1, 12 }, .{ 1, 14 })),
         Token.init(.semicolon, Range.init(.{ 1, 15 }, .{ 1, 15 })),
@@ -329,18 +365,27 @@ test "tokenizes basics" {
         Token.init(.{ .remark = "REM Hiii :3" }, Range.init(.{ 4, 1 }, .{ 4, 11 })),
         Token.init(.linefeed, Range.init(.{ 4, 12 }, .{ 4, 12 })),
         Token.init(.{ .remark = "REM" }, Range.init(.{ 5, 1 }, .{ 5, 3 })),
-    }, tx);
+    });
 }
 
 test "tokenizes strings" {
     // There is no escape.
-    const tx = try tokenize(testing.allocator,
+    try expectTokens(
         \\"abc" "!"
-    , null);
-    defer testing.allocator.free(tx);
-
-    try testing.expectEqualDeep(&[_]Token{
+    , &.{
         Token.init(.{ .string = "abc" }, Range.init(.{ 1, 1 }, .{ 1, 5 })),
         Token.init(.{ .string = "!" }, Range.init(.{ 1, 7 }, .{ 1, 9 })),
-    }, tx);
+    });
+}
+
+test "tokenizes SINGLEs" {
+    try expectTokens(
+        \\1. 2.2 3! 4.! 5.5!
+    , &.{
+        Token.init(.{ .single = 1.0 }, Range.init(.{ 1, 1 }, .{ 1, 2 })),
+        Token.init(.{ .single = 2.2 }, Range.init(.{ 1, 4 }, .{ 1, 6 })),
+        Token.init(.{ .single = 3.0 }, Range.init(.{ 1, 8 }, .{ 1, 9 })),
+        Token.init(.{ .single = 4.0 }, Range.init(.{ 1, 11 }, .{ 1, 13 })),
+        Token.init(.{ .single = 5.5 }, Range.init(.{ 1, 15 }, .{ 1, 18 })),
+    });
 }

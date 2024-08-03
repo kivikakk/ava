@@ -32,7 +32,7 @@ pub fn compile(allocator: Allocator, sx: []Stmt, errorinfo: ?*ErrorInfo) ![]cons
     var compiler = try init(allocator, errorinfo);
     defer compiler.deinit();
 
-    return try compiler.compileSx(sx);
+    return compiler.compileStmts(sx);
 }
 
 pub fn compileText(allocator: Allocator, inp: []const u8, errorinfo: ?*ErrorInfo) ![]const u8 {
@@ -62,84 +62,80 @@ pub fn deinit(self: *Compiler) void {
     self.allocator.destroy(self);
 }
 
-pub fn compileSx(self: *Compiler, sx: []Stmt) ![]const u8 {
-    for (sx) |s| {
-        switch (s.payload) {
-            .remark => {},
-            .call => |c| {
-                for (c.args) |a| {
-                    try self.push(a);
-                }
-                if (std.ascii.eqlIgnoreCase(c.name.payload, "print")) {
-                    try isa.assembleInto(self.writer, .{
-                        isa.Opcode.BUILTIN_PRINT,
-                        @as(u8, @intCast(c.args.len)),
-                    });
-                } else {
-                    return ErrorInfo.ret(self, Error.Unimplemented, "call to \"{s}\"", .{c.name.payload});
-                }
-            },
-            .print => |p| {
-                // Each argument gets BUILTIN_PRINTed.
-                // Between arguments, BUILTIN_PRINT_COMMA advances to the next print zone.
-                // At the end, if there's a trailing comma, another BUILTIN_PRINT_COMMA is used.
-                // If there's a trailing semicolon, we do nothing.
-                // Otherwise, we BUILTIN_PRINT_LINEFEED.
-                for (p.args, 0..) |a, i| {
-                    try self.push(a);
-                    try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT});
-                    if (i < p.separators.len) {
-                        switch (p.separators[i].payload) {
-                            ';' => {},
-                            ',' => try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT_COMMA}),
-                            else => unreachable,
-                        }
-                    }
-                }
-                if (p.separators.len == p.args.len and p.separators.len > 0) {
-                    switch (p.separators[p.args.len - 1].payload) {
-                        ';' => {},
-                        ',' => try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT_COMMA}),
-                        else => unreachable,
-                    }
-                } else {
-                    try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT_LINEFEED});
-                }
-            },
-            .let => |l| {
-                const resolved = try self.labelResolve(l.lhs.payload);
-                const rhsType = try self.typeInfer(l.rhs);
-                if (rhsType != resolved.type)
-                    return ErrorInfo.ret(self, Error.TypeMismatch, "expected type {any}, got {any}", .{ resolved.type, rhsType });
-                try self.push(l.rhs);
-                try isa.assembleInto(self.writer, .{
-                    isa.Opcode.LET,
-                    resolved.slot,
-                });
-            },
-            else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled stmt: {s}", .{@tagName(s.payload)}),
-        }
-    }
+pub fn compileStmts(self: *Compiler, sx: []Stmt) ![]const u8 {
+    for (sx) |s|
+        try self.compileStmt(s);
 
     return self.buf.toOwnedSlice(self.allocator);
 }
 
-fn push(self: *Compiler, e: Expr) !void {
+fn compileStmt(self: *Compiler, s: Stmt) !void {
+    switch (s.payload) {
+        .remark => {},
+        .call => |c| {
+            for (c.args) |a| {
+                _ = try self.compileExpr(a);
+            }
+            return ErrorInfo.ret(self, Error.Unimplemented, "call to \"{s}\"", .{c.name.payload});
+        },
+        .print => |p| {
+            // Each argument gets BUILTIN_PRINTed.
+            // Between arguments, BUILTIN_PRINT_COMMA advances to the next print zone.
+            // At the end, if there's a trailing comma, another BUILTIN_PRINT_COMMA is used.
+            // If there's a trailing semicolon, we do nothing.
+            // Otherwise, we BUILTIN_PRINT_LINEFEED.
+            for (p.args, 0..) |a, i| {
+                // TODO: probably want BUILTIN_PRINT_{type}.
+                _ = try self.compileExpr(a);
+                try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT});
+                if (i < p.separators.len) {
+                    switch (p.separators[i].payload) {
+                        ';' => {},
+                        ',' => try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT_COMMA}),
+                        else => unreachable,
+                    }
+                }
+            }
+            if (p.separators.len == p.args.len and p.separators.len > 0) {
+                switch (p.separators[p.args.len - 1].payload) {
+                    ';' => {},
+                    ',' => try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT_COMMA}),
+                    else => unreachable,
+                }
+            } else {
+                try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT_LINEFEED});
+            }
+        },
+        .let => |l| {
+            const resolved = try self.labelResolve(l.lhs.payload);
+            const rhsType = try self.compileExpr(l.rhs);
+            try self.compileCoerce(rhsType, resolved.type);
+            try isa.assembleInto(self.writer, .{
+                isa.Opcode.LET,
+                resolved.slot,
+            });
+        },
+        else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled stmt: {s}", .{@tagName(s.payload)}),
+    }
+}
+
+fn compileExpr(self: *Compiler, e: Expr) (Allocator.Error || Error)!ty.Type {
     switch (e.payload) {
-        .imm_number => |n| {
+        .imm_integer => |n| {
             if (n >= -std.math.pow(isize, 2, 15) and n <= std.math.pow(isize, 2, 15) - 1) {
                 try isa.assembleInto(self.writer, .{
                     isa.Opcode.PUSH_IMM_INTEGER,
                     isa.Value{ .integer = @truncate(n) },
                 });
+                return .integer;
             } else if (n >= std.math.pow(isize, 2, 31) and n <= std.math.pow(isize, 2, 31) - 1) {
                 try isa.assembleInto(self.writer, .{
                     isa.Opcode.PUSH_IMM_LONG,
                     isa.Value{ .long = @truncate(n) },
                 });
+                return .long;
             } else {
-                // XXX: QBASIC normalises these to doubles.
-                return Error.Overflow;
+                return ErrorInfo.ret(self, Error.Unimplemented, "unhandled imm_integer compile: {d}", .{n});
             }
         },
         .imm_string => |s| {
@@ -147,6 +143,7 @@ fn push(self: *Compiler, e: Expr) !void {
                 isa.Opcode.PUSH_IMM_STRING,
                 isa.Value{ .string = s },
             });
+            return .string;
         },
         .label => |l| {
             const resolved = try self.labelResolve(l);
@@ -154,24 +151,148 @@ fn push(self: *Compiler, e: Expr) !void {
                 isa.Opcode.PUSH_VARIABLE,
                 resolved.slot,
             });
+            return resolved.type;
         },
         .binop => |b| {
-            try self.push(b.lhs.*);
-            try self.push(b.rhs.*);
+            const resultType = try self.compileBinopOperands(b.lhs.*, b.rhs.*);
+
             const opc: isa.Opcode = switch (b.op.payload) {
-                .add => .OPERATOR_ADD,
-                .mul => .OPERATOR_MULTIPLY,
+                .add => switch (resultType) {
+                    .integer => .OPERATOR_ADD_INTEGER,
+                    .long => .OPERATOR_ADD_LONG,
+                    .single => .OPERATOR_ADD_SINGLE,
+                    .double => .OPERATOR_ADD_DOUBLE,
+                    .string => .OPERATOR_ADD_STRING,
+                },
+                .mul => switch (resultType) {
+                    .integer => .OPERATOR_MULTIPLY_INTEGER,
+                    .long => .OPERATOR_MULTIPLY_LONG,
+                    .single => .OPERATOR_MULTIPLY_SINGLE,
+                    .double => .OPERATOR_MULTIPLY_DOUBLE,
+                    .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot multiply a STRING", .{}),
+                },
                 else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled opcode: {s}", .{@tagName(b.op.payload)}),
             };
             try isa.assembleInto(self.writer, .{opc});
+
+            return resultType;
         },
-        .paren => |e2| try self.push(e2.*),
+        .paren => |e2| return try self.compileExpr(e2.*),
         .negate => |e2| {
-            try self.push(e2.*);
-            try isa.assembleInto(self.writer, .{isa.Opcode.OPERATOR_NEGATE});
+            const resultType = try self.compileExpr(e2.*);
+            const op: isa.Opcode = switch (resultType) {
+                .integer => .OPERATOR_NEGATE_INTEGER,
+                .long => .OPERATOR_NEGATE_LONG,
+                .single => .OPERATOR_NEGATE_SINGLE,
+                .double => .OPERATOR_NEGATE_DOUBLE,
+                .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot negate a STRING", .{}),
+            };
+            try isa.assembleInto(self.writer, .{op});
+            return resultType;
         },
         // else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled Expr type in Compiler.push: {s}", .{@tagName(e.payload)}),
     }
+}
+
+fn compileCoerce(self: *Compiler, from: ty.Type, to: ty.Type) !void {
+    if (from == to) return;
+
+    const op: isa.Opcode = switch (from) {
+        .integer => switch (to) {
+            .integer => unreachable,
+            .long => .PROMOTE_INTEGER_LONG,
+            .single => .COERCE_INTEGER_SINGLE,
+            .double => .COERCE_INTEGER_DOUBLE,
+            .string => return self.cannotCoerce(from, to),
+        },
+        .long => switch (to) {
+            .integer => .COERCE_LONG_INTEGER,
+            .long => unreachable,
+            .single => .COERCE_LONG_SINGLE,
+            .double => .COERCE_LONG_DOUBLE,
+            .string => return self.cannotCoerce(from, to),
+        },
+        .single => switch (to) {
+            .integer => .COERCE_SINGLE_INTEGER,
+            .long => .COERCE_SINGLE_LONG,
+            .single => unreachable,
+            .double => .PROMOTE_SINGLE_DOUBLE,
+            .string => return self.cannotCoerce(from, to),
+        },
+        .double => switch (to) {
+            .integer => .COERCE_DOUBLE_INTEGER,
+            .long => .COERCE_DOUBLE_LONG,
+            .single => .COERCE_DOUBLE_SINGLE,
+            .double => unreachable,
+            .string => return self.cannotCoerce(from, to),
+        },
+        .string => return self.cannotCoerce(from, to),
+    };
+
+    try isa.assembleInto(self.writer, .{op});
+}
+
+fn cannotCoerce(self: *const Compiler, from: ty.Type, to: ty.Type) (Error || Allocator.Error) {
+    return ErrorInfo.ret(self, Error.TypeMismatch, "cannot coerce {any} to {any}", .{ from, to });
+}
+
+fn compileBinopOperands(self: *Compiler, lhs: Expr, rhs: Expr) !ty.Type {
+    // INTEGER < LONG < SINGLE < DOUBLE
+    const lhsType = try self.compileExpr(lhs);
+
+    // Compile RHS to get type; snip off the generated code and append after we
+    // do any necessary coercion. (It was either this or do stack swapsies in
+    // the generated code.)
+    const index = self.buf.items.len;
+    const rhsType = try self.compileExpr(rhs);
+    const rhsCode = try self.allocator.dupe(u8, self.buf.items[index..]);
+    defer self.allocator.free(rhsCode);
+    self.buf.items.len = index;
+
+    const resultType: ty.Type = switch (lhsType) {
+        .integer => switch (rhsType) {
+            .integer => .integer,
+            .long => .long,
+            .single => .single,
+            .double => .double,
+            .string => return self.cannotCoerce(rhsType, lhsType),
+        },
+        .long => switch (rhsType) {
+            .integer => .long,
+            .long => .long,
+            .single => .single,
+            .double => .double,
+            .string => return self.cannotCoerce(rhsType, lhsType),
+        },
+        .single => switch (rhsType) {
+            .integer => .single,
+            .long => .single,
+            .single => .single,
+            .double => .double,
+            .string => return self.cannotCoerce(rhsType, lhsType),
+        },
+        .double => switch (rhsType) {
+            .integer => .double,
+            .long => .double,
+            .single => .double,
+            .double => .double,
+            .string => return self.cannotCoerce(rhsType, lhsType),
+        },
+        .string => switch (rhsType) {
+            .integer => return self.cannotCoerce(rhsType, lhsType),
+            .long => return self.cannotCoerce(rhsType, lhsType),
+            .single => return self.cannotCoerce(rhsType, lhsType),
+            .double => return self.cannotCoerce(rhsType, lhsType),
+            .string => .string,
+        },
+    };
+
+    try self.compileCoerce(lhsType, resultType);
+
+    try self.writer.writeAll(rhsCode);
+    try self.compileCoerce(rhsType, resultType);
+
+    return resultType;
 }
 
 const ResolvedLabel = struct {
@@ -179,7 +300,7 @@ const ResolvedLabel = struct {
     type: ty.Type,
 };
 
-pub fn labelResolve(self: *Compiler, l: []const u8) !ResolvedLabel {
+fn labelResolve(self: *Compiler, l: []const u8) !ResolvedLabel {
     std.debug.assert(l.len > 0);
 
     var key: []u8 = undefined;
@@ -215,34 +336,6 @@ pub fn labelResolve(self: *Compiler, l: []const u8) !ResolvedLabel {
     return .{ .slot = slot, .type = typ };
 }
 
-pub fn typeInfer(self: *const Compiler, e: Expr) !ty.Type {
-    // XXX awful.
-    return switch (e.payload) {
-        .imm_number => |i| if (i >= -std.math.pow(isize, 2, 15) and i <= std.math.pow(isize, 2, 15) - 1)
-            .integer
-        else if (i >= -std.math.pow(isize, 2, 31) and i <= std.math.pow(isize, 2, 31) - 1)
-            .long
-        else
-            // XXX: double? See Compiler.push.
-            error.Overflow,
-        .imm_string => .string,
-        .label => |l| l: {
-            // XXX consult slot list
-            break :l ty.Type.forLabel(l);
-        },
-        .binop => |b| b: {
-            // XXX: 2 * 2.5? 2.5 * 2? 2.0 * 2?
-            // XXX: For now, accept same type only.
-            const l = try self.typeInfer(b.lhs.*);
-            const r = try self.typeInfer(b.rhs.*);
-            if (l != r)
-                return ErrorInfo.ret(self, Error.TypeMismatch, "binop type mismatch XXX {any} != {any}", .{ l, r });
-            break :b l;
-        },
-        .paren, .negate => |e2| self.typeInfer(e2.*),
-    };
-}
-
 test "compile shrimple" {
     const code = try compileText(testing.allocator,
         \\PRINT 123
@@ -275,8 +368,8 @@ test "compile less shrimple" {
         isa.Value{ .integer = 5 },
         isa.Opcode.PUSH_IMM_INTEGER,
         isa.Value{ .integer = 4 },
-        isa.Opcode.OPERATOR_MULTIPLY,
-        isa.Opcode.OPERATOR_ADD,
+        isa.Opcode.OPERATOR_MULTIPLY_INTEGER,
+        isa.Opcode.OPERATOR_ADD_INTEGER,
         isa.Opcode.BUILTIN_PRINT,
         isa.Opcode.BUILTIN_PRINT_COMMA,
         isa.Opcode.PUSH_IMM_INTEGER,
@@ -313,7 +406,7 @@ test "compile variable access" {
         0,
         isa.Opcode.PUSH_VARIABLE,
         1,
-        isa.Opcode.OPERATOR_ADD,
+        isa.Opcode.OPERATOR_ADD_INTEGER,
         isa.Opcode.LET,
         2,
     });
@@ -343,5 +436,5 @@ fn testerr(inp: []const u8, err: anyerror, msg: ?[]const u8) !void {
 test "variable type match" {
     try testerr(
         \\a="x"
-    , Error.TypeMismatch, "expected type SINGLE, got STRING");
+    , Error.TypeMismatch, "cannot coerce STRING to SINGLE");
 }

@@ -37,16 +37,4 @@ pub const Type = enum {
         for (@tagName(self)) |c|
             try writer.writeByte(std.ascii.toUpper(c));
     }
-
-    pub fn forLabel(label: []const u8) Type {
-        std.debug.assert(label.len > 0);
-        return switch (label[label.len - 1]) {
-            '%' => .integer,
-            '&' => .long,
-            '!' => .single,
-            '#' => .double,
-            '$' => .string,
-            else => .integer,
-        };
-    }
 };

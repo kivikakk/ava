@@ -131,52 +131,43 @@ pub fn Machine(comptime Effects: type) type {
                     },
                     .BUILTIN_PRINT_COMMA => try self.effects.printComma(),
                     .BUILTIN_PRINT_LINEFEED => try self.effects.printLinefeed(),
-                    .OPERATOR_ADD => {
+                    .OPERATOR_ADD_INTEGER => {
                         std.debug.assert(self.stack.items.len >= 2);
                         const vals = self.stackTake(2);
                         defer self.valueFreeMany(&vals);
-                        switch (vals[0]) {
-                            .integer => |lhs| {
-                                const rhs = try self.assertType(vals[1], .integer);
-                                try self.stack.append(self.allocator, .{ .integer = lhs + rhs });
-                            },
-                            .long => |lhs| {
-                                const rhs = try self.assertType(vals[1], .long);
-                                try self.stack.append(self.allocator, .{ .long = lhs + rhs });
-                            },
-                            .string => |lhs| {
-                                const rhs = try self.assertType(vals[1], .string);
-                                const v = try self.allocator.alloc(u8, lhs.len + rhs.len);
-                                errdefer self.allocator.free(v);
-                                @memcpy(v[0..lhs.len], lhs);
-                                @memcpy(v[lhs.len..], rhs);
-                                try self.stack.append(self.allocator, .{ .string = v });
-                            },
-                            // else => {
-                            //     // TODO: need locinfo from bytecode.
-                            //     return ErrorInfo.ret(self, Error.Unimplemented, "unhandled add: {s}", .{@tagName(vals[0])});
-                            // },
-                        }
+                        // TODO: catch overflow and return error.
+                        const lhs = try self.assertType(vals[0], .integer);
+                        const rhs = try self.assertType(vals[1], .integer);
+                        try self.stack.append(self.allocator, .{ .integer = lhs + rhs });
                     },
-                    .OPERATOR_MULTIPLY => {
+                    .OPERATOR_ADD_STRING => {
                         std.debug.assert(self.stack.items.len >= 2);
                         const vals = self.stackTake(2);
                         defer self.valueFreeMany(&vals);
-                        switch (vals[0]) {
-                            .integer => |lhs| {
-                                const rhs = vals[1].integer;
-                                try self.stack.append(self.allocator, .{ .integer = lhs * rhs });
-                            },
-                            else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled multiply: {s}", .{@tagName(vals[0])}),
-                        }
+                        // TODO: catch overflow and return error.
+                        const lhs = try self.assertType(vals[0], .string);
+                        const rhs = try self.assertType(vals[1], .string);
+                        const v = try self.allocator.alloc(u8, lhs.len + rhs.len);
+                        errdefer self.allocator.free(v);
+                        @memcpy(v[0..lhs.len], lhs);
+                        @memcpy(v[lhs.len..], rhs);
+                        try self.stack.append(self.allocator, .{ .string = v });
                     },
-                    .OPERATOR_NEGATE => {
+                    .OPERATOR_MULTIPLY_INTEGER => {
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        const lhs = try self.assertType(vals[0], .integer);
+                        const rhs = try self.assertType(vals[1], .integer);
+                        try self.stack.append(self.allocator, .{ .integer = lhs * rhs });
+                    },
+                    .OPERATOR_NEGATE_INTEGER => {
                         std.debug.assert(self.stack.items.len >= 1);
                         const val = self.stackTake(1);
                         defer self.valueFreeMany(&val);
                         try self.stack.append(self.allocator, .{ .integer = -val[0].integer });
                     },
-                    // else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled opcode: {s}", .{@tagName(op)}),
+                    else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled opcode: {s}", .{@tagName(op)}),
                 }
             }
         }
@@ -345,7 +336,7 @@ test "string concat" {
 test "type mismatch" {
     try testerr(
         \\print "a"+2
-    , Error.TypeMismatch, "expected type string, got integer");
+    , Error.TypeMismatch, "cannot coerce INTEGER to STRING");
 }
 
 test "variable assign and recall" {
