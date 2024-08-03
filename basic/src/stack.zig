@@ -144,7 +144,12 @@ pub fn Machine(comptime Effects: type) type {
                         defer self.valueFreeMany(&val);
                         try self.stack.append(self.allocator, .{ .single = @floatFromInt(val[0].integer) });
                     },
-                    // .COERCE_INTEGER_DOUBLE => {
+                    .COERCE_INTEGER_DOUBLE => {
+                        std.debug.assert(self.stack.items.len >= 1);
+                        const val = self.stackTake(1);
+                        defer self.valueFreeMany(&val);
+                        try self.stack.append(self.allocator, .{ .double = @floatFromInt(val[0].integer) });
+                    },
                     .COERCE_LONG_INTEGER => {
                         std.debug.assert(self.stack.items.len >= 1);
                         const val = self.stackTake(1);
@@ -154,14 +159,74 @@ pub fn Machine(comptime Effects: type) type {
                             return ErrorInfo.ret(self, Error.Overflow, "overflow coercing LONG to INTEGER", .{});
                         try self.stack.append(self.allocator, .{ .integer = @intCast(n) });
                     },
-                    // .COERCE_LONG_SINGLE => {
-                    // .COERCE_LONG_DOUBLE => {
-                    // .COERCE_SINGLE_INTEGER => {
-                    // .COERCE_SINGLE_LONG => {
-                    // .PROMOTE_SINGLE_DOUBLE => {
-                    // .COERCE_DOUBLE_INTEGER => {
-                    // .COERCE_DOUBLE_LONG => {
-                    // .COERCE_DOUBLE_SINGLE => {
+                    .COERCE_LONG_SINGLE => {
+                        std.debug.assert(self.stack.items.len >= 1);
+                        const val = self.stackTake(1);
+                        defer self.valueFreeMany(&val);
+                        try self.stack.append(self.allocator, .{ .single = @floatFromInt(val[0].long) });
+                    },
+                    .COERCE_LONG_DOUBLE => {
+                        std.debug.assert(self.stack.items.len >= 1);
+                        const val = self.stackTake(1);
+                        defer self.valueFreeMany(&val);
+                        try self.stack.append(self.allocator, .{ .double = @floatFromInt(val[0].long) });
+                    },
+                    .COERCE_SINGLE_INTEGER => {
+                        std.debug.assert(self.stack.items.len >= 1);
+                        const val = self.stackTake(1);
+                        defer self.valueFreeMany(&val);
+                        const n = val[0].single;
+                        const r: i16 = if (n < std.math.minInt(i16) or n > std.math.maxInt(i16))
+                            std.math.minInt(i16)
+                        else
+                            @intFromFloat(n);
+                        try self.stack.append(self.allocator, .{ .integer = r });
+                    },
+                    .COERCE_SINGLE_LONG => {
+                        std.debug.assert(self.stack.items.len >= 1);
+                        const val = self.stackTake(1);
+                        defer self.valueFreeMany(&val);
+                        const n = val[0].single;
+                        const r: i32 = if (n < std.math.minInt(i32) or n > std.math.maxInt(i32))
+                            std.math.minInt(i32)
+                        else
+                            @intFromFloat(n);
+                        try self.stack.append(self.allocator, .{ .long = r });
+                    },
+                    .PROMOTE_SINGLE_DOUBLE => {
+                        std.debug.assert(self.stack.items.len >= 1);
+                        const val = self.stackTake(1);
+                        defer self.valueFreeMany(&val);
+                        try self.stack.append(self.allocator, .{ .double = val[0].single });
+                    },
+                    .COERCE_DOUBLE_INTEGER => {
+                        std.debug.assert(self.stack.items.len >= 1);
+                        const val = self.stackTake(1);
+                        defer self.valueFreeMany(&val);
+                        const n = val[0].double;
+                        const r: i16 = if (n < std.math.minInt(i16) or n > std.math.maxInt(i16))
+                            std.math.minInt(i16)
+                        else
+                            @intFromFloat(n);
+                        try self.stack.append(self.allocator, .{ .integer = r });
+                    },
+                    .COERCE_DOUBLE_LONG => {
+                        std.debug.assert(self.stack.items.len >= 1);
+                        const val = self.stackTake(1);
+                        defer self.valueFreeMany(&val);
+                        const n = val[0].double;
+                        const r: i32 = if (n < std.math.minInt(i32) or n > std.math.maxInt(i32))
+                            std.math.minInt(i32)
+                        else
+                            @intFromFloat(n);
+                        try self.stack.append(self.allocator, .{ .long = r });
+                    },
+                    .COERCE_DOUBLE_SINGLE => {
+                        std.debug.assert(self.stack.items.len >= 1);
+                        const val = self.stackTake(1);
+                        defer self.valueFreeMany(&val);
+                        try self.stack.append(self.allocator, .{ .single = @floatCast(val[0].double) });
+                    },
                     .LET => {
                         std.debug.assert(code.len - i + 1 >= 1);
                         std.debug.assert(self.stack.items.len >= 1);
