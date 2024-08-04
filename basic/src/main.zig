@@ -67,7 +67,8 @@ fn usage(executable_name: ?[:0]const u8, status: u8) noreturn {
 
 fn mainRun(allocator: Allocator, filename: []const u8) !void {
     const stdout = std.io.getStdOut();
-    const stdoutwr = stdout.writer();
+    var stdoutbw = std.io.bufferedWriter(stdout.writer());
+    const stdoutwr = stdoutbw.writer();
     var ttyconf = std.io.tty.detectConfig(stdout);
 
     const inp = try std.fs.cwd().readFileAlloc(allocator, filename, 1048576);
@@ -78,6 +79,7 @@ fn mainRun(allocator: Allocator, filename: []const u8) !void {
         try ttyconf.setColor(stdoutwr, .bright_red);
         try showErrorInfo(errorinfo, stdoutwr, .loc);
         try std.fmt.format(stdoutwr, "parse: {s}\n\n", .{@errorName(err)});
+        try stdoutbw.flush();
         return err;
     };
     defer Parser.free(allocator, sx);
@@ -86,7 +88,7 @@ fn mainRun(allocator: Allocator, filename: []const u8) !void {
         const out = try print.print(allocator, sx);
         defer allocator.free(out);
 
-        try stdout.writeAll(out);
+        try stdoutwr.writeAll(out);
     }
 
     if (options.ast) {
@@ -99,10 +101,12 @@ fn mainRun(allocator: Allocator, filename: []const u8) !void {
             try ttyconf.setColor(stdoutwr, .bright_red);
             try showErrorInfo(errorinfo, stdoutwr, .loc);
             try std.fmt.format(stdoutwr, "compile: {s}\n\n", .{@errorName(err)});
+            try stdoutbw.flush();
             return err;
         };
         defer allocator.free(code);
 
+        try stdoutbw.flush();
         try xxd(code);
     }
 
@@ -111,17 +115,21 @@ fn mainRun(allocator: Allocator, filename: []const u8) !void {
             try ttyconf.setColor(stdoutwr, .bright_red);
             try showErrorInfo(errorinfo, stdoutwr, .loc);
             try std.fmt.format(stdoutwr, "compile: {s}\n\n", .{@errorName(err)});
+            try stdoutbw.flush();
             return err;
         };
         defer allocator.free(code);
 
-        var m = stack.Machine(RunEffects).init(allocator, try RunEffects.init(allocator, std.io.getStdOut()), &errorinfo);
+        var m = stack.Machine(RunEffects).init(allocator, try RunEffects.init(allocator, stdout), &errorinfo);
         defer m.deinit();
+
+        try stdoutbw.flush();
 
         m.run(code) catch |err| {
             try ttyconf.setColor(stdoutwr, .bright_red);
             try showErrorInfo(errorinfo, stdoutwr, .loc);
             try std.fmt.format(stdoutwr, "run error: {s}\n\n", .{@errorName(err)});
+            try stdoutbw.flush();
             return err;
         };
     }
@@ -129,7 +137,8 @@ fn mainRun(allocator: Allocator, filename: []const u8) !void {
 
 fn mainInteractive(allocator: Allocator) !void {
     const stdout = std.io.getStdOut();
-    const stdoutwr = stdout.writer();
+    var stdoutbw = std.io.bufferedWriter(stdout.writer());
+    const stdoutwr = stdoutbw.writer();
     var ttyconf = std.io.tty.detectConfig(stdout);
     const stdin = std.io.getStdIn();
     var stdinbuf = std.io.bufferedReader(stdin.reader());
@@ -151,9 +160,9 @@ fn mainInteractive(allocator: Allocator) !void {
 
         // TODO: readline(-like).
         try ttyconf.setColor(stdoutwr, .reset);
-        try stdout.writeAll("> ");
+        try stdoutwr.writeAll("> ");
         try ttyconf.setColor(stdoutwr, .bold);
-        try stdout.sync();
+        try stdoutbw.flush();
 
         const inp = try stdinrd.readUntilDelimiterOrEofAlloc(allocator, '\n', 1048576) orelse
             break;
@@ -175,17 +184,17 @@ fn mainInteractive(allocator: Allocator) !void {
             defer allocator.free(out);
 
             try ttyconf.setColor(stdoutwr, .blue);
-            try stdout.writeAll(out);
+            try stdoutwr.writeAll(out);
             try ttyconf.setColor(stdoutwr, .reset);
-            try stdout.sync();
+            try stdoutbw.flush();
         }
 
         if (options.ast) {
             try ttyconf.setColor(stdoutwr, .green);
             for (sx) |s|
-                try s.formatAst(0, stdout.writer());
+                try s.formatAst(0, stdoutwr);
             try ttyconf.setColor(stdoutwr, .reset);
-            try stdout.sync();
+            try stdoutbw.flush();
         }
 
         const code = c.compileStmts(sx) catch |err| {
@@ -208,7 +217,8 @@ fn mainInteractive(allocator: Allocator) !void {
     }
 
     try ttyconf.setColor(stdoutwr, .reset);
-    try stdout.writeAll("\ngoobai\n");
+    try stdoutwr.writeAll("\ngoobai\n");
+    try stdoutbw.flush();
 }
 
 fn showErrorInfo(errorinfo: ErrorInfo, writer: anytype, lockind: enum { caret, loc }) !void {
@@ -230,49 +240,51 @@ fn showErrorInfo(errorinfo: ErrorInfo, writer: anytype, lockind: enum { caret, l
 }
 
 fn xxd(code: []const u8) !void {
-    var stdout = std.io.getStdOut();
-    var writer = stdout.writer();
+    const stdout = std.io.getStdOut();
+    var stdoutbw = std.io.bufferedWriter(stdout.writer());
+    const stdoutwr = stdoutbw.writer();
     var ttyconf = std.io.tty.detectConfig(stdout);
 
     var i: usize = 0;
 
     while (i < code.len) : (i += 16) {
-        try ttyconf.setColor(writer, .white);
-        try std.fmt.format(writer, "{x:0>4}:", .{i});
+        try ttyconf.setColor(stdoutwr, .white);
+        try std.fmt.format(stdoutwr, "{x:0>4}:", .{i});
         const c = @min(code.len - i, 16);
         for (0..c) |j| {
             const ch = code[i + j];
             if (j % 2 == 0)
-                try writer.writeByte(' ');
+                try stdoutwr.writeByte(' ');
             if (ch < 32 or ch > 126)
-                try ttyconf.setColor(writer, .bright_yellow)
+                try ttyconf.setColor(stdoutwr, .bright_yellow)
             else
-                try ttyconf.setColor(writer, .bright_green);
-            try std.fmt.format(writer, "{x:0>2}", .{ch});
+                try ttyconf.setColor(stdoutwr, .bright_green);
+            try std.fmt.format(stdoutwr, "{x:0>2}", .{ch});
         }
 
         for (c..16) |j| {
             if (j % 2 == 0)
-                try writer.writeByte(' ');
-            try writer.writeAll("  ");
+                try stdoutwr.writeByte(' ');
+            try stdoutwr.writeAll("  ");
         }
 
-        try writer.writeAll("  ");
+        try stdoutwr.writeAll("  ");
         for (0..c) |j| {
             const ch = code[i + j];
             if (ch < 32 or ch > 126) {
-                try ttyconf.setColor(writer, .bright_yellow);
-                try writer.writeByte('.');
+                try ttyconf.setColor(stdoutwr, .bright_yellow);
+                try stdoutwr.writeByte('.');
             } else {
-                try ttyconf.setColor(writer, .bright_green);
-                try writer.writeByte(ch);
+                try ttyconf.setColor(stdoutwr, .bright_green);
+                try stdoutwr.writeByte(ch);
             }
         }
 
-        try writer.writeByte('\n');
+        try stdoutwr.writeByte('\n');
     }
 
-    try ttyconf.setColor(writer, .reset);
+    try ttyconf.setColor(stdoutwr, .reset);
+    try stdoutbw.flush();
 }
 
 const RunEffects = struct {
@@ -302,7 +314,6 @@ const RunEffects = struct {
     fn writerFn(self: *Self, m: []const u8) std.fs.File.WriteError!usize {
         self.printloc.write(m);
         try self.out.writeAll(m);
-        try self.out.sync();
         return m.len;
     }
 
