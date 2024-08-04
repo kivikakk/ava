@@ -143,6 +143,13 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                         .pointed = false,
                         .state = .init,
                     } };
+                } else if (c == 'd' or c == 'D') {
+                    state = .{ .floating_exponent = .{
+                        .start = start,
+                        .double = true,
+                        .pointed = false,
+                        .state = .init,
+                    } };
                 } else if (c == '.') {
                     state = .{ .floating = start };
                 } else if (c == '!') {
@@ -172,6 +179,13 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                     state = .{ .floating_exponent = .{
                         .start = start,
                         .double = false,
+                        .pointed = true,
+                        .state = .init,
+                    } };
+                } else if (c == 'd' or c == 'D') {
+                    state = .{ .floating_exponent = .{
+                        .start = start,
+                        .double = true,
                         .pointed = true,
                         .state = .init,
                     } };
@@ -399,10 +413,7 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
 fn attach(payload: Token.Payload, start: Loc, end: Loc) Token {
     return .{
         .payload = payload,
-        .range = .{
-            .start = start,
-            .end = end,
-        },
+        .range = .{ .start = start, .end = end },
     };
 }
 
@@ -427,19 +438,30 @@ fn resolveFloating(s: []const u8) !Token.Payload {
 
 fn resolveExponent(self: *Tokenizer, double: bool, s: []const u8) !Token.Payload {
     std.debug.assert(s.len > 0);
-    if (s[s.len - 1] == '+' or s[s.len - 1] == '-') {
+
+    var s2 = std.ArrayListUnmanaged(u8){};
+    defer s2.deinit(self.allocator);
+
+    try s2.appendSlice(self.allocator, s);
+
+    if (s2.items[s2.items.len - 1] == '+' or s2.items[s2.items.len - 1] == '-') {
         // QBASIC allows "5e+" or "12e-"; std.fmt.parseFloat does not.
-        var s2 = try self.allocator.alloc(u8, s.len + 1);
-        defer self.allocator.free(s2);
-        @memcpy(s2[0..s.len], s);
-        s2[s.len] = '0';
-        return self.resolveExponent(double, s2);
+        try s2.append(self.allocator, '0');
+    }
+
+    for (s2.items) |*c| {
+        // QBASIC differentiates 1e5 (SINGLE) from 1d5 (DOUBLE).
+        // std.fmt.parseFloat doesn't like 'd'.
+        if (c.* == 'd')
+            c.* = 'e'
+        else if (c.* == 'D')
+            c.* = 'E';
     }
 
     return if (double)
-        .{ .double = try std.fmt.parseFloat(f64, s) }
+        .{ .double = try std.fmt.parseFloat(f64, s2.items) }
     else
-        .{ .single = try std.fmt.parseFloat(f32, s) };
+        .{ .single = try std.fmt.parseFloat(f32, s2.items) };
 }
 
 // TODO: replace with table (same with other direction above).
@@ -568,11 +590,17 @@ test "tokenizes SINGLEs" {
 
 test "tokenizes DOUBLEs" {
     try expectTokens(
-        \\1.2345678 2# 2147483648 3.45#
+        \\1.2345678 2# 2147483648 3.45# 1d10 2D-5 4.4d+8 5D+ 6d
     , &.{
         Token.init(.{ .double = 1.2345678 }, Range.init(.{ 1, 1 }, .{ 1, 9 })),
         Token.init(.{ .double = 2.0 }, Range.init(.{ 1, 11 }, .{ 1, 12 })),
         Token.init(.{ .double = 2147483648.0 }, Range.init(.{ 1, 14 }, .{ 1, 23 })),
         Token.init(.{ .double = 3.45 }, Range.init(.{ 1, 25 }, .{ 1, 29 })),
+        Token.init(.{ .double = 1e10 }, Range.init(.{ 1, 31 }, .{ 1, 34 })),
+        Token.init(.{ .double = 2e-5 }, Range.init(.{ 1, 36 }, .{ 1, 39 })),
+        Token.init(.{ .double = 4.4e+8 }, Range.init(.{ 1, 41 }, .{ 1, 46 })),
+        Token.init(.{ .double = 5E+0 }, Range.init(.{ 1, 48 }, .{ 1, 50 })),
+        Token.init(.{ .integer = 6 }, Range.init(.{ 1, 52 }, .{ 1, 52 })),
+        Token.init(.{ .label = "d" }, Range.init(.{ 1, 53 }, .{ 1, 53 })),
     });
 }
