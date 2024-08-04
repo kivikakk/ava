@@ -516,6 +516,19 @@ test "coercion" {
     , " 2.5  32769 \n", null);
 }
 
+test "DOUBLE literal" {
+    try expectRunOutput(
+        \\a# = 12.345678901
+        \\b# = 12.345678901#
+        \\PRINT a#; b#
+        \\PRINT 12.345678901#; 12.345678901
+    ,
+        \\ 12.345678901  12.345678901 
+        \\ 12.345678901  12.345678901 
+        \\
+    , null);
+}
+
 // test "variable autovivification" {
 //     try testout(
 //         \\a = 1 * b

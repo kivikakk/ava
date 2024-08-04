@@ -128,6 +128,11 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                         .single = try std.fmt.parseFloat(f32, inp[start.offset..i]),
                     }, start.loc, self.loc));
                     state = .init;
+                } else if (c == '#') {
+                    try tx.append(attach(.{
+                        .double = try std.fmt.parseFloat(f64, inp[start.offset..i]),
+                    }, start.loc, self.loc));
+                    state = .init;
                 } else {
                     try tx.append(attach(
                         try resolveIntegral(inp[start.offset..i]),
@@ -149,11 +154,17 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                         .single = try std.fmt.parseFloat(f32, inp[start.offset..i]),
                     }, start.loc, self.loc));
                     state = .init;
-                } else {
-                    // XXX: #
+                } else if (c == '#') {
                     try tx.append(attach(.{
-                        .single = try std.fmt.parseFloat(f32, inp[start.offset..i]),
-                    }, start.loc, self.loc.back()));
+                        .double = try std.fmt.parseFloat(f64, inp[start.offset..i]),
+                    }, start.loc, self.loc));
+                    state = .init;
+                } else {
+                    try tx.append(attach(
+                        try resolveFloating(inp[start.offset..i]),
+                        start.loc,
+                        self.loc.back(),
+                    ));
                     state = .init;
                     rewind = true;
                 }
@@ -240,9 +251,11 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
             start.loc,
             self.loc.back(),
         )),
-        .floating => |start| try tx.append(attach(.{
-            .single = try std.fmt.parseFloat(f32, inp[start.offset..]),
-        }, start.loc, self.loc.back())),
+        .floating => |start| try tx.append(attach(
+            try resolveFloating(inp[start.offset..]),
+            start.loc,
+            self.loc.back(),
+        )),
         .bareword => |start| {
             if (std.ascii.eqlIgnoreCase(inp[start.offset..], "rem")) {
                 try tx.append(attach(.{
@@ -285,6 +298,14 @@ fn resolveIntegral(s: []const u8) !Token.Payload {
     } else {
         return .{ .double = @floatFromInt(n) };
     }
+}
+
+fn resolveFloating(s: []const u8) !Token.Payload {
+    // This is an ugly heuristic, but it approximates QBASIC's ...
+    return if (s.len > 8)
+        .{ .double = try std.fmt.parseFloat(f64, s) }
+    else
+        .{ .single = try std.fmt.parseFloat(f32, s) };
 }
 
 // TODO: replace with table (same with other direction above).
@@ -402,5 +423,16 @@ test "tokenizes SINGLEs" {
         Token.init(.{ .single = 3.0 }, Range.init(.{ 1, 8 }, .{ 1, 9 })),
         Token.init(.{ .single = 4.0 }, Range.init(.{ 1, 11 }, .{ 1, 13 })),
         Token.init(.{ .single = 5.5 }, Range.init(.{ 1, 15 }, .{ 1, 18 })),
+    });
+}
+
+test "tokenizes DOUBLEs" {
+    try expectTokens(
+        \\1.2345678 2# 2147483648 3.45#
+    , &.{
+        Token.init(.{ .double = 1.2345678 }, Range.init(.{ 1, 1 }, .{ 1, 9 })),
+        Token.init(.{ .double = 2.0 }, Range.init(.{ 1, 11 }, .{ 1, 12 })),
+        Token.init(.{ .double = 2147483648.0 }, Range.init(.{ 1, 14 }, .{ 1, 23 })),
+        Token.init(.{ .double = 3.45 }, Range.init(.{ 1, 25 }, .{ 1, 29 })),
     });
 }

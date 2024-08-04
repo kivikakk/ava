@@ -80,14 +80,14 @@ pub const Payload = union(enum) {
     endif,
 
     pub fn formatAst(self: Self, indent: usize, writer: anytype) !void {
-        for (0..indent) |_| try writer.writeAll("  ");
+        try writer.writeBytesNTimes("  ", indent);
 
         switch (self) {
             .remark => |r| try std.fmt.format(writer, "Remark: <{s}>\n", .{r}),
             .call => |c| {
                 try std.fmt.format(writer, "Call <{s}> with {d} argument(s):\n", .{ c.name.payload, c.args.len });
                 for (c.args, 0..) |a, i| {
-                    for (0..indent + 1) |_| try writer.writeAll("  ");
+                    try writer.writeBytesNTimes("  ", indent + 1);
                     try std.fmt.format(writer, "{d}: ", .{i});
                     try a.formatAst(indent + 1, writer);
                 }
@@ -95,14 +95,19 @@ pub const Payload = union(enum) {
             .print => |p| {
                 try std.fmt.format(writer, "Print with {d} argument(s):\n", .{p.args.len});
                 for (p.args, 0..) |a, i| {
-                    for (0..indent + 1) |_| try writer.writeAll("  ");
+                    try writer.writeBytesNTimes("  ", indent + 1);
                     try std.fmt.format(writer, "{d}: ", .{i});
                     try a.formatAst(indent + 1, writer);
                     if (i < p.args.len - 1) {
-                        for (0..indent + 1) |_| try writer.writeAll("  ");
+                        try writer.writeBytesNTimes("  ", indent + 1);
                         try std.fmt.format(writer, "separated by '{c}'\n", .{p.separators[i].payload});
                     }
                 }
+            },
+            .let => |l| {
+                try std.fmt.format(writer, "Let <{s}>:\n", .{l.lhs.payload});
+                try writer.writeBytesNTimes("  ", indent + 1);
+                try l.rhs.payload.formatAst(indent + 1, writer);
             },
             else => unreachable,
         }
