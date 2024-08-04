@@ -2,6 +2,9 @@ Ava BASIC
 =========
 
 https://sr.ht/~kivikakk/ava
+    git: https://git.sr.ht/~kivikakk/ava
+   todo: https://todo.sr.ht/~kivikakk/ava
+  lists: https://sr.ht/~kivikakk/ava/lists
 
 basic/
   Compiler and host-side stack machine interpreter.
