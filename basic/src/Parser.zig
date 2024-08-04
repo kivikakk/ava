@@ -532,37 +532,35 @@ fn acceptStmtEnd(self: *Parser) !?Stmt {
     return Stmt.init(.end, k.range);
 }
 
-test "parses a nullary call" {
-    const sx = try parse(testing.allocator, "NYONK\n", null);
+fn expectParse(input: []const u8, expected: []const Stmt) !void {
+    const sx = try parse(testing.allocator, input, null);
     defer free(testing.allocator, sx);
 
-    try testing.expectEqualDeep(&[_]Stmt{
+    try testing.expectEqualDeep(expected, sx);
+}
+
+test "parses a nullary call" {
+    try expectParse("NYONK\n", &.{
         Stmt.init(.{ .call = .{
             .name = WithRange([]const u8).init("NYONK", Range.init(.{ 1, 1 }, .{ 1, 5 })),
             .args = &.{},
         } }, Range.init(.{ 1, 1 }, .{ 1, 5 })),
-    }, sx);
+    });
 }
 
 test "parses a unary statement" {
-    const sx = try parse(testing.allocator, "\n NYONK 42\n", null);
-    defer free(testing.allocator, sx);
-
-    try testing.expectEqualDeep(&[_]Stmt{
+    try expectParse("\n NYONK 42\n", &.{
         Stmt.init(.{ .call = .{
             .name = WithRange([]const u8).init("NYONK", Range.init(.{ 2, 2 }, .{ 2, 6 })),
             .args = &.{
                 Expr.init(.{ .imm_integer = 42 }, Range.init(.{ 2, 8 }, .{ 2, 9 })),
             },
         } }, Range.init(.{ 2, 2 }, .{ 2, 9 })),
-    }, sx);
+    });
 }
 
 test "parses a binary statement" {
-    const sx = try parse(testing.allocator, "NYONK X$, Y%\n", null);
-    defer free(testing.allocator, sx);
-
-    try testing.expectEqualDeep(&[_]Stmt{
+    try expectParse("NYONK X$, Y%\n", &.{
         Stmt.init(.{ .call = .{
             .name = WithRange([]const u8).init("NYONK", Range.init(.{ 1, 1 }, .{ 1, 5 })),
             .args = &.{
@@ -570,14 +568,11 @@ test "parses a binary statement" {
                 Expr.init(.{ .label = "Y%" }, Range.init(.{ 1, 11 }, .{ 1, 12 })),
             },
         } }, Range.init(.{ 1, 1 }, .{ 1, 12 })),
-    }, sx);
+    });
 }
 
 test "parses a PRINT statement with semicolons" {
-    const sx = try parse(testing.allocator, "PRINT X$, Y%; Z&\n", null);
-    defer free(testing.allocator, sx);
-
-    try testing.expectEqualDeep(&[_]Stmt{
+    try expectParse("PRINT X$, Y%; Z&\n", &.{
         Stmt.init(.{ .print = .{
             .args = &.{
                 Expr.init(.{ .label = "X$" }, Range.init(.{ 1, 7 }, .{ 1, 8 })),
@@ -589,14 +584,11 @@ test "parses a PRINT statement with semicolons" {
                 WithRange(u8).init(';', Range.init(.{ 1, 13 }, .{ 1, 13 })),
             },
         } }, Range.init(.{ 1, 1 }, .{ 1, 16 })),
-    }, sx);
+    });
 }
 
 test "parses a PRINT statement with trailing separator" {
-    const sx = try parse(testing.allocator, "PRINT X$, Y%; Z&,\n", null);
-    defer free(testing.allocator, sx);
-
-    try testing.expectEqualDeep(&[_]Stmt{
+    try expectParse("PRINT X$, Y%; Z&,\n", &.{
         Stmt.init(.{ .print = .{
             .args = &.{
                 Expr.init(.{ .label = "X$" }, Range.init(.{ 1, 7 }, .{ 1, 8 })),
@@ -609,7 +601,7 @@ test "parses a PRINT statement with trailing separator" {
                 WithRange(u8).init(',', Range.init(.{ 1, 17 }, .{ 1, 17 })),
             },
         } }, Range.init(.{ 1, 1 }, .{ 1, 17 })),
-    }, sx);
+    });
 }
 
 test "parse error" {
