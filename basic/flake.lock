@@ -37,7 +37,6 @@
     "gitignore": {
       "inputs": {
         "nixpkgs": [
-          "zls",
           "nixpkgs"
         ]
       },
@@ -86,9 +85,10 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
+        "gitignore": "gitignore",
         "nixpkgs": "nixpkgs",
         "zig-overlay": "zig-overlay",
-        "zls": "zls"
+        "zls-flake": "zls-flake"
       }
     },
     "systems": {
@@ -130,12 +130,14 @@
         "type": "github"
       }
     },
-    "zls": {
+    "zls-flake": {
       "inputs": {
         "flake-utils": [
           "flake-utils"
         ],
-        "gitignore": "gitignore",
+        "gitignore": [
+          "gitignore"
+        ],
         "langref": "langref",
         "nixpkgs": [
           "nixpkgs"
