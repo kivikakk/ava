@@ -43,9 +43,9 @@
         ];
       };
 
-      packages.default = packages.ava;
-      packages.ava = pkgs.stdenvNoCC.mkDerivation {
-        name = "ava";
+      packages.default = packages.basic;
+      packages.basic = pkgs.stdenvNoCC.mkDerivation {
+        name = "basic";
         version = "main";
         src = gitignoreSource ./.;
         nativeBuildInputs = [zig];
