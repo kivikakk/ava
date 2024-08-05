@@ -107,7 +107,7 @@ fn compileStmt(self: *Compiler, s: Stmt) !void {
             }
         },
         .let => |l| {
-            const resolved = try self.labelResolve(l.lhs.payload);
+            const resolved = try self.labelResolve(l.lhs.payload, .write);
             const rhsType = try self.compileExpr(l.rhs);
             try self.compileCoerce(rhsType, resolved.type);
             try isa.assembleInto(self.writer, .{
@@ -163,11 +163,36 @@ fn compileExpr(self: *Compiler, e: Expr) (Allocator.Error || Error)!ty.Type {
             return .string;
         },
         .label => |l| {
-            const resolved = try self.labelResolve(l);
-            try isa.assembleInto(self.writer, .{
-                isa.Opcode.PUSH_VARIABLE,
-                resolved.slot,
-            });
+            const resolved = try self.labelResolve(l, .read);
+            if (resolved.slot) |slot| {
+                try isa.assembleInto(self.writer, .{
+                    isa.Opcode.PUSH_VARIABLE,
+                    slot,
+                });
+            } else {
+                switch (resolved.type) {
+                    .integer => try isa.assembleInto(self.writer, .{
+                        isa.Opcode.PUSH_IMM_INTEGER,
+                        isa.Value{ .integer = 0 },
+                    }),
+                    .long => try isa.assembleInto(self.writer, .{
+                        isa.Opcode.PUSH_IMM_LONG,
+                        isa.Value{ .long = 0 },
+                    }),
+                    .single => try isa.assembleInto(self.writer, .{
+                        isa.Opcode.PUSH_IMM_SINGLE,
+                        isa.Value{ .single = 0 },
+                    }),
+                    .double => try isa.assembleInto(self.writer, .{
+                        isa.Opcode.PUSH_IMM_DOUBLE,
+                        isa.Value{ .double = 0 },
+                    }),
+                    .string => try isa.assembleInto(self.writer, .{
+                        isa.Opcode.PUSH_IMM_STRING,
+                        isa.Value{ .string = "" },
+                    }),
+                }
+            }
             return resolved.type;
         },
         .binop => |b| {
@@ -266,6 +291,9 @@ fn compileBinopOperands(self: *Compiler, lhs: Expr, rhs: Expr) !ty.Type {
     defer self.allocator.free(rhsCode);
     self.buf.items.len = index;
 
+    // XXX: divide operators do not always produce the same type as the
+    // operands. (fdiv on ints; idiv on floats.)
+
     const resultType: ty.Type = switch (lhsType) {
         .integer => switch (rhsType) {
             .integer => .integer,
@@ -312,12 +340,19 @@ fn compileBinopOperands(self: *Compiler, lhs: Expr, rhs: Expr) !ty.Type {
     return resultType;
 }
 
-const ResolvedLabel = struct {
-    slot: u8,
-    type: ty.Type,
-};
+const Rw = enum { read, write };
 
-fn labelResolve(self: *Compiler, l: []const u8) !ResolvedLabel {
+fn ResolvedLabel(comptime rw: Rw) type {
+    return if (rw == .read) struct {
+        slot: ?u8 = null,
+        type: ty.Type,
+    } else struct {
+        slot: u8,
+        type: ty.Type,
+    };
+}
+
+fn labelResolve(self: *Compiler, l: []const u8, comptime rw: Rw) !ResolvedLabel(rw) {
     std.debug.assert(l.len > 0);
 
     var key: []u8 = undefined;
@@ -337,20 +372,20 @@ fn labelResolve(self: *Compiler, l: []const u8) !ResolvedLabel {
         key[l.len] = typ.sigil();
     }
 
-    var slot: u8 = undefined;
-
     if (self.slots.getEntry(key)) |e| {
         self.allocator.free(key);
-        slot = e.value_ptr.*;
+        return .{ .slot = e.value_ptr.*, .type = typ };
+    } else if (rw == .read) {
+        // autovivify
+        self.allocator.free(key);
+        return .{ .type = typ };
     } else {
         errdefer self.allocator.free(key);
-        slot = self.nextslot;
+        const slot = self.nextslot;
         self.nextslot += 1;
-
         try self.slots.putNoClobber(self.allocator, key, slot);
+        return .{ .slot = slot, .type = typ };
     }
-
-    return .{ .slot = slot, .type = typ };
 }
 
 fn expectCompile(input: []const u8, assembly: anytype) !void {
@@ -465,5 +500,19 @@ test "promotion and coercion" {
         isa.Opcode.COERCE_SINGLE_INTEGER,
         isa.Opcode.LET,
         0,
+    });
+}
+
+test "autovivification" {
+    try expectCompile(
+        \\PRINT a%; a$
+    , .{
+        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Value{ .integer = 0 },
+        isa.Opcode.BUILTIN_PRINT,
+        isa.Opcode.PUSH_IMM_STRING,
+        isa.Value{ .string = "" },
+        isa.Opcode.BUILTIN_PRINT,
+        isa.Opcode.BUILTIN_PRINT_LINEFEED,
     });
 }

@@ -11,3 +11,6 @@ PRAGMA PRINTED " 7             9 \n"
 c% = 32767.5
 PRINT c%
 PRAGMA PRINTED "-32768 \n"
+
+PRINT d%; d&; d!; d#; d$
+PRAGMA PRINTED " 0  0  0  0 \n"

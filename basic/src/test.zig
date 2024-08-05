@@ -99,7 +99,7 @@ fn expectFunctional(allocator: Allocator, path: []const u8, contents: []const u8
     defer allocator.free(code);
 
     var m = stack.Machine(stack.TestEffects).init(allocator, try stack.TestEffects.init(), null);
-    errdefer m.deinit();
+    defer m.deinit();
 
     try m.run(code);
 }

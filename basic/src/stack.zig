@@ -300,26 +300,168 @@ pub fn Machine(comptime Effects: type) type {
                         const rhs = try self.assertType(vals[1], .integer);
                         try self.stack.append(self.allocator, .{ .integer = lhs * rhs });
                     },
-                    // .OPERATOR_MULTIPLY_LONG => {
-                    // .OPERATOR_MULTIPLY_SINGLE => {
-                    // .OPERATOR_MULTIPLY_DOUBLE => {
-                    // .OPERATOR_SUBTRACT_INTEGER => {
-                    // .OPERATOR_SUBTRACT_LONG => {
-                    // .OPERATOR_SUBTRACT_SINGLE => {
-                    // .OPERATOR_SUBTRACT_DOUBLE => {
-                    // .OPERATOR_DIVIDE_INTEGER => {
-                    // .OPERATOR_DIVIDE_LONG => {
-                    // .OPERATOR_DIVIDE_SINGLE => {
-                    // .OPERATOR_DIVIDE_DOUBLE => {
+                    .OPERATOR_MULTIPLY_LONG => {
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        const lhs = try self.assertType(vals[0], .long);
+                        const rhs = try self.assertType(vals[1], .long);
+                        try self.stack.append(self.allocator, .{ .long = lhs * rhs });
+                    },
+                    .OPERATOR_MULTIPLY_SINGLE => {
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        const lhs = try self.assertType(vals[0], .single);
+                        const rhs = try self.assertType(vals[1], .single);
+                        try self.stack.append(self.allocator, .{ .single = lhs * rhs });
+                    },
+                    .OPERATOR_MULTIPLY_DOUBLE => {
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        const lhs = try self.assertType(vals[0], .double);
+                        const rhs = try self.assertType(vals[1], .double);
+                        try self.stack.append(self.allocator, .{ .double = lhs * rhs });
+                    },
+                    .OPERATOR_SUBTRACT_INTEGER => {
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        const lhs = try self.assertType(vals[0], .integer);
+                        const rhs = try self.assertType(vals[1], .integer);
+                        try self.stack.append(self.allocator, .{ .integer = lhs - rhs });
+                    },
+                    .OPERATOR_SUBTRACT_LONG => {
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        const lhs = try self.assertType(vals[0], .long);
+                        const rhs = try self.assertType(vals[1], .long);
+                        try self.stack.append(self.allocator, .{ .long = lhs - rhs });
+                    },
+                    .OPERATOR_SUBTRACT_SINGLE => {
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        const lhs = try self.assertType(vals[0], .single);
+                        const rhs = try self.assertType(vals[1], .single);
+                        try self.stack.append(self.allocator, .{ .single = lhs - rhs });
+                    },
+                    .OPERATOR_SUBTRACT_DOUBLE => {
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        const lhs = try self.assertType(vals[0], .double);
+                        const rhs = try self.assertType(vals[1], .double);
+                        try self.stack.append(self.allocator, .{ .double = lhs - rhs });
+                    },
+                    .OPERATOR_IDIVIDE_INTEGER => {
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        const lhs = try self.assertType(vals[0], .integer);
+                        const rhs = try self.assertType(vals[1], .integer);
+                        try self.stack.append(self.allocator, .{ .integer = @divTrunc(lhs, rhs) });
+                    },
+                    .OPERATOR_IDIVIDE_LONG => {
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        const lhs = try self.assertType(vals[0], .long);
+                        const rhs = try self.assertType(vals[1], .long);
+                        try self.stack.append(self.allocator, .{ .long = @divTrunc(lhs, rhs) });
+                    },
+                    .OPERATOR_IDIVIDE_SINGLE => {
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        const lhs = try self.assertType(vals[0], .single);
+                        const rhs = try self.assertType(vals[1], .single);
+                        // XXX: specific rules around whether integer or long is produced?
+                        try self.stack.append(self.allocator, .{
+                            .integer = @divTrunc(
+                                @as(i16, @intFromFloat(@round(lhs))),
+                                @as(i16, @intFromFloat(@round(rhs))),
+                            ),
+                        });
+                    },
+                    .OPERATOR_IDIVIDE_DOUBLE => {
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        const lhs = try self.assertType(vals[0], .double);
+                        const rhs = try self.assertType(vals[1], .double);
+                        // XXX: specific rules around whether integer or long is produced?
+                        try self.stack.append(self.allocator, .{
+                            .long = @divTrunc(
+                                @as(i32, @intFromFloat(@round(lhs))),
+                                @as(i32, @intFromFloat(@round(rhs))),
+                            ),
+                        });
+                    },
+                    .OPERATOR_FDIVIDE_INTEGER => {
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        const lhs = try self.assertType(vals[0], .integer);
+                        const rhs = try self.assertType(vals[1], .integer);
+                        // XXX: specific rules around whether single or double is produced?
+                        try self.stack.append(self.allocator, .{
+                            .single = @as(f32, @floatFromInt(lhs)) / @as(f32, @floatFromInt(rhs)),
+                        });
+                    },
+                    .OPERATOR_FDIVIDE_LONG => {
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        const lhs = try self.assertType(vals[0], .long);
+                        const rhs = try self.assertType(vals[1], .long);
+                        // XXX: specific rules around whether single or double is produced?
+                        try self.stack.append(self.allocator, .{
+                            .single = @as(f32, @floatFromInt(lhs)) / @as(f32, @floatFromInt(rhs)),
+                        });
+                    },
+                    .OPERATOR_FDIVIDE_SINGLE => {
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        const lhs = try self.assertType(vals[0], .single);
+                        const rhs = try self.assertType(vals[1], .single);
+                        try self.stack.append(self.allocator, .{ .single = lhs / rhs });
+                    },
+                    .OPERATOR_FDIVIDE_DOUBLE => {
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        const lhs = try self.assertType(vals[0], .double);
+                        const rhs = try self.assertType(vals[1], .double);
+                        try self.stack.append(self.allocator, .{ .double = lhs / rhs });
+                    },
                     .OPERATOR_NEGATE_INTEGER => {
                         std.debug.assert(self.stack.items.len >= 1);
                         const val = self.stackTake(1);
                         defer self.valueFreeMany(&val);
                         try self.stack.append(self.allocator, .{ .integer = -val[0].integer });
                     },
-                    // .OPERATOR_NEGATE_LONG => {
-                    // .OPERATOR_NEGATE_SINGLE => {
-                    // .OPERATOR_NEGATE_DOUBLE => {
+                    .OPERATOR_NEGATE_LONG => {
+                        std.debug.assert(self.stack.items.len >= 1);
+                        const val = self.stackTake(1);
+                        defer self.valueFreeMany(&val);
+                        try self.stack.append(self.allocator, .{ .long = -val[0].long });
+                    },
+                    .OPERATOR_NEGATE_SINGLE => {
+                        std.debug.assert(self.stack.items.len >= 1);
+                        const val = self.stackTake(1);
+                        defer self.valueFreeMany(&val);
+                        try self.stack.append(self.allocator, .{ .single = -val[0].single });
+                    },
+                    .OPERATOR_NEGATE_DOUBLE => {
+                        std.debug.assert(self.stack.items.len >= 1);
+                        const val = self.stackTake(1);
+                        defer self.valueFreeMany(&val);
+                        try self.stack.append(self.allocator, .{ .double = -val[0].double });
+                    },
                     .PRAGMA_PRINTED => {
                         std.debug.assert(code.len - i + 1 >= 2);
                         const lenb = code[i..][0..2];
@@ -331,7 +473,7 @@ pub fn Machine(comptime Effects: type) type {
                         defer self.allocator.free(s);
                         try self.effects.expectPrinted(s);
                     },
-                    else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled opcode: {s}", .{@tagName(op)}),
+                    // else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled opcode: {s}", .{@tagName(op)}),
                 }
             }
         }
@@ -544,10 +686,10 @@ test "DOUBLE literal" {
     , null);
 }
 
-// test "variable autovivification" {
-//     try testout(
-//         \\a = 1 * b
-//         \\a$ = "x" + b$
-//         \\print a; b$
-//     , "0x\n", null);
-// }
+test "variable autovivification" {
+    try expectRunOutput(
+        \\a = 1 * b
+        \\a$ = "x" + b$
+        \\print a; a$
+    , " 0 x\n", null);
+}
