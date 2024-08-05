@@ -331,4 +331,10 @@ const RunEffects = struct {
     pub fn printLinefeed(self: *Self) !void {
         try self.outwr.writeByte('\n');
     }
+
+    pub fn pragmaPrinted(self: *Self, s: []const u8) !void {
+        _ = self;
+        _ = s;
+        unreachable;
+    }
 };

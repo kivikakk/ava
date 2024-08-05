@@ -471,7 +471,7 @@ pub fn Machine(comptime Effects: type) type {
                         i += len;
                         const s = try @"test".parsePragmaString(self.allocator, str);
                         defer self.allocator.free(s);
-                        try self.effects.expectPrinted(s);
+                        try self.effects.pragmaPrinted(s);
                     },
                     // else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled opcode: {s}", .{@tagName(op)}),
                 }
@@ -497,14 +497,15 @@ pub const TestEffects = struct {
     };
     const PrintedWriter = std.io.GenericWriter(*Self, Allocator.Error, writerFn);
 
-    printed: std.ArrayListUnmanaged(u8),
+    printed: std.ArrayListUnmanaged(u8) = .{},
     printedwr: PrintedWriter,
     printloc: PrintLoc = .{},
+
+    expectations: std.ArrayListUnmanaged(struct { exp: []u8, act: []u8 }) = .{},
 
     pub fn init() !*Self {
         const self = try testing.allocator.create(Self);
         self.* = .{
-            .printed = .{},
             .printedwr = PrintedWriter{ .context = self },
         };
         return self;
@@ -512,6 +513,11 @@ pub const TestEffects = struct {
 
     pub fn deinit(self: *Self) void {
         self.printed.deinit(testing.allocator);
+        for (self.expectations.items) |e| {
+            testing.allocator.free(e.exp);
+            testing.allocator.free(e.act);
+        }
+        self.expectations.deinit(testing.allocator);
         testing.allocator.destroy(self);
     }
 
@@ -539,6 +545,16 @@ pub const TestEffects = struct {
     pub fn expectPrinted(self: *Self, s: []const u8) !void {
         try testing.expectEqualStrings(s, self.printed.items);
         self.printed.items.len = 0;
+    }
+
+    pub fn pragmaPrinted(self: *Self, s: []const u8) !void {
+        const exp = try testing.allocator.dupe(u8, s);
+        errdefer testing.allocator.free(exp);
+
+        const act = try self.printed.toOwnedSlice(testing.allocator);
+        errdefer testing.allocator.free(act);
+
+        try self.expectations.append(testing.allocator, .{ .exp = exp, .act = act });
     }
 };
 
