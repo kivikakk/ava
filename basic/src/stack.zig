@@ -6,6 +6,7 @@ const isa = @import("isa.zig");
 const Compiler = @import("Compiler.zig");
 const PrintLoc = @import("PrintLoc.zig");
 const ErrorInfo = @import("ErrorInfo.zig");
+const @"test" = @import("test.zig");
 
 const Error = error{
     TypeMismatch,
@@ -319,6 +320,17 @@ pub fn Machine(comptime Effects: type) type {
                     // .OPERATOR_NEGATE_LONG => {
                     // .OPERATOR_NEGATE_SINGLE => {
                     // .OPERATOR_NEGATE_DOUBLE => {
+                    .PRAGMA_PRINTED => {
+                        std.debug.assert(code.len - i + 1 >= 2);
+                        const lenb = code[i..][0..2];
+                        i += 2;
+                        const len = std.mem.readInt(u16, lenb, .little);
+                        const str = code[i..][0..len];
+                        i += len;
+                        const s = try @"test".parsePragmaString(self.allocator, str);
+                        defer self.allocator.free(s);
+                        try self.effects.expectPrinted(s);
+                    },
                     else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled opcode: {s}", .{@tagName(op)}),
                 }
             }
@@ -336,9 +348,11 @@ pub fn Machine(comptime Effects: type) type {
     };
 }
 
-const TestEffects = struct {
+pub const TestEffects = struct {
     const Self = @This();
-    pub const Error = error{};
+    pub const Error = error{
+        TestExpectedEqual, // for expectPrinted
+    };
     const PrintedWriter = std.io.GenericWriter(*Self, Allocator.Error, writerFn);
 
     printed: std.ArrayListUnmanaged(u8),
@@ -382,6 +396,7 @@ const TestEffects = struct {
 
     pub fn expectPrinted(self: *Self, s: []const u8) !void {
         try testing.expectEqualStrings(s, self.printed.items);
+        self.printed.items.len = 0;
     }
 };
 
@@ -442,7 +457,7 @@ test "actually print a calculated thing" {
     try m.effects.expectPrinted(" 7 \n");
 }
 
-fn testoutInner(allocator: Allocator, inp: []const u8, expected: []const u8, errorinfo: ?*ErrorInfo) !void {
+fn expectRunOutputInner(allocator: Allocator, inp: []const u8, expected: []const u8, errorinfo: ?*ErrorInfo) !void {
     var m = try testRunBas(allocator, inp, errorinfo);
     defer m.deinit();
 
@@ -452,7 +467,7 @@ fn testoutInner(allocator: Allocator, inp: []const u8, expected: []const u8, err
 fn expectRunOutput(inp: []const u8, expected: []const u8, errorinfo: ?*ErrorInfo) !void {
     try testing.checkAllAllocationFailures(
         testing.allocator,
-        testoutInner,
+        expectRunOutputInner,
         .{ inp, expected, errorinfo },
     );
 }

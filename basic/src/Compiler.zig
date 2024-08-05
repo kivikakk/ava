@@ -115,6 +115,12 @@ fn compileStmt(self: *Compiler, s: Stmt) !void {
                 resolved.slot,
             });
         },
+        .pragma_printed => |p| {
+            try isa.assembleInto(self.writer, .{
+                isa.Opcode.PRAGMA_PRINTED,
+                isa.Value{ .string = p.payload },
+            });
+        },
         else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled stmt: {s}", .{@tagName(s.payload)}),
     }
 }

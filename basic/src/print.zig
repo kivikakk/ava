@@ -7,6 +7,7 @@ const Stmt = @import("ast/Stmt.zig");
 const Parser = @import("Parser.zig");
 const loc = @import("loc.zig");
 const Loc = loc.Loc;
+const @"test" = @import("test.zig");
 
 const Printer = struct {
     const Self = @This();
@@ -196,6 +197,11 @@ const Printer = struct {
             },
             .end => try self.writer.writeAll("END"),
             .endif => try self.writer.writeAll("END IF"),
+            .pragma_printed => |p| {
+                try self.writer.writeAll("PRAGMA PRINTED ");
+                try self.advance(p.range);
+                try std.fmt.format(self.writer, "\"{s}\"", .{p.payload});
+            },
         }
     }
 
@@ -214,22 +220,26 @@ pub fn print(allocator: Allocator, sx: []Stmt) ![]const u8 {
     return p.print(sx);
 }
 
-fn testppInner(allocator: Allocator, inp: []const u8) !void {
-    const sx = try Parser.parse(allocator, inp, null);
+fn expectPpRoundtrip(allocator: Allocator, path: []const u8, contents: []const u8) !void {
+    _ = path;
+
+    const sx = try Parser.parse(allocator, contents, null);
     defer Parser.free(allocator, sx);
 
     const out = try print(allocator, sx);
     defer allocator.free(out);
 
-    try testing.expectEqualStrings(inp, out);
+    try testing.expectEqualStrings(contents, out);
 }
 
-fn testpp(comptime path: []const u8) !void {
-    const inp = @embedFile("bas/" ++ path);
-    try testing.checkAllAllocationFailures(testing.allocator, testppInner, .{inp});
-}
+test "roundtrips" {
+    const matches = try @"test".matchingBasPaths("pprt.");
+    defer matches.deinit();
 
-test "testpp" {
-    try testpp("printif.bas");
-    try testpp("loopslabels.bas");
+    for (matches.entries) |e|
+        try testing.checkAllAllocationFailures(
+            testing.allocator,
+            expectPpRoundtrip,
+            .{ e.path, e.contents },
+        );
 }

@@ -121,6 +121,7 @@ fn parseOne(self: *Parser) (Error || Allocator.Error)!?Stmt {
     if (try self.acceptStmtNext()) |s| return s;
     if (try self.acceptStmtGoto()) |s| return s;
     if (try self.acceptStmtEnd()) |s| return s;
+    if (try self.acceptStmtPragma()) |s| return s;
 
     return Error.UnexpectedToken;
 }
@@ -530,6 +531,18 @@ fn acceptStmtEnd(self: *Parser) !?Stmt {
     if (!try self.peekTerminator())
         return Error.ExpectedTerminator;
     return Stmt.init(.end, k.range);
+}
+
+fn acceptStmtPragma(self: *Parser) !?Stmt {
+    const k = self.accept(.kw_pragma) orelse return null;
+    const kind = try self.expect(.label);
+
+    if (std.ascii.eqlIgnoreCase(kind.payload, "PRINTED")) {
+        const s = try self.expect(.string);
+        return Stmt.init(.{ .pragma_printed = s }, Range.initEnds(k.range, s.range));
+    } else {
+        return Error.UnexpectedToken;
+    }
 }
 
 fn expectParse(input: []const u8, expected: []const Stmt) !void {

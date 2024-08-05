@@ -78,6 +78,7 @@ pub const Payload = union(enum) {
     goto: WithRange([]const u8),
     end,
     endif,
+    pragma_printed: WithRange([]const u8),
 
     pub fn formatAst(self: Self, indent: usize, writer: anytype) !void {
         try writer.writeBytesNTimes("  ", indent);
@@ -149,6 +150,7 @@ pub const Payload = union(enum) {
             .goto => {},
             .end => {},
             .endif => {},
+            .pragma_printed => {},
         }
     }
 };

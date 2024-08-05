@@ -464,7 +464,7 @@ fn resolveExponent(self: *Tokenizer, double: bool, s: []const u8) !Token.Payload
         .{ .single = try std.fmt.parseFloat(f32, s2.items) };
 }
 
-// TODO: replace with table (same with other direction above).
+// TODO: replace with table (same with other direction in Token.format).
 fn classifyBareword(bw: []const u8) Token.Payload {
     if (std.ascii.eqlIgnoreCase(bw, "if")) {
         return .kw_if;
@@ -514,6 +514,8 @@ fn classifyBareword(bw: []const u8) Token.Payload {
         return .kw_or;
     } else if (std.ascii.eqlIgnoreCase(bw, "xor")) {
         return .kw_xor;
+    } else if (std.ascii.eqlIgnoreCase(bw, "pragma")) {
+        return .kw_pragma;
     } else {
         return .{ .label = bw };
     }

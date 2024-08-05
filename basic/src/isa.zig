@@ -46,6 +46,7 @@ pub const Opcode = enum(u8) {
     OPERATOR_NEGATE_LONG = 0xe3,
     OPERATOR_NEGATE_SINGLE = 0xe4,
     OPERATOR_NEGATE_DOUBLE = 0xe5,
+    PRAGMA_PRINTED = 0xfe,
 };
 
 pub const Value = union(enum) {
