@@ -60,6 +60,7 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
     var i: usize = 0;
     var rewind: usize = 0;
     var rewinds: [1]Loc = undefined;
+    var lastWasCr = false;
     while (i < inp.len) : ({
         // XXX: This rewinder isn't robust to multiple consecutive rewind=2.
         if (rewind == 0) {
@@ -86,6 +87,8 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
         }
     }) {
         const c = inp[i];
+        const lastWasWasCr = lastWasCr;
+        lastWasCr = false;
 
         switch (state) {
             .init => {
@@ -99,8 +102,14 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                     // nop
                 } else if (c == '\t') {
                     // nop
+                } else if (c == '\r') {
+                    lastWasCr = true;
                 } else if (c == '\n') {
-                    try tx.append(attach(.linefeed, self.loc, self.loc));
+                    try tx.append(attach(
+                        .linefeed,
+                        if (lastWasWasCr) self.loc.back() else self.loc,
+                        self.loc,
+                    ));
                 } else if (c == '\'') {
                     state = .{ .remark = .{ .loc = self.loc, .offset = i } };
                 } else if (c == ',') {
@@ -119,6 +128,8 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                     try tx.append(attach(.asterisk, self.loc, self.loc));
                 } else if (c == '/') {
                     try tx.append(attach(.fslash, self.loc, self.loc));
+                } else if (c == '\\') {
+                    try tx.append(attach(.bslash, self.loc, self.loc));
                 } else if (c == '(') {
                     try tx.append(attach(.pareno, self.loc, self.loc));
                 } else if (c == ')') {
@@ -152,6 +163,16 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                     } };
                 } else if (c == '.') {
                     state = .{ .floating = start };
+                } else if (c == '%') {
+                    try tx.append(attach(.{
+                        .integer = try std.fmt.parseInt(i16, inp[start.offset..i], 10),
+                    }, start.loc, self.loc));
+                    state = .init;
+                } else if (c == '&') {
+                    try tx.append(attach(.{
+                        .long = try std.fmt.parseInt(i32, inp[start.offset..i], 10),
+                    }, start.loc, self.loc));
+                    state = .init;
                 } else if (c == '!') {
                     try tx.append(attach(.{
                         .single = try std.fmt.parseFloat(f32, inp[start.offset..i]),
@@ -304,7 +325,7 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                 }
             },
             .remark => |start| {
-                if (c == '\n') {
+                if (c == '\r' or c == '\n') {
                     try tx.append(attach(.{
                         .remark = inp[start.offset..i],
                     }, start.loc, self.loc.back()));
@@ -604,5 +625,15 @@ test "tokenizes DOUBLEs" {
         Token.init(.{ .double = 5E+0 }, Range.init(.{ 1, 48 }, .{ 1, 50 })),
         Token.init(.{ .integer = 6 }, Range.init(.{ 1, 52 }, .{ 1, 52 })),
         Token.init(.{ .label = "d" }, Range.init(.{ 1, 53 }, .{ 1, 53 })),
+    });
+}
+
+test "handles carriage returns" {
+    // If you save a file from QBASIC for realsies ...
+    try expectTokens("awa\r\nwa\n", &.{
+        Token.init(.{ .label = "awa" }, Range.init(.{ 1, 1 }, .{ 1, 3 })),
+        Token.init(.linefeed, Range.init(.{ 1, 4 }, .{ 1, 5 })),
+        Token.init(.{ .label = "wa" }, Range.init(.{ 2, 1 }, .{ 2, 2 })),
+        Token.init(.linefeed, Range.init(.{ 2, 3 }, .{ 2, 3 })),
     });
 }

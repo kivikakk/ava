@@ -27,3 +27,16 @@ pub fn ret(target: anytype, err: anytype, comptime fmt: []const u8, args: anytyp
         ei.msg = try std.fmt.allocPrint(target.allocator, fmt, args);
     return err;
 }
+
+pub fn format(self: ErrorInfo, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+    var space = false;
+    if (self.loc) |l| {
+        try l.format(fmt, options, writer);
+        space = true;
+    }
+    if (self.msg) |m| {
+        if (space) try writer.writeByte(' ');
+        try std.fmt.format(writer, "\"{s}\"", .{m});
+        space = true;
+    }
+}

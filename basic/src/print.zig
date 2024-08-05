@@ -74,7 +74,8 @@ const Printer = struct {
                 try self.advance(b.op.range);
                 switch (b.op.payload) {
                     .mul => try self.writer.writeAll("*"),
-                    .div => try self.writer.writeAll("/"),
+                    .fdiv => try self.writer.writeAll("/"),
+                    .idiv => try self.writer.writeAll("\\"),
                     .add => try self.writer.writeAll("+"),
                     .sub => try self.writer.writeAll("-"),
                     .eq => try self.writer.writeAll("="),

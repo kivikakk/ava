@@ -4,6 +4,7 @@ const testing = std.testing;
 
 const Compiler = @import("Compiler.zig");
 const stack = @import("stack.zig");
+const ErrorInfo = @import("ErrorInfo.zig");
 
 const Matches = struct {
     const Self = @This();
@@ -93,9 +94,12 @@ test "functionals" {
 }
 
 fn expectFunctional(allocator: Allocator, path: []const u8, contents: []const u8) !void {
-    _ = path;
-
-    const code = try Compiler.compileText(allocator, contents, null);
+    var errorinfo: ErrorInfo = .{};
+    const code = Compiler.compileText(allocator, contents, &errorinfo) catch |err| {
+        if (err == error.OutOfMemory)
+            return err;
+        std.debug.panic("err {any} in FT '{s}' at {any}", .{ err, path, errorinfo });
+    };
     defer allocator.free(code);
 
     var m = stack.Machine(stack.TestEffects).init(allocator, try stack.TestEffects.init(), null);

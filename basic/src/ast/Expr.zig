@@ -29,7 +29,8 @@ pub fn formatAst(self: Expr, indent: usize, writer: anytype) !void {
 
 pub const Op = enum {
     mul,
-    div,
+    fdiv,
+    idiv,
     add,
     sub,
     eq,

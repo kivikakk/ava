@@ -213,7 +213,28 @@ fn compileExpr(self: *Compiler, e: Expr) (Allocator.Error || Error)!ty.Type {
                     .double => .OPERATOR_MULTIPLY_DOUBLE,
                     .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot multiply a STRING", .{}),
                 },
-                else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled opcode: {s}", .{@tagName(b.op.payload)}),
+                .fdiv => switch (resultType) {
+                    .integer => .OPERATOR_FDIVIDE_INTEGER,
+                    .long => .OPERATOR_FDIVIDE_LONG,
+                    .single => .OPERATOR_FDIVIDE_SINGLE,
+                    .double => .OPERATOR_FDIVIDE_DOUBLE,
+                    .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot fdivide a STRING", .{}),
+                },
+                .idiv => switch (resultType) {
+                    .integer => .OPERATOR_IDIVIDE_INTEGER,
+                    .long => .OPERATOR_IDIVIDE_LONG,
+                    .single => .OPERATOR_IDIVIDE_SINGLE,
+                    .double => .OPERATOR_IDIVIDE_DOUBLE,
+                    .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot idivide a STRING", .{}),
+                },
+                .sub => switch (resultType) {
+                    .integer => .OPERATOR_SUBTRACT_INTEGER,
+                    .long => .OPERATOR_SUBTRACT_LONG,
+                    .single => .OPERATOR_SUBTRACT_SINGLE,
+                    .double => .OPERATOR_SUBTRACT_DOUBLE,
+                    .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot subtract a STRING", .{}),
+                },
+                else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled opc: {s}", .{@tagName(b.op.payload)}),
             };
             try isa.assembleInto(self.writer, .{opc});
 

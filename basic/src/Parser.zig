@@ -224,7 +224,9 @@ fn acceptTerm(self: *Parser) !?Expr {
         if (self.accept(.asterisk)) |o|
             break :op WithRange(Expr.Op).init(.mul, o.range)
         else if (self.accept(.fslash)) |o|
-            break :op WithRange(Expr.Op).init(.div, o.range);
+            break :op WithRange(Expr.Op).init(.fdiv, o.range)
+        else if (self.accept(.bslash)) |o|
+            break :op WithRange(Expr.Op).init(.idiv, o.range);
         return f;
     };
     const f2 = try self.acceptFactor() orelse return Error.UnexpectedToken;
