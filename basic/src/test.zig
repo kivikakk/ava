@@ -108,17 +108,24 @@ fn expectFunctional(allocator: Allocator, path: []const u8, contents: []const u8
     try m.run(code);
 
     var fail = false;
-    for (m.effects.expectations.items) |e| {
-        if (std.mem.eql(u8, e.exp, e.act)) {
-            std.debug.print("match: \"{s}\"\n\n", .{std.mem.trimRight(u8, e.exp, "\r\n")});
-        } else {
+    for (m.effects.expectations.items) |e|
+        if (!std.mem.eql(u8, e.exp, e.act)) {
             fail = true;
-            std.debug.print("exp.:  \"{s}\" !!\nact.:  \"{s}\" !!\n\n", .{
-                std.mem.trimRight(u8, e.exp, "\r\n"),
-                std.mem.trimRight(u8, e.act, "\r\n"),
-            });
-        }
-    }
+            break;
+        };
+
+    if (fail)
+        for (m.effects.expectations.items) |e| {
+            if (std.mem.eql(u8, e.exp, e.act)) {
+                std.debug.print("match: \"{s}\"\n\n", .{std.mem.trimRight(u8, e.exp, "\r\n")});
+            } else {
+                fail = true;
+                std.debug.print("exp.:  \"{s}\" !!\nact.:  \"{s}\" !!\n\n", .{
+                    std.mem.trimRight(u8, e.exp, "\r\n"),
+                    std.mem.trimRight(u8, e.act, "\r\n"),
+                });
+            }
+        };
 
     try testing.expect(!fail);
 }
