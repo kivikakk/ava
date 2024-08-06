@@ -625,3 +625,22 @@ test "parse error" {
     try testing.expectError(error.UnexpectedToken, eu);
     try testing.expectEqual(ErrorInfo{ .loc = .{ .row = 2, .col = 1 } }, errorinfo);
 }
+
+test "negate precedence and subsumption" {
+    // This isn't even a parser test, but if anything arose with tighter
+    // precedence than negation, it {sh,c}ould go here.
+    var lhs = Expr.init(.{ .imm_integer = -1 }, Range.init(.{ 1, 7 }, .{ 1, 8 }));
+    var rhs = Expr.init(.{ .imm_integer = 2 }, Range.init(.{ 1, 12 }, .{ 1, 12 }));
+    try expectParse("PRINT -1 * 2\n", &.{
+        Stmt.init(.{ .print = .{
+            .args = &.{
+                Expr.init(.{ .binop = .{
+                    .lhs = &lhs,
+                    .op = WithRange(Expr.Op).init(.mul, Range.init(.{ 1, 10 }, .{ 1, 10 })),
+                    .rhs = &rhs,
+                } }, Range.init(.{ 1, 7 }, .{ 1, 12 })),
+            },
+            .separators = &.{},
+        } }, Range.init(.{ 1, 1 }, .{ 1, 12 })),
+    });
+}

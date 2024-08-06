@@ -26,6 +26,7 @@ const LocOffset = struct {
 const State = union(enum) {
     init,
     integer: LocOffset,
+    minus: LocOffset,
     floating: LocOffset,
     floating_exponent: struct {
         start: LocOffset,
@@ -94,6 +95,8 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
             .init => {
                 if (c >= '0' and c <= '9') {
                     state = .{ .integer = .{ .loc = self.loc, .offset = i } };
+                } else if (c == '.') {
+                    state = .{ .floating = .{ .loc = self.loc, .offset = i } };
                 } else if ((c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z')) {
                     state = .{ .bareword = .{ .loc = self.loc, .offset = i } };
                 } else if (c == '"') {
@@ -123,7 +126,7 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                 } else if (c == '+') {
                     try tx.append(attach(.plus, self.loc, self.loc));
                 } else if (c == '-') {
-                    try tx.append(attach(.minus, self.loc, self.loc));
+                    state = .{ .minus = .{ .loc = self.loc, .offset = i } };
                 } else if (c == '*') {
                     try tx.append(attach(.asterisk, self.loc, self.loc));
                 } else if (c == '/') {
@@ -189,6 +192,17 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
                         start.loc,
                         self.loc.back(),
                     ));
+                    state = .init;
+                    rewind = 1;
+                }
+            },
+            .minus => |start| {
+                if (c >= '0' and c <= '9') {
+                    state = .{ .integer = start };
+                } else if (c == '.') {
+                    state = .{ .floating = start };
+                } else {
+                    try tx.append(attach(.minus, start.loc, start.loc));
                     state = .init;
                     rewind = 1;
                 }
@@ -368,6 +382,7 @@ fn feed(self: *Tokenizer, allocator: Allocator, inp: []const u8) ![]Token {
             start.loc,
             self.loc.back(),
         )),
+        .minus => |start| try tx.append(attach(.minus, start.loc, start.loc)),
         .floating => |start| try tx.append(attach(
             try resolveFloating(inp[start.offset..]),
             start.loc,
@@ -635,5 +650,20 @@ test "handles carriage returns" {
         Token.init(.linefeed, Range.init(.{ 1, 4 }, .{ 1, 5 })),
         Token.init(.{ .label = "wa" }, Range.init(.{ 2, 1 }, .{ 2, 2 })),
         Token.init(.linefeed, Range.init(.{ 2, 3 }, .{ 2, 3 })),
+    });
+}
+
+test "tokenizes leading negation" {
+    try expectTokens("-1 --2", &.{
+        Token.init(.{ .integer = -1 }, Range.init(.{ 1, 1 }, .{ 1, 2 })),
+        Token.init(.minus, Range.init(.{ 1, 4 }, .{ 1, 4 })),
+        Token.init(.{ .integer = -2 }, Range.init(.{ 1, 5 }, .{ 1, 6 })),
+    });
+}
+
+test "tokenizes floats without integral part" {
+    try expectTokens(".1 -.2", &.{
+        Token.init(.{ .single = 0.1 }, Range.init(.{ 1, 1 }, .{ 1, 2 })),
+        Token.init(.{ .single = -0.2 }, Range.init(.{ 1, 4 }, .{ 1, 6 })),
     });
 }
