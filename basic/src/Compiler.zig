@@ -575,46 +575,35 @@ test "autovivification" {
 }
 
 test "compiler and stack machine agree on binop expression types" {
-    for (Expr.Op.all()) |op| {
-        for (ty.Type.all()) |tyLhs| {
-            for (ty.Type.all()) |tyRhs| {
+    for (std.meta.tags(Expr.Op)) |op| {
+        for (std.meta.tags(ty.Type)) |tyLhs| {
+            for (std.meta.tags(ty.Type)) |tyRhs| {
                 var c = try Compiler.init(testing.allocator, null);
                 defer c.deinit();
 
-                var lhs = Expr.init(Expr.Payload.oneImm(tyLhs), .{});
-                var rhs = Expr.init(Expr.Payload.oneImm(tyRhs), .{});
-
                 const compilerTy = c.compileExpr(.{ .binop = .{
-                    .lhs = &lhs,
+                    .lhs = &Expr.init(Expr.Payload.oneImm(tyLhs), .{}),
                     .op = loc.WithRange(Expr.Op).init(op, .{}),
-                    .rhs = &rhs,
+                    .rhs = &Expr.init(Expr.Payload.oneImm(tyRhs), .{}),
                 } }) catch |err| switch (err) {
                     Error.TypeMismatch => continue, // keelatud eine
-                    Error.Unimplemented => {
-                        std.debug.print("op: {any}; tyLhs: {any}; tyRhs: {any}\n", .{ op, tyLhs, tyRhs });
-                        return err;
-                    },
                     else => return err,
                 };
 
-                var m = stack.Machine(stack.TestEffects).init(testing.allocator, try stack.TestEffects.init(), null);
+                var m = stack.Machine(stack.TestEffects).init(
+                    testing.allocator,
+                    try stack.TestEffects.init(),
+                    null,
+                );
                 defer m.deinit();
 
                 const code = try c.buf.toOwnedSlice(testing.allocator);
                 defer testing.allocator.free(code);
 
-                m.run(code) catch |err| {
-                    std.debug.print("op: {any}; tyLhs: {any}; tyRhs: {any}\n", .{ op, tyLhs, tyRhs });
-                    return err;
-                };
+                try m.run(code);
 
                 try testing.expectEqual(1, m.stack.items.len);
-                // Stack machine output is considered expected, as it's written
-                // more plainly.
-                testing.expectEqual(m.stack.items[0].type(), compilerTy) catch |err| {
-                    std.debug.print("op: {any}; tyLhs: {any}; tyRhs: {any}\n", .{ op, tyLhs, tyRhs });
-                    return err;
-                };
+                try testing.expectEqual(m.stack.items[0].type(), compilerTy);
             }
         }
     }

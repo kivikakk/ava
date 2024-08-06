@@ -629,15 +629,13 @@ test "parse error" {
 test "negate precedence and subsumption" {
     // This isn't even a parser test, but if anything arose with tighter
     // precedence than negation, it {sh,c}ould go here.
-    var lhs = Expr.init(.{ .imm_integer = -1 }, Range.init(.{ 1, 7 }, .{ 1, 8 }));
-    var rhs = Expr.init(.{ .imm_integer = 2 }, Range.init(.{ 1, 12 }, .{ 1, 12 }));
     try expectParse("PRINT -1 * 2\n", &.{
         Stmt.init(.{ .print = .{
             .args = &.{
                 Expr.init(.{ .binop = .{
-                    .lhs = &lhs,
+                    .lhs = &Expr.init(.{ .imm_integer = -1 }, Range.init(.{ 1, 7 }, .{ 1, 8 })),
                     .op = WithRange(Expr.Op).init(.mul, Range.init(.{ 1, 10 }, .{ 1, 10 })),
-                    .rhs = &rhs,
+                    .rhs = &Expr.init(.{ .imm_integer = 2 }, Range.init(.{ 1, 12 }, .{ 1, 12 })),
                 } }, Range.init(.{ 1, 7 }, .{ 1, 12 })),
             },
             .separators = &.{},

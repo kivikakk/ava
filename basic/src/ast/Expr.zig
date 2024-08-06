@@ -45,13 +45,6 @@ pub const Op = enum {
     @"and",
     @"or",
     xor,
-
-    pub fn all() []const Self {
-        comptime var tx: []const Self = &.{};
-        inline for (@typeInfo(Self).Enum.fields) |f|
-            tx = tx ++ .{@field(Self, f.name)};
-        return tx;
-    }
 };
 
 pub const Payload = union(enum) {
@@ -64,15 +57,15 @@ pub const Payload = union(enum) {
     imm_string: []const u8,
     label: []const u8,
     binop: struct {
-        lhs: *Expr,
+        lhs: *const Expr,
         op: WithRange(Op),
-        rhs: *Expr,
+        rhs: *const Expr,
     },
     // This doesn't need to exist at all, except right now our pretty-printer
     // doesn't know when an expression needs to be parenthesised/it does if we
     // want to preserve the user's formatting. AST CST blahST DST
-    paren: *Expr,
-    negate: *Expr,
+    paren: *const Expr,
+    negate: *const Expr,
 
     pub fn zeroImm(@"type": ty.Type) Self {
         return switch (@"type") {
