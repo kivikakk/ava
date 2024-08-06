@@ -111,38 +111,38 @@ fn printFormatFloating(allocator: Allocator, writer: anytype, f: anytype) !void 
         len -= 1;
     }
 
-    switch (@TypeOf(f)) {
-        f32 => {
-            // Round the last digit to match QBASIC.
-            //
-            // This is an enormous hack and I don't like it. Is precise
-            // compatibility worth this? Is there a better way to do it that'd more closely
-            // follow how QB actually works?
-            var hasPoint = false;
-            for (s[0..len]) |c|
-                if (c == '.') {
-                    hasPoint = true;
-                    break;
-                };
-            if (hasPoint) {
-                var digits = len - 1;
-                if (s[0] == '-') digits -= 1;
-                if (digits == 8) {
-                    if (s[len - 1] >= '5') {
-                        if (!(s[len - 2] >= '0' and s[len - 2] <= '8')) {
-                            std.debug.panic("nope: '{s}'", .{s[0..len]});
-                        }
-                        std.debug.assert(s[len - 2] >= '0' and s[len - 2] <= '8');
-                        s[len - 2] += 1;
-                        len -= 1;
-                    } else {
-                        len -= 1;
-                    }
+    // Round the last digit(s) to match QBASIC.
+    //
+    // This is an enormous hack and I don't like it. Is precise compatibility
+    // worth this? Is there a better way to do it that'd more closely follow how
+    // QB actually works?
+    var hasPoint = false;
+    for (s[0..len]) |c|
+        if (c == '.') {
+            hasPoint = true;
+            break;
+        };
+
+    if (hasPoint) {
+        var digits = len - 1;
+        if (s[0] == '-') digits -= 1;
+        const cap = switch (@TypeOf(f)) {
+            f32 => 8,
+            f64 => 16,
+            else => @compileError("printFormatFloating given f " ++ @typeName(@TypeOf(f))),
+        };
+        while (digits >= cap) : (digits -= 1) {
+            if (s[len - 1] >= '5') {
+                if (!(s[len - 2] >= '0' and s[len - 2] <= '8')) {
+                    std.debug.panic("nope: '{s}'", .{s[0..len]});
                 }
+                std.debug.assert(s[len - 2] >= '0' and s[len - 2] <= '8');
+                s[len - 2] += 1;
+                len -= 1;
+            } else {
+                len -= 1;
             }
-        },
-        f64 => {},
-        else => @compileError("printFormatFloating given f " ++ @typeName(@TypeOf(f))),
+        }
     }
 
     try writer.writeAll(s[0..len]);
