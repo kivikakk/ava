@@ -356,6 +356,42 @@ pub fn Machine(comptime Effects: type) type {
                         const rhs = try self.assertType(vals[1], .double);
                         try self.stack.append(self.allocator, .{ .double = lhs - rhs });
                     },
+                    .OPERATOR_FDIVIDE_INTEGER => {
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        const lhs = try self.assertType(vals[0], .integer);
+                        const rhs = try self.assertType(vals[1], .integer);
+                        try self.stack.append(self.allocator, .{
+                            .single = @as(f32, @floatFromInt(lhs)) / @as(f32, @floatFromInt(rhs)),
+                        });
+                    },
+                    .OPERATOR_FDIVIDE_LONG => {
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        const lhs = try self.assertType(vals[0], .long);
+                        const rhs = try self.assertType(vals[1], .long);
+                        try self.stack.append(self.allocator, .{
+                            .double = @as(f64, @floatFromInt(lhs)) / @as(f64, @floatFromInt(rhs)),
+                        });
+                    },
+                    .OPERATOR_FDIVIDE_SINGLE => {
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        const lhs = try self.assertType(vals[0], .single);
+                        const rhs = try self.assertType(vals[1], .single);
+                        try self.stack.append(self.allocator, .{ .single = lhs / rhs });
+                    },
+                    .OPERATOR_FDIVIDE_DOUBLE => {
+                        std.debug.assert(self.stack.items.len >= 2);
+                        const vals = self.stackTake(2);
+                        defer self.valueFreeMany(&vals);
+                        const lhs = try self.assertType(vals[0], .double);
+                        const rhs = try self.assertType(vals[1], .double);
+                        try self.stack.append(self.allocator, .{ .double = lhs / rhs });
+                    },
                     .OPERATOR_IDIVIDE_INTEGER => {
                         std.debug.assert(self.stack.items.len >= 2);
                         const vals = self.stackTake(2);
@@ -399,42 +435,6 @@ pub fn Machine(comptime Effects: type) type {
                                 @as(i32, @intFromFloat(@round(rhs))),
                             ),
                         });
-                    },
-                    .OPERATOR_FDIVIDE_INTEGER => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
-                        const lhs = try self.assertType(vals[0], .integer);
-                        const rhs = try self.assertType(vals[1], .integer);
-                        try self.stack.append(self.allocator, .{
-                            .single = @as(f32, @floatFromInt(lhs)) / @as(f32, @floatFromInt(rhs)),
-                        });
-                    },
-                    .OPERATOR_FDIVIDE_LONG => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
-                        const lhs = try self.assertType(vals[0], .long);
-                        const rhs = try self.assertType(vals[1], .long);
-                        try self.stack.append(self.allocator, .{
-                            .double = @as(f64, @floatFromInt(lhs)) / @as(f64, @floatFromInt(rhs)),
-                        });
-                    },
-                    .OPERATOR_FDIVIDE_SINGLE => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
-                        const lhs = try self.assertType(vals[0], .single);
-                        const rhs = try self.assertType(vals[1], .single);
-                        try self.stack.append(self.allocator, .{ .single = lhs / rhs });
-                    },
-                    .OPERATOR_FDIVIDE_DOUBLE => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
-                        const lhs = try self.assertType(vals[0], .double);
-                        const rhs = try self.assertType(vals[1], .double);
-                        try self.stack.append(self.allocator, .{ .double = lhs / rhs });
                     },
                     .OPERATOR_NEGATE_INTEGER => {
                         std.debug.assert(self.stack.items.len >= 1);

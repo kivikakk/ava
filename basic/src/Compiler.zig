@@ -177,38 +177,38 @@ fn compileExpr(self: *Compiler, e: Expr.Payload) (Allocator.Error || Error)!ty.T
             return resolved.type;
         },
         .binop => |b| {
-            const resultType = try self.compileBinopOperands(b.lhs.payload, b.rhs.payload);
+            const tyx = try self.compileBinopOperands(b.lhs.payload, b.op.payload, b.rhs.payload);
 
             const opc: isa.Opcode = switch (b.op.payload) {
-                .add => switch (resultType) {
+                .add => switch (tyx.widened) {
                     .integer => .OPERATOR_ADD_INTEGER,
                     .long => .OPERATOR_ADD_LONG,
                     .single => .OPERATOR_ADD_SINGLE,
                     .double => .OPERATOR_ADD_DOUBLE,
                     .string => .OPERATOR_ADD_STRING,
                 },
-                .mul => switch (resultType) {
+                .mul => switch (tyx.widened) {
                     .integer => .OPERATOR_MULTIPLY_INTEGER,
                     .long => .OPERATOR_MULTIPLY_LONG,
                     .single => .OPERATOR_MULTIPLY_SINGLE,
                     .double => .OPERATOR_MULTIPLY_DOUBLE,
                     .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot multiply a STRING", .{}),
                 },
-                .fdiv => switch (resultType) {
+                .fdiv => switch (tyx.widened) {
                     .integer => .OPERATOR_FDIVIDE_INTEGER,
                     .long => .OPERATOR_FDIVIDE_LONG,
                     .single => .OPERATOR_FDIVIDE_SINGLE,
                     .double => .OPERATOR_FDIVIDE_DOUBLE,
-                    .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot fdivide a STRING", .{}),
+                    .string => unreachable,
                 },
-                .idiv => switch (resultType) {
+                .idiv => switch (tyx.widened) {
                     .integer => .OPERATOR_IDIVIDE_INTEGER,
                     .long => .OPERATOR_IDIVIDE_LONG,
                     .single => .OPERATOR_IDIVIDE_SINGLE,
                     .double => .OPERATOR_IDIVIDE_DOUBLE,
-                    .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot idivide a STRING", .{}),
+                    .string => unreachable,
                 },
-                .sub => switch (resultType) {
+                .sub => switch (tyx.widened) {
                     .integer => .OPERATOR_SUBTRACT_INTEGER,
                     .long => .OPERATOR_SUBTRACT_LONG,
                     .single => .OPERATOR_SUBTRACT_SINGLE,
@@ -219,7 +219,7 @@ fn compileExpr(self: *Compiler, e: Expr.Payload) (Allocator.Error || Error)!ty.T
             };
             try isa.assembleInto(self.writer, .{opc});
 
-            return resultType;
+            return tyx.result;
         },
         .paren => |e2| return try self.compileExpr(e2.payload),
         .negate => |e2| {
@@ -280,8 +280,12 @@ fn cannotCoerce(self: *const Compiler, from: ty.Type, to: ty.Type) (Error || All
     return ErrorInfo.ret(self, Error.TypeMismatch, "cannot coerce {any} to {any}", .{ from, to });
 }
 
-fn compileBinopOperands(self: *Compiler, lhs: Expr.Payload, rhs: Expr.Payload) !ty.Type {
-    // INTEGER < LONG < SINGLE < DOUBLE
+const BinopTypes = struct {
+    widened: ty.Type,
+    result: ty.Type,
+};
+
+fn compileBinopOperands(self: *Compiler, lhs: Expr.Payload, op: Expr.Op, rhs: Expr.Payload) !BinopTypes {
     const lhsType = try self.compileExpr(lhs);
 
     // Compile RHS to get type; snip off the generated code and append after we
@@ -293,53 +297,35 @@ fn compileBinopOperands(self: *Compiler, lhs: Expr.Payload, rhs: Expr.Payload) !
     defer self.allocator.free(rhsCode);
     self.buf.items.len = index;
 
-    // XXX: divide operators do not always produce the same type as the
-    // operands. (fdiv on ints; idiv on floats.)
-
-    const resultType: ty.Type = switch (lhsType) {
-        .integer => switch (rhsType) {
-            .integer => .integer,
-            .long => .long,
-            .single => .single,
-            .double => .double,
-            .string => return self.cannotCoerce(rhsType, lhsType),
-        },
-        .long => switch (rhsType) {
-            .integer => .long,
-            .long => .long,
-            .single => .single,
-            .double => .double,
-            .string => return self.cannotCoerce(rhsType, lhsType),
-        },
-        .single => switch (rhsType) {
-            .integer => .single,
-            .long => .single,
-            .single => .single,
-            .double => .double,
-            .string => return self.cannotCoerce(rhsType, lhsType),
-        },
-        .double => switch (rhsType) {
-            .integer => .double,
-            .long => .double,
-            .single => .double,
-            .double => .double,
-            .string => return self.cannotCoerce(rhsType, lhsType),
-        },
-        .string => switch (rhsType) {
-            .integer => return self.cannotCoerce(rhsType, lhsType),
-            .long => return self.cannotCoerce(rhsType, lhsType),
-            .single => return self.cannotCoerce(rhsType, lhsType),
-            .double => return self.cannotCoerce(rhsType, lhsType),
-            .string => .string,
-        },
-    };
-
-    try self.compileCoerce(lhsType, resultType);
+    // Coerce both types to the wider of the two (if possible).
+    const widenedType = lhsType.widen(rhsType) orelse return self.cannotCoerce(rhsType, lhsType);
+    try self.compileCoerce(lhsType, widenedType);
 
     try self.writer.writeAll(rhsCode);
-    try self.compileCoerce(rhsType, resultType);
+    try self.compileCoerce(rhsType, widenedType);
 
-    return resultType;
+    // Determine the type of the result of the operation, which might differ
+    // from the input type (fdiv, idiv). The former is necessary for the
+    // compilation to know what was placed on the stack; the latter is necessary
+    // to determine which opcode to produce.
+    const resultType: ty.Type = switch (op) {
+        .mul => widenedType,
+        .fdiv => switch (widenedType) {
+            .integer, .single => .single,
+            .long, .double => .double,
+            .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot fdivide a STRING", .{}),
+        },
+        .idiv => switch (widenedType) {
+            .integer, .single => .integer,
+            .long, .double => .long,
+            .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot idivide a STRING", .{}),
+        },
+        .add => widenedType,
+        .sub => widenedType,
+        else => unreachable,
+    };
+
+    return .{ .widened = widenedType, .result = resultType };
 }
 
 const Rw = enum { read, write };
@@ -538,7 +524,7 @@ test "compiler and stack machine agree on binop expression types" {
                     .op = loc.WithRange(Expr.Op).init(op, .{}),
                     .rhs = &rhs,
                 } }) catch |err| switch (err) {
-                    Error.TypeMismatch => continue,
+                    Error.TypeMismatch => continue, // keelatud eine
                     else => return err,
                 };
 

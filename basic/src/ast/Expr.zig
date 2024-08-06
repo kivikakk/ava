@@ -29,10 +29,10 @@ pub fn formatAst(self: Expr, indent: usize, writer: anytype) !void {
 }
 
 pub const Op = enum {
+    add,
     mul,
     fdiv,
     idiv,
-    add,
     sub,
     eq,
     neq,
