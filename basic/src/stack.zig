@@ -528,7 +528,7 @@ pub const TestEffects = struct {
     }
 
     pub fn print(self: *Self, v: isa.Value) !void {
-        try isa.printFormat(self.printedwr, v);
+        try isa.printFormat(testing.allocator, self.printedwr, v);
     }
 
     pub fn printComma(self: *Self) !void {

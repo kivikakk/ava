@@ -70,7 +70,7 @@ pub const Value = union(enum) {
     }
 };
 
-pub fn printFormat(writer: anytype, v: Value) !void {
+pub fn printFormat(allocator: Allocator, writer: anytype, v: Value) !void {
     switch (v) {
         .integer => |n| {
             if (n >= 0)
@@ -85,15 +85,33 @@ pub fn printFormat(writer: anytype, v: Value) !void {
         .single => |n| {
             if (n >= 0)
                 try writer.writeByte(' ');
-            try std.fmt.format(writer, "{d} ", .{n});
+            try printFormatFloating(allocator, writer, n);
+            try writer.writeByte(' ');
         },
         .double => |n| {
             if (n >= 0)
                 try writer.writeByte(' ');
-            try std.fmt.format(writer, "{d} ", .{n});
+            try printFormatFloating(allocator, writer, n);
+            try writer.writeByte(' ');
         },
         .string => |s| try writer.writeAll(s),
     }
+}
+
+fn printFormatFloating(allocator: Allocator, writer: anytype, f: anytype) !void {
+    const s = try std.fmt.allocPrint(allocator, "{d}", .{f});
+    defer allocator.free(s);
+
+    var len = s.len;
+    if (std.mem.startsWith(u8, s, "0.")) {
+        std.mem.copyForwards(u8, s, s[1..]);
+        len -= 1;
+    } else if (std.mem.startsWith(u8, s, "-0.")) {
+        std.mem.copyForwards(u8, s[1..], s[2..]);
+        len -= 1;
+    }
+
+    try writer.writeAll(s[0..len]);
 }
 
 pub fn assembleOne(e: anytype, writer: anytype) !void {

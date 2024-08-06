@@ -318,7 +318,7 @@ const RunEffects = struct {
     }
 
     pub fn print(self: *Self, v: isa.Value) !void {
-        try isa.printFormat(self.outwr, v);
+        try isa.printFormat(self.allocator, self.outwr, v);
     }
 
     pub fn printComma(self: *Self) !void {
