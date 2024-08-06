@@ -406,7 +406,6 @@ pub fn Machine(comptime Effects: type) type {
                         defer self.valueFreeMany(&vals);
                         const lhs = try self.assertType(vals[0], .integer);
                         const rhs = try self.assertType(vals[1], .integer);
-                        // XXX: specific rules around whether single or double is produced?
                         try self.stack.append(self.allocator, .{
                             .single = @as(f32, @floatFromInt(lhs)) / @as(f32, @floatFromInt(rhs)),
                         });
@@ -417,9 +416,8 @@ pub fn Machine(comptime Effects: type) type {
                         defer self.valueFreeMany(&vals);
                         const lhs = try self.assertType(vals[0], .long);
                         const rhs = try self.assertType(vals[1], .long);
-                        // XXX: specific rules around whether single or double is produced?
                         try self.stack.append(self.allocator, .{
-                            .single = @as(f32, @floatFromInt(lhs)) / @as(f32, @floatFromInt(rhs)),
+                            .double = @as(f64, @floatFromInt(lhs)) / @as(f64, @floatFromInt(rhs)),
                         });
                     },
                     .OPERATOR_FDIVIDE_SINGLE => {
