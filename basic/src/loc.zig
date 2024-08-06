@@ -22,8 +22,8 @@ pub const Loc = struct {
 pub const Range = struct {
     const Self = @This();
 
-    start: Loc,
-    end: Loc,
+    start: Loc = .{},
+    end: Loc = .{},
 
     pub fn init(start: struct { usize, usize }, end: struct { usize, usize }) Self {
         return .{

@@ -2,6 +2,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
+const ty = @import("ty.zig");
+
 pub const Opcode = enum(u8) {
     PUSH_IMM_INTEGER = 0x01,
     PUSH_IMM_LONG = 0x02,
@@ -61,6 +63,16 @@ pub const Value = union(enum) {
     single: f32,
     double: f64,
     string: []const u8,
+
+    pub fn @"type"(self: Self) ty.Type {
+        return switch (self) {
+            .integer => .integer,
+            .long => .long,
+            .single => .single,
+            .double => .double,
+            .string => .string,
+        };
+    }
 
     pub fn clone(self: Self, allocator: Allocator) !Self {
         return switch (self) {

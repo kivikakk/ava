@@ -4,6 +4,7 @@ const Allocator = std.mem.Allocator;
 const loc = @import("../loc.zig");
 const Range = loc.Range;
 const WithRange = loc.WithRange;
+const ty = @import("../ty.zig");
 
 const Expr = @This();
 
@@ -63,6 +64,27 @@ pub const Payload = union(enum) {
     // want to preserve the user's formatting. AST CST blahST DST
     paren: *Expr,
     negate: *Expr,
+
+    pub fn zeroImm(@"type": ty.Type) Self {
+        return switch (@"type") {
+            .integer => .{ .imm_integer = 0 },
+            .long => .{ .imm_long = 0 },
+            .single => .{ .imm_single = 0 },
+            .double => .{ .imm_double = 0 },
+            .string => .{ .imm_string = "" },
+        };
+    }
+
+    // Used in tests when zero values are too divide-by-zero-y.
+    pub fn oneImm(@"type": ty.Type) Self {
+        return switch (@"type") {
+            .integer => .{ .imm_integer = 1 },
+            .long => .{ .imm_long = 1 },
+            .single => .{ .imm_single = 1 },
+            .double => .{ .imm_double = 1 },
+            .string => .{ .imm_string = "a" },
+        };
+    }
 
     pub fn formatAst(self: Self, indent: usize, writer: anytype) @TypeOf(writer).Error!void {
         switch (self) {

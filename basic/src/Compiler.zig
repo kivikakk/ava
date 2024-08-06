@@ -10,6 +10,7 @@ const Parser = @import("Parser.zig");
 const isa = @import("isa.zig");
 const ErrorInfo = @import("ErrorInfo.zig");
 const ty = @import("ty.zig");
+const stack = @import("stack.zig");
 
 const Compiler = @This();
 
@@ -74,7 +75,7 @@ fn compileStmt(self: *Compiler, s: Stmt) !void {
         .remark => {},
         .call => |c| {
             for (c.args) |a| {
-                _ = try self.compileExpr(a);
+                _ = try self.compileExpr(a.payload);
             }
             return ErrorInfo.ret(self, Error.Unimplemented, "call to \"{s}\"", .{c.name.payload});
         },
@@ -86,7 +87,7 @@ fn compileStmt(self: *Compiler, s: Stmt) !void {
             // Otherwise, we BUILTIN_PRINT_LINEFEED.
             for (p.args, 0..) |a, i| {
                 // TODO: probably want BUILTIN_PRINT_{type}.
-                _ = try self.compileExpr(a);
+                _ = try self.compileExpr(a.payload);
                 try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT});
                 if (i < p.separators.len) {
                     switch (p.separators[i].payload) {
@@ -108,7 +109,7 @@ fn compileStmt(self: *Compiler, s: Stmt) !void {
         },
         .let => |l| {
             const resolved = try self.labelResolve(l.lhs.payload, .write);
-            const rhsType = try self.compileExpr(l.rhs);
+            const rhsType = try self.compileExpr(l.rhs.payload);
             try self.compileCoerce(rhsType, resolved.type);
             try isa.assembleInto(self.writer, .{
                 isa.Opcode.LET,
@@ -125,8 +126,8 @@ fn compileStmt(self: *Compiler, s: Stmt) !void {
     }
 }
 
-fn compileExpr(self: *Compiler, e: Expr) (Allocator.Error || Error)!ty.Type {
-    switch (e.payload) {
+fn compileExpr(self: *Compiler, e: Expr.Payload) (Allocator.Error || Error)!ty.Type {
+    switch (e) {
         .imm_integer => |n| {
             try isa.assembleInto(self.writer, .{
                 isa.Opcode.PUSH_IMM_INTEGER,
@@ -170,33 +171,13 @@ fn compileExpr(self: *Compiler, e: Expr) (Allocator.Error || Error)!ty.Type {
                     slot,
                 });
             } else {
-                switch (resolved.type) {
-                    .integer => try isa.assembleInto(self.writer, .{
-                        isa.Opcode.PUSH_IMM_INTEGER,
-                        isa.Value{ .integer = 0 },
-                    }),
-                    .long => try isa.assembleInto(self.writer, .{
-                        isa.Opcode.PUSH_IMM_LONG,
-                        isa.Value{ .long = 0 },
-                    }),
-                    .single => try isa.assembleInto(self.writer, .{
-                        isa.Opcode.PUSH_IMM_SINGLE,
-                        isa.Value{ .single = 0 },
-                    }),
-                    .double => try isa.assembleInto(self.writer, .{
-                        isa.Opcode.PUSH_IMM_DOUBLE,
-                        isa.Value{ .double = 0 },
-                    }),
-                    .string => try isa.assembleInto(self.writer, .{
-                        isa.Opcode.PUSH_IMM_STRING,
-                        isa.Value{ .string = "" },
-                    }),
-                }
+                // autovivify
+                _ = try self.compileExpr(Expr.Payload.zeroImm(resolved.type));
             }
             return resolved.type;
         },
         .binop => |b| {
-            const resultType = try self.compileBinopOperands(b.lhs.*, b.rhs.*);
+            const resultType = try self.compileBinopOperands(b.lhs.payload, b.rhs.payload);
 
             const opc: isa.Opcode = switch (b.op.payload) {
                 .add => switch (resultType) {
@@ -240,9 +221,9 @@ fn compileExpr(self: *Compiler, e: Expr) (Allocator.Error || Error)!ty.Type {
 
             return resultType;
         },
-        .paren => |e2| return try self.compileExpr(e2.*),
+        .paren => |e2| return try self.compileExpr(e2.payload),
         .negate => |e2| {
-            const resultType = try self.compileExpr(e2.*);
+            const resultType = try self.compileExpr(e2.payload);
             const op: isa.Opcode = switch (resultType) {
                 .integer => .OPERATOR_NEGATE_INTEGER,
                 .long => .OPERATOR_NEGATE_LONG,
@@ -299,7 +280,7 @@ fn cannotCoerce(self: *const Compiler, from: ty.Type, to: ty.Type) (Error || All
     return ErrorInfo.ret(self, Error.TypeMismatch, "cannot coerce {any} to {any}", .{ from, to });
 }
 
-fn compileBinopOperands(self: *Compiler, lhs: Expr, rhs: Expr) !ty.Type {
+fn compileBinopOperands(self: *Compiler, lhs: Expr.Payload, rhs: Expr.Payload) !ty.Type {
     // INTEGER < LONG < SINGLE < DOUBLE
     const lhsType = try self.compileExpr(lhs);
 
@@ -536,4 +517,47 @@ test "autovivification" {
         isa.Opcode.BUILTIN_PRINT,
         isa.Opcode.BUILTIN_PRINT_LINEFEED,
     });
+}
+
+test "compiler and stack machine agree on binop expression types" {
+    const tyx: []const ty.Type = &.{ .integer, .long, .single, .double, .string };
+    const ops: []const Expr.Op = &.{ .mul, .fdiv, .idiv, .add, .sub };
+    // TODO: .eq, .neq, .lt, .gt, .lte, .gte, @"and", @"or", xor
+
+    for (ops) |op| {
+        for (tyx) |tyLhs| {
+            for (tyx) |tyRhs| {
+                var c = try Compiler.init(testing.allocator, null);
+                defer c.deinit();
+
+                var lhs = Expr.init(Expr.Payload.oneImm(tyLhs), .{});
+                var rhs = Expr.init(Expr.Payload.oneImm(tyRhs), .{});
+
+                const compilerTy = c.compileExpr(.{ .binop = .{
+                    .lhs = &lhs,
+                    .op = loc.WithRange(Expr.Op).init(op, .{}),
+                    .rhs = &rhs,
+                } }) catch |err| switch (err) {
+                    Error.TypeMismatch => continue,
+                    else => return err,
+                };
+
+                var m = stack.Machine(stack.TestEffects).init(testing.allocator, try stack.TestEffects.init(), null);
+                defer m.deinit();
+
+                const code = try c.buf.toOwnedSlice(testing.allocator);
+                defer testing.allocator.free(code);
+
+                try m.run(code);
+
+                try testing.expectEqual(1, m.stack.items.len);
+                // Stack machine output is considered expected, as it's written
+                // more plainly.
+                testing.expectEqual(m.stack.items[0].type(), compilerTy) catch |err| {
+                    std.debug.print("op: {any}; tyLhs: {any}; tyRhs: {any}\n", .{ op, tyLhs, tyRhs });
+                    return err;
+                };
+            }
+        }
+    }
 }
