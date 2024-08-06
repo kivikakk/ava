@@ -103,6 +103,7 @@ fn printFormatFloating(allocator: Allocator, writer: anytype, f: anytype) !void 
     defer allocator.free(s);
 
     var len = s.len;
+    // QB accepts and prefers ".1" and "-.1".
     if (std.mem.startsWith(u8, s, "0.")) {
         std.mem.copyForwards(u8, s, s[1..]);
         len -= 1;
@@ -132,11 +133,15 @@ fn printFormatFloating(allocator: Allocator, writer: anytype, f: anytype) !void 
             else => @compileError("printFormatFloating given f " ++ @typeName(@TypeOf(f))),
         };
         while (digits >= cap) : (digits -= 1) {
+            std.debug.assert(s[len - 1] >= '0' and s[len - 1] <= '9');
+            std.debug.assert(s[len - 2] >= '0' and s[len - 2] <= '9');
             if (s[len - 1] >= '5') {
                 if (!(s[len - 2] >= '0' and s[len - 2] <= '8')) {
+                    // Note to self: I fully expect this won't be sufficient and
+                    // we'll have to iterate backwards. Sorry.
                     std.debug.panic("nope: '{s}'", .{s[0..len]});
                 }
-                std.debug.assert(s[len - 2] >= '0' and s[len - 2] <= '8');
+                std.debug.assert(s[len - 2] <= '8');
                 s[len - 2] += 1;
                 len -= 1;
             } else {
