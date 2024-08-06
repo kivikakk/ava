@@ -95,24 +95,26 @@ pub const Payload = union(enum) {
             .imm_single => |n| try std.fmt.format(writer, "Single({d})\n", .{n}),
             .imm_double => |n| try std.fmt.format(writer, "Double({d})\n", .{n}),
             .imm_string => |s| try std.fmt.format(writer, "String({s})\n", .{s}),
+            .label => |l| try std.fmt.format(writer, "Label({s})", .{l}),
             .binop => |b| {
                 try std.fmt.format(writer, "Binop({s})\n", .{@tagName(b.op.payload)});
-                for (0..indent + 1) |_| try writer.writeAll("  ");
+                try writer.writeBytesNTimes("  ", indent + 1);
                 try b.lhs.formatAst(indent + 1, writer);
-                for (0..indent + 1) |_| try writer.writeAll("  ");
+                try writer.writeByte('\n');
+                try writer.writeBytesNTimes("  ", indent + 1);
                 try b.rhs.formatAst(indent + 1, writer);
             },
             .paren => |e| {
                 try writer.writeAll("Paren\n");
-                for (0..indent + 1) |_| try writer.writeAll("  ");
+                try writer.writeBytesNTimes("  ", indent + 1);
                 try e.formatAst(indent + 1, writer);
             },
             .negate => |e| {
                 try writer.writeAll("Negate\n");
-                for (0..indent + 1) |_| try writer.writeAll("  ");
+                try writer.writeBytesNTimes("  ", indent + 1);
                 try e.formatAst(indent + 1, writer);
             },
-            else => unreachable,
+            // else => unreachable,
         }
     }
 

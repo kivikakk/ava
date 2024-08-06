@@ -94,6 +94,7 @@ fn mainRun(allocator: Allocator, filename: []const u8) !void {
     if (options.ast) {
         for (sx) |s|
             try s.formatAst(0, stdoutwr);
+        try stdoutwr.writeByte('\n');
     }
 
     if (options.bc) {
@@ -194,6 +195,7 @@ fn mainInteractive(allocator: Allocator) !void {
             for (sx) |s|
                 try s.formatAst(0, stdoutwr);
             try ttyconf.setColor(stdoutwr, .reset);
+            try stdoutwr.writeByte('\n');
             try stdoutbw.flush();
         }
 
