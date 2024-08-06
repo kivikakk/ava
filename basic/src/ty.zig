@@ -9,6 +9,13 @@ pub const Type = enum {
     double,
     string,
 
+    pub fn all() []const Self {
+        comptime var tx: []const Self = &.{};
+        inline for (@typeInfo(Self).Enum.fields) |f|
+            tx = tx ++ .{@field(Self, f.name)};
+        return tx;
+    }
+
     pub fn sigil(self: Self) u8 {
         return switch (self) {
             .integer => '%',

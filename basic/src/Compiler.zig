@@ -215,7 +215,70 @@ fn compileExpr(self: *Compiler, e: Expr.Payload) (Allocator.Error || Error)!ty.T
                     .double => .OPERATOR_SUBTRACT_DOUBLE,
                     .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot subtract a STRING", .{}),
                 },
-                else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled opc: {s}", .{@tagName(b.op.payload)}),
+                .eq => switch (tyx.widened) {
+                    .integer => .OPERATOR_EQ_INTEGER,
+                    .long => .OPERATOR_EQ_LONG,
+                    .single => .OPERATOR_EQ_SINGLE,
+                    .double => .OPERATOR_EQ_DOUBLE,
+                    .string => .OPERATOR_EQ_STRING,
+                },
+                .neq => switch (tyx.widened) {
+                    .integer => .OPERATOR_NEQ_INTEGER,
+                    .long => .OPERATOR_NEQ_LONG,
+                    .single => .OPERATOR_NEQ_SINGLE,
+                    .double => .OPERATOR_NEQ_DOUBLE,
+                    .string => .OPERATOR_NEQ_STRING,
+                },
+                .lt => switch (tyx.widened) {
+                    .integer => .OPERATOR_LT_INTEGER,
+                    .long => .OPERATOR_LT_LONG,
+                    .single => .OPERATOR_LT_SINGLE,
+                    .double => .OPERATOR_LT_DOUBLE,
+                    .string => .OPERATOR_LT_STRING,
+                },
+                .gt => switch (tyx.widened) {
+                    .integer => .OPERATOR_GT_INTEGER,
+                    .long => .OPERATOR_GT_LONG,
+                    .single => .OPERATOR_GT_SINGLE,
+                    .double => .OPERATOR_GT_DOUBLE,
+                    .string => .OPERATOR_GT_STRING,
+                },
+                .lte => switch (tyx.widened) {
+                    .integer => .OPERATOR_LTE_INTEGER,
+                    .long => .OPERATOR_LTE_LONG,
+                    .single => .OPERATOR_LTE_SINGLE,
+                    .double => .OPERATOR_LTE_DOUBLE,
+                    .string => .OPERATOR_LTE_STRING,
+                },
+                .gte => switch (tyx.widened) {
+                    .integer => .OPERATOR_GTE_INTEGER,
+                    .long => .OPERATOR_GTE_LONG,
+                    .single => .OPERATOR_GTE_SINGLE,
+                    .double => .OPERATOR_GTE_DOUBLE,
+                    .string => .OPERATOR_GTE_STRING,
+                },
+                .@"and" => switch (tyx.widened) {
+                    .integer => .OPERATOR_AND_INTEGER,
+                    .long => .OPERATOR_AND_LONG,
+                    .single => .OPERATOR_AND_SINGLE,
+                    .double => .OPERATOR_AND_DOUBLE,
+                    .string => unreachable,
+                },
+                .@"or" => switch (tyx.widened) {
+                    .integer => .OPERATOR_OR_INTEGER,
+                    .long => .OPERATOR_OR_LONG,
+                    .single => .OPERATOR_OR_SINGLE,
+                    .double => .OPERATOR_OR_DOUBLE,
+                    .string => unreachable,
+                },
+                .xor => switch (tyx.widened) {
+                    .integer => .OPERATOR_XOR_INTEGER,
+                    .long => .OPERATOR_XOR_LONG,
+                    .single => .OPERATOR_XOR_SINGLE,
+                    .double => .OPERATOR_XOR_DOUBLE,
+                    .string => unreachable,
+                },
+                // else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled opc: {s}", .{@tagName(b.op.payload)}),
             };
             try isa.assembleInto(self.writer, .{opc});
 
@@ -322,7 +385,13 @@ fn compileBinopOperands(self: *Compiler, lhs: Expr.Payload, op: Expr.Op, rhs: Ex
         },
         .add => widenedType,
         .sub => widenedType,
-        else => unreachable,
+        .eq, .neq, .lt, .gt, .lte, .gte => .integer,
+        .@"and", .@"or", .xor => switch (widenedType) {
+            .integer => .integer,
+            .long, .single, .double => .long,
+            .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot bitwise operate on a STRING", .{}),
+        },
+        // else => return ErrorInfo.ret(self, Error.Unimplemented, "unknown result type of op {any}", .{op}),
     };
 
     return .{ .widened = widenedType, .result = resultType };
@@ -506,13 +575,9 @@ test "autovivification" {
 }
 
 test "compiler and stack machine agree on binop expression types" {
-    const tyx: []const ty.Type = &.{ .integer, .long, .single, .double, .string };
-    const ops: []const Expr.Op = &.{ .mul, .fdiv, .idiv, .add, .sub };
-    // TODO: .eq, .neq, .lt, .gt, .lte, .gte, @"and", @"or", xor
-
-    for (ops) |op| {
-        for (tyx) |tyLhs| {
-            for (tyx) |tyRhs| {
+    for (Expr.Op.all()) |op| {
+        for (ty.Type.all()) |tyLhs| {
+            for (ty.Type.all()) |tyRhs| {
                 var c = try Compiler.init(testing.allocator, null);
                 defer c.deinit();
 
@@ -525,6 +590,10 @@ test "compiler and stack machine agree on binop expression types" {
                     .rhs = &rhs,
                 } }) catch |err| switch (err) {
                     Error.TypeMismatch => continue, // keelatud eine
+                    Error.Unimplemented => {
+                        std.debug.print("op: {any}; tyLhs: {any}; tyRhs: {any}\n", .{ op, tyLhs, tyRhs });
+                        return err;
+                    },
                     else => return err,
                 };
 
@@ -534,7 +603,10 @@ test "compiler and stack machine agree on binop expression types" {
                 const code = try c.buf.toOwnedSlice(testing.allocator);
                 defer testing.allocator.free(code);
 
-                try m.run(code);
+                m.run(code) catch |err| {
+                    std.debug.print("op: {any}; tyLhs: {any}; tyRhs: {any}\n", .{ op, tyLhs, tyRhs });
+                    return err;
+                };
 
                 try testing.expectEqual(1, m.stack.items.len);
                 // Stack machine output is considered expected, as it's written

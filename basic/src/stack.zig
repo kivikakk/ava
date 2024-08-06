@@ -134,99 +134,70 @@ pub fn Machine(comptime Effects: type) type {
                         try self.stack.append(self.allocator, v);
                     },
                     .PROMOTE_INTEGER_LONG => {
-                        std.debug.assert(self.stack.items.len >= 1);
-                        const val = self.stackTake(1);
-                        defer self.valueFreeMany(&val);
-                        try self.stack.append(self.allocator, .{ .long = val[0].integer });
+                        const vx = try self.takeValues(1, .integer);
+                        try self.stack.append(self.allocator, .{ .long = vx[0] });
                     },
                     .COERCE_INTEGER_SINGLE => {
-                        std.debug.assert(self.stack.items.len >= 1);
-                        const val = self.stackTake(1);
-                        defer self.valueFreeMany(&val);
-                        try self.stack.append(self.allocator, .{ .single = @floatFromInt(val[0].integer) });
+                        const vx = try self.takeValues(1, .integer);
+                        try self.stack.append(self.allocator, .{ .single = @floatFromInt(vx[0]) });
                     },
                     .COERCE_INTEGER_DOUBLE => {
-                        std.debug.assert(self.stack.items.len >= 1);
-                        const val = self.stackTake(1);
-                        defer self.valueFreeMany(&val);
-                        try self.stack.append(self.allocator, .{ .double = @floatFromInt(val[0].integer) });
+                        const vx = try self.takeValues(1, .integer);
+                        try self.stack.append(self.allocator, .{ .double = @floatFromInt(vx[0]) });
                     },
                     .COERCE_LONG_INTEGER => {
-                        std.debug.assert(self.stack.items.len >= 1);
-                        const val = self.stackTake(1);
-                        defer self.valueFreeMany(&val);
-                        const n = val[0].long;
-                        if (n < std.math.minInt(i16) or n > std.math.maxInt(i16))
+                        const vx = try self.takeValues(1, .long);
+                        if (vx[0] < std.math.minInt(i16) or vx[0] > std.math.maxInt(i16))
                             return ErrorInfo.ret(self, Error.Overflow, "overflow coercing LONG to INTEGER", .{});
-                        try self.stack.append(self.allocator, .{ .integer = @intCast(n) });
+                        try self.stack.append(self.allocator, .{ .integer = @intCast(vx[0]) });
                     },
                     .COERCE_LONG_SINGLE => {
-                        std.debug.assert(self.stack.items.len >= 1);
-                        const val = self.stackTake(1);
-                        defer self.valueFreeMany(&val);
-                        try self.stack.append(self.allocator, .{ .single = @floatFromInt(val[0].long) });
+                        const vx = try self.takeValues(1, .long);
+                        try self.stack.append(self.allocator, .{ .single = @floatFromInt(vx[0]) });
                     },
                     .COERCE_LONG_DOUBLE => {
-                        std.debug.assert(self.stack.items.len >= 1);
-                        const val = self.stackTake(1);
-                        defer self.valueFreeMany(&val);
-                        try self.stack.append(self.allocator, .{ .double = @floatFromInt(val[0].long) });
+                        const vx = try self.takeValues(1, .long);
+                        try self.stack.append(self.allocator, .{ .double = @floatFromInt(vx[0]) });
                     },
                     .COERCE_SINGLE_INTEGER => {
-                        std.debug.assert(self.stack.items.len >= 1);
-                        const val = self.stackTake(1);
-                        defer self.valueFreeMany(&val);
-                        const n = val[0].single;
-                        const r: i16 = if (n < std.math.minInt(i16) or n > std.math.maxInt(i16))
+                        const vx = try self.takeValues(1, .single);
+                        const r: i16 = if (vx[0] < std.math.minInt(i16) or vx[0] > std.math.maxInt(i16))
                             std.math.minInt(i16)
                         else
-                            @intFromFloat(n);
+                            @intFromFloat(vx[0]);
                         try self.stack.append(self.allocator, .{ .integer = r });
                     },
                     .COERCE_SINGLE_LONG => {
-                        std.debug.assert(self.stack.items.len >= 1);
-                        const val = self.stackTake(1);
-                        defer self.valueFreeMany(&val);
-                        const n = val[0].single;
-                        const r: i32 = if (n < std.math.minInt(i32) or n > std.math.maxInt(i32))
+                        const vx = try self.takeValues(1, .single);
+                        const r: i32 = if (vx[0] < std.math.minInt(i32) or vx[0] > std.math.maxInt(i32))
                             std.math.minInt(i32)
                         else
-                            @intFromFloat(n);
+                            @intFromFloat(vx[0]);
                         try self.stack.append(self.allocator, .{ .long = r });
                     },
                     .PROMOTE_SINGLE_DOUBLE => {
-                        std.debug.assert(self.stack.items.len >= 1);
-                        const val = self.stackTake(1);
-                        defer self.valueFreeMany(&val);
-                        try self.stack.append(self.allocator, .{ .double = val[0].single });
+                        const vx = try self.takeValues(1, .single);
+                        try self.stack.append(self.allocator, .{ .double = vx[0] });
                     },
                     .COERCE_DOUBLE_INTEGER => {
-                        std.debug.assert(self.stack.items.len >= 1);
-                        const val = self.stackTake(1);
-                        defer self.valueFreeMany(&val);
-                        const n = val[0].double;
-                        const r: i16 = if (n < std.math.minInt(i16) or n > std.math.maxInt(i16))
+                        const vx = try self.takeValues(1, .double);
+                        const r: i16 = if (vx[0] < std.math.minInt(i16) or vx[0] > std.math.maxInt(i16))
                             std.math.minInt(i16)
                         else
-                            @intFromFloat(n);
+                            @intFromFloat(vx[0]);
                         try self.stack.append(self.allocator, .{ .integer = r });
                     },
                     .COERCE_DOUBLE_LONG => {
-                        std.debug.assert(self.stack.items.len >= 1);
-                        const val = self.stackTake(1);
-                        defer self.valueFreeMany(&val);
-                        const n = val[0].double;
-                        const r: i32 = if (n < std.math.minInt(i32) or n > std.math.maxInt(i32))
+                        const vx = try self.takeValues(1, .double);
+                        const r: i32 = if (vx[0] < std.math.minInt(i32) or vx[0] > std.math.maxInt(i32))
                             std.math.minInt(i32)
                         else
-                            @intFromFloat(n);
+                            @intFromFloat(vx[0]);
                         try self.stack.append(self.allocator, .{ .long = r });
                     },
                     .COERCE_DOUBLE_SINGLE => {
-                        std.debug.assert(self.stack.items.len >= 1);
-                        const val = self.stackTake(1);
-                        defer self.valueFreeMany(&val);
-                        try self.stack.append(self.allocator, .{ .single = @floatCast(val[0].double) });
+                        const vx = try self.takeValues(1, .double);
+                        try self.stack.append(self.allocator, .{ .single = @floatCast(vx[0]) });
                     },
                     .LET => {
                         std.debug.assert(code.len - i + 1 >= 1);
@@ -245,220 +216,447 @@ pub fn Machine(comptime Effects: type) type {
                     .BUILTIN_PRINT_COMMA => try self.effects.printComma(),
                     .BUILTIN_PRINT_LINEFEED => try self.effects.printLinefeed(),
                     .OPERATOR_ADD_INTEGER => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
+                        const vx = try self.takeValues(2, .integer);
                         // TODO: catch overflow and return error.
-                        const lhs = try self.assertType(vals[0], .integer);
-                        const rhs = try self.assertType(vals[1], .integer);
-                        try self.stack.append(self.allocator, .{ .integer = lhs + rhs });
+                        try self.stack.append(self.allocator, .{ .integer = vx[0] + vx[1] });
                     },
                     .OPERATOR_ADD_LONG => {
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
+                        const vx = try self.takeValues(2, .long);
                         // TODO: catch overflow and return error.
-                        const lhs = try self.assertType(vals[0], .long);
-                        const rhs = try self.assertType(vals[1], .long);
-                        try self.stack.append(self.allocator, .{ .long = lhs + rhs });
+                        try self.stack.append(self.allocator, .{ .long = vx[0] + vx[1] });
                     },
                     .OPERATOR_ADD_SINGLE => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
+                        const vx = try self.takeValues(2, .single);
                         // TODO: catch overflow and return error.
-                        const lhs = try self.assertType(vals[0], .single);
-                        const rhs = try self.assertType(vals[1], .single);
-                        try self.stack.append(self.allocator, .{ .single = lhs + rhs });
+                        try self.stack.append(self.allocator, .{ .single = vx[0] + vx[1] });
                     },
                     .OPERATOR_ADD_DOUBLE => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
+                        const vx = try self.takeValues(2, .double);
                         // TODO: catch overflow and return error.
-                        const lhs = try self.assertType(vals[0], .double);
-                        const rhs = try self.assertType(vals[1], .double);
-                        try self.stack.append(self.allocator, .{ .double = lhs + rhs });
+                        try self.stack.append(self.allocator, .{ .double = vx[0] + vx[1] });
                     },
                     .OPERATOR_ADD_STRING => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
+                        const vx = try self.takeValues(2, .string);
+                        defer self.allocator.free(vx[0]);
+                        defer self.allocator.free(vx[1]);
                         // TODO: catch overflow and return error.
-                        const lhs = try self.assertType(vals[0], .string);
-                        const rhs = try self.assertType(vals[1], .string);
-                        const v = try self.allocator.alloc(u8, lhs.len + rhs.len);
+                        const v = try self.allocator.alloc(u8, vx[0].len + vx[1].len);
                         errdefer self.allocator.free(v);
-                        @memcpy(v[0..lhs.len], lhs);
-                        @memcpy(v[lhs.len..], rhs);
+                        @memcpy(v[0..vx[0].len], vx[0]);
+                        @memcpy(v[vx[0].len..], vx[1]);
                         try self.stack.append(self.allocator, .{ .string = v });
                     },
                     .OPERATOR_MULTIPLY_INTEGER => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
-                        const lhs = try self.assertType(vals[0], .integer);
-                        const rhs = try self.assertType(vals[1], .integer);
-                        try self.stack.append(self.allocator, .{ .integer = lhs * rhs });
+                        const vx = try self.takeValues(2, .integer);
+                        // TODO: handle overflow.
+                        try self.stack.append(self.allocator, .{ .integer = vx[0] * vx[1] });
                     },
                     .OPERATOR_MULTIPLY_LONG => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
-                        const lhs = try self.assertType(vals[0], .long);
-                        const rhs = try self.assertType(vals[1], .long);
-                        try self.stack.append(self.allocator, .{ .long = lhs * rhs });
+                        const vx = try self.takeValues(2, .long);
+                        // TODO: handle overflow.
+                        try self.stack.append(self.allocator, .{ .long = vx[0] * vx[1] });
                     },
                     .OPERATOR_MULTIPLY_SINGLE => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
-                        const lhs = try self.assertType(vals[0], .single);
-                        const rhs = try self.assertType(vals[1], .single);
-                        try self.stack.append(self.allocator, .{ .single = lhs * rhs });
+                        const vx = try self.takeValues(2, .single);
+                        // TODO: handle overflow.
+                        try self.stack.append(self.allocator, .{ .single = vx[0] * vx[1] });
                     },
                     .OPERATOR_MULTIPLY_DOUBLE => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
-                        const lhs = try self.assertType(vals[0], .double);
-                        const rhs = try self.assertType(vals[1], .double);
-                        try self.stack.append(self.allocator, .{ .double = lhs * rhs });
-                    },
-                    .OPERATOR_SUBTRACT_INTEGER => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
-                        const lhs = try self.assertType(vals[0], .integer);
-                        const rhs = try self.assertType(vals[1], .integer);
-                        try self.stack.append(self.allocator, .{ .integer = lhs - rhs });
-                    },
-                    .OPERATOR_SUBTRACT_LONG => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
-                        const lhs = try self.assertType(vals[0], .long);
-                        const rhs = try self.assertType(vals[1], .long);
-                        try self.stack.append(self.allocator, .{ .long = lhs - rhs });
-                    },
-                    .OPERATOR_SUBTRACT_SINGLE => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
-                        const lhs = try self.assertType(vals[0], .single);
-                        const rhs = try self.assertType(vals[1], .single);
-                        try self.stack.append(self.allocator, .{ .single = lhs - rhs });
-                    },
-                    .OPERATOR_SUBTRACT_DOUBLE => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
-                        const lhs = try self.assertType(vals[0], .double);
-                        const rhs = try self.assertType(vals[1], .double);
-                        try self.stack.append(self.allocator, .{ .double = lhs - rhs });
+                        const vx = try self.takeValues(2, .double);
+                        // TODO: handle overflow.
+                        try self.stack.append(self.allocator, .{ .double = vx[0] * vx[1] });
                     },
                     .OPERATOR_FDIVIDE_INTEGER => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
-                        const lhs = try self.assertType(vals[0], .integer);
-                        const rhs = try self.assertType(vals[1], .integer);
+                        const vx = try self.takeValues(2, .integer);
                         try self.stack.append(self.allocator, .{
-                            .single = @as(f32, @floatFromInt(lhs)) / @as(f32, @floatFromInt(rhs)),
+                            .single = @as(f32, @floatFromInt(vx[0])) / @as(f32, @floatFromInt(vx[1])),
                         });
                     },
                     .OPERATOR_FDIVIDE_LONG => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
-                        const lhs = try self.assertType(vals[0], .long);
-                        const rhs = try self.assertType(vals[1], .long);
+                        const vx = try self.takeValues(2, .long);
                         try self.stack.append(self.allocator, .{
-                            .double = @as(f64, @floatFromInt(lhs)) / @as(f64, @floatFromInt(rhs)),
+                            .double = @as(f64, @floatFromInt(vx[0])) / @as(f64, @floatFromInt(vx[1])),
                         });
                     },
                     .OPERATOR_FDIVIDE_SINGLE => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
-                        const lhs = try self.assertType(vals[0], .single);
-                        const rhs = try self.assertType(vals[1], .single);
-                        try self.stack.append(self.allocator, .{ .single = lhs / rhs });
+                        const vx = try self.takeValues(2, .single);
+                        try self.stack.append(self.allocator, .{ .single = vx[0] / vx[1] });
                     },
                     .OPERATOR_FDIVIDE_DOUBLE => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
-                        const lhs = try self.assertType(vals[0], .double);
-                        const rhs = try self.assertType(vals[1], .double);
-                        try self.stack.append(self.allocator, .{ .double = lhs / rhs });
+                        const vx = try self.takeValues(2, .double);
+                        try self.stack.append(self.allocator, .{ .double = vx[0] / vx[1] });
                     },
                     .OPERATOR_IDIVIDE_INTEGER => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
-                        const lhs = try self.assertType(vals[0], .integer);
-                        const rhs = try self.assertType(vals[1], .integer);
-                        try self.stack.append(self.allocator, .{ .integer = @divTrunc(lhs, rhs) });
+                        const vx = try self.takeValues(2, .integer);
+                        try self.stack.append(self.allocator, .{ .integer = @divTrunc(vx[0], vx[1]) });
                     },
                     .OPERATOR_IDIVIDE_LONG => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
-                        const lhs = try self.assertType(vals[0], .long);
-                        const rhs = try self.assertType(vals[1], .long);
-                        try self.stack.append(self.allocator, .{ .long = @divTrunc(lhs, rhs) });
+                        const vx = try self.takeValues(2, .long);
+                        try self.stack.append(self.allocator, .{ .long = @divTrunc(vx[0], vx[1]) });
                     },
                     .OPERATOR_IDIVIDE_SINGLE => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
-                        const lhs = try self.assertType(vals[0], .single);
-                        const rhs = try self.assertType(vals[1], .single);
-                        // XXX: specific rules around whether integer or long is produced?
+                        const vx = try self.takeValues(2, .single);
                         try self.stack.append(self.allocator, .{
                             .integer = @divTrunc(
-                                @as(i16, @intFromFloat(@round(lhs))),
-                                @as(i16, @intFromFloat(@round(rhs))),
+                                @as(i16, @intFromFloat(@round(vx[0]))),
+                                @as(i16, @intFromFloat(@round(vx[1]))),
                             ),
                         });
                     },
                     .OPERATOR_IDIVIDE_DOUBLE => {
-                        std.debug.assert(self.stack.items.len >= 2);
-                        const vals = self.stackTake(2);
-                        defer self.valueFreeMany(&vals);
-                        const lhs = try self.assertType(vals[0], .double);
-                        const rhs = try self.assertType(vals[1], .double);
-                        // XXX: specific rules around whether integer or long is produced?
+                        const vx = try self.takeValues(2, .double);
                         try self.stack.append(self.allocator, .{
                             .long = @divTrunc(
-                                @as(i32, @intFromFloat(@round(lhs))),
-                                @as(i32, @intFromFloat(@round(rhs))),
+                                @as(i32, @intFromFloat(@round(vx[0]))),
+                                @as(i32, @intFromFloat(@round(vx[1]))),
                             ),
                         });
                     },
+                    .OPERATOR_SUBTRACT_INTEGER => {
+                        const vx = try self.takeValues(2, .integer);
+                        try self.stack.append(self.allocator, .{ .integer = vx[0] - vx[1] });
+                    },
+                    .OPERATOR_SUBTRACT_LONG => {
+                        const vx = try self.takeValues(2, .long);
+                        try self.stack.append(self.allocator, .{ .long = vx[0] - vx[1] });
+                    },
+                    .OPERATOR_SUBTRACT_SINGLE => {
+                        const vx = try self.takeValues(2, .single);
+                        try self.stack.append(self.allocator, .{ .single = vx[0] - vx[1] });
+                    },
+                    .OPERATOR_SUBTRACT_DOUBLE => {
+                        const vx = try self.takeValues(2, .double);
+                        try self.stack.append(self.allocator, .{ .double = vx[0] - vx[1] });
+                    },
                     .OPERATOR_NEGATE_INTEGER => {
-                        std.debug.assert(self.stack.items.len >= 1);
-                        const val = self.stackTake(1);
-                        defer self.valueFreeMany(&val);
-                        try self.stack.append(self.allocator, .{ .integer = -val[0].integer });
+                        const vx = try self.takeValues(1, .integer);
+                        try self.stack.append(self.allocator, .{ .integer = -vx[0] });
                     },
                     .OPERATOR_NEGATE_LONG => {
-                        std.debug.assert(self.stack.items.len >= 1);
-                        const val = self.stackTake(1);
-                        defer self.valueFreeMany(&val);
-                        try self.stack.append(self.allocator, .{ .long = -val[0].long });
+                        const vx = try self.takeValues(1, .long);
+                        try self.stack.append(self.allocator, .{ .long = -vx[0] });
                     },
                     .OPERATOR_NEGATE_SINGLE => {
-                        std.debug.assert(self.stack.items.len >= 1);
-                        const val = self.stackTake(1);
-                        defer self.valueFreeMany(&val);
-                        try self.stack.append(self.allocator, .{ .single = -val[0].single });
+                        const vx = try self.takeValues(1, .single);
+                        try self.stack.append(self.allocator, .{ .single = -vx[0] });
                     },
                     .OPERATOR_NEGATE_DOUBLE => {
-                        std.debug.assert(self.stack.items.len >= 1);
-                        const val = self.stackTake(1);
-                        defer self.valueFreeMany(&val);
-                        try self.stack.append(self.allocator, .{ .double = -val[0].double });
+                        const vx = try self.takeValues(1, .double);
+                        try self.stack.append(self.allocator, .{ .double = -vx[0] });
+                    },
+                    .OPERATOR_EQ_INTEGER => {
+                        const vx = try self.takeValues(2, .integer);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] == vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_EQ_LONG => {
+                        const vx = try self.takeValues(2, .long);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] == vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_EQ_SINGLE => {
+                        const vx = try self.takeValues(2, .single);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] == vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_EQ_DOUBLE => {
+                        const vx = try self.takeValues(2, .double);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] == vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_EQ_STRING => {
+                        const vx = try self.takeValues(2, .string);
+                        defer self.allocator.free(vx[0]);
+                        defer self.allocator.free(vx[1]);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (std.mem.eql(u8, vx[0], vx[1])) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_NEQ_INTEGER => {
+                        const vx = try self.takeValues(2, .integer);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] != vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_NEQ_LONG => {
+                        const vx = try self.takeValues(2, .long);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] != vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_NEQ_SINGLE => {
+                        const vx = try self.takeValues(2, .single);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] != vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_NEQ_DOUBLE => {
+                        const vx = try self.takeValues(2, .double);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] != vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_NEQ_STRING => {
+                        const vx = try self.takeValues(2, .string);
+                        defer self.allocator.free(vx[0]);
+                        defer self.allocator.free(vx[1]);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (!std.mem.eql(u8, vx[0], vx[1])) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_LT_INTEGER => {
+                        const vx = try self.takeValues(2, .integer);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] < vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_LT_LONG => {
+                        const vx = try self.takeValues(2, .long);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] < vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_LT_SINGLE => {
+                        const vx = try self.takeValues(2, .single);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] < vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_LT_DOUBLE => {
+                        const vx = try self.takeValues(2, .double);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] < vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_LT_STRING => {
+                        const vx = try self.takeValues(2, .string);
+                        defer self.allocator.free(vx[0]);
+                        defer self.allocator.free(vx[1]);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (std.mem.order(u8, vx[0], vx[1]) == .lt) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_GT_INTEGER => {
+                        const vx = try self.takeValues(2, .integer);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] > vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_GT_LONG => {
+                        const vx = try self.takeValues(2, .long);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] > vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_GT_SINGLE => {
+                        const vx = try self.takeValues(2, .single);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] > vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_GT_DOUBLE => {
+                        const vx = try self.takeValues(2, .double);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] > vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_GT_STRING => {
+                        const vx = try self.takeValues(2, .string);
+                        defer self.allocator.free(vx[0]);
+                        defer self.allocator.free(vx[1]);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (std.mem.order(u8, vx[0], vx[1]) == .gt) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_LTE_INTEGER => {
+                        const vx = try self.takeValues(2, .integer);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] <= vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_LTE_LONG => {
+                        const vx = try self.takeValues(2, .long);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] <= vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_LTE_SINGLE => {
+                        const vx = try self.takeValues(2, .single);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] <= vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_LTE_DOUBLE => {
+                        const vx = try self.takeValues(2, .double);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] <= vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_LTE_STRING => {
+                        const vx = try self.takeValues(2, .string);
+                        defer self.allocator.free(vx[0]);
+                        defer self.allocator.free(vx[1]);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (std.mem.order(u8, vx[0], vx[1]) != .gt) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_GTE_INTEGER => {
+                        const vx = try self.takeValues(2, .integer);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] >= vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_GTE_LONG => {
+                        const vx = try self.takeValues(2, .long);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] >= vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_GTE_SINGLE => {
+                        const vx = try self.takeValues(2, .single);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] >= vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_GTE_DOUBLE => {
+                        const vx = try self.takeValues(2, .double);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (vx[0] >= vx[1]) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_GTE_STRING => {
+                        const vx = try self.takeValues(2, .string);
+                        defer self.allocator.free(vx[0]);
+                        defer self.allocator.free(vx[1]);
+                        try self.stack.append(self.allocator, .{
+                            .integer = if (std.mem.order(u8, vx[0], vx[1]) != .lt) -1 else 0,
+                        });
+                    },
+                    .OPERATOR_AND_INTEGER => {
+                        const vx = try self.takeValues(2, .integer);
+                        try self.stack.append(self.allocator, .{
+                            .integer = vx[0] & vx[1],
+                        });
+                    },
+                    .OPERATOR_AND_LONG => {
+                        const vx = try self.takeValues(2, .long);
+                        try self.stack.append(self.allocator, .{
+                            .long = vx[0] & vx[1],
+                        });
+                    },
+                    .OPERATOR_AND_SINGLE => {
+                        // Float bitwise ops are probably better handled by
+                        // compiling the casts in.
+                        const vx = try self.takeValues(2, .single);
+                        const lhs: i32 = if (vx[0] < std.math.minInt(i32) or vx[0] > std.math.maxInt(i32))
+                            std.math.minInt(i32)
+                        else
+                            @intFromFloat(vx[0]);
+                        const rhs: i32 = if (vx[1] < std.math.minInt(i32) or vx[1] > std.math.maxInt(i32))
+                            std.math.minInt(i32)
+                        else
+                            @intFromFloat(vx[1]);
+                        try self.stack.append(self.allocator, .{
+                            .long = lhs & rhs,
+                        });
+                    },
+                    .OPERATOR_AND_DOUBLE => {
+                        const vx = try self.takeValues(2, .double);
+                        const lhs: i32 = if (vx[0] < std.math.minInt(i32) or vx[0] > std.math.maxInt(i32))
+                            std.math.minInt(i32)
+                        else
+                            @intFromFloat(vx[0]);
+                        const rhs: i32 = if (vx[1] < std.math.minInt(i32) or vx[1] > std.math.maxInt(i32))
+                            std.math.minInt(i32)
+                        else
+                            @intFromFloat(vx[1]);
+                        try self.stack.append(self.allocator, .{
+                            .long = lhs & rhs,
+                        });
+                    },
+                    .OPERATOR_OR_INTEGER => {
+                        const vx = try self.takeValues(2, .integer);
+                        try self.stack.append(self.allocator, .{
+                            .integer = vx[0] | vx[1],
+                        });
+                    },
+                    .OPERATOR_OR_LONG => {
+                        const vx = try self.takeValues(2, .long);
+                        try self.stack.append(self.allocator, .{
+                            .long = vx[0] | vx[1],
+                        });
+                    },
+                    .OPERATOR_OR_SINGLE => {
+                        const vx = try self.takeValues(2, .single);
+                        const lhs: i32 = if (vx[0] < std.math.minInt(i32) or vx[0] > std.math.maxInt(i32))
+                            std.math.minInt(i32)
+                        else
+                            @intFromFloat(vx[0]);
+                        const rhs: i32 = if (vx[1] < std.math.minInt(i32) or vx[1] > std.math.maxInt(i32))
+                            std.math.minInt(i32)
+                        else
+                            @intFromFloat(vx[1]);
+                        try self.stack.append(self.allocator, .{
+                            .long = lhs | rhs,
+                        });
+                    },
+                    .OPERATOR_OR_DOUBLE => {
+                        const vx = try self.takeValues(2, .double);
+                        const lhs: i32 = if (vx[0] < std.math.minInt(i32) or vx[0] > std.math.maxInt(i32))
+                            std.math.minInt(i32)
+                        else
+                            @intFromFloat(vx[0]);
+                        const rhs: i32 = if (vx[1] < std.math.minInt(i32) or vx[1] > std.math.maxInt(i32))
+                            std.math.minInt(i32)
+                        else
+                            @intFromFloat(vx[1]);
+                        try self.stack.append(self.allocator, .{
+                            .long = lhs | rhs,
+                        });
+                    },
+                    .OPERATOR_XOR_INTEGER => {
+                        const vx = try self.takeValues(2, .integer);
+                        try self.stack.append(self.allocator, .{
+                            .integer = vx[0] ^ vx[1],
+                        });
+                    },
+                    .OPERATOR_XOR_LONG => {
+                        const vx = try self.takeValues(2, .long);
+                        try self.stack.append(self.allocator, .{
+                            .long = vx[0] ^ vx[1],
+                        });
+                    },
+                    .OPERATOR_XOR_SINGLE => {
+                        const vx = try self.takeValues(2, .single);
+                        const lhs: i32 = if (vx[0] < std.math.minInt(i32) or vx[0] > std.math.maxInt(i32))
+                            std.math.minInt(i32)
+                        else
+                            @intFromFloat(vx[0]);
+                        const rhs: i32 = if (vx[1] < std.math.minInt(i32) or vx[1] > std.math.maxInt(i32))
+                            std.math.minInt(i32)
+                        else
+                            @intFromFloat(vx[1]);
+                        try self.stack.append(self.allocator, .{
+                            .long = lhs ^ rhs,
+                        });
+                    },
+                    .OPERATOR_XOR_DOUBLE => {
+                        const vx = try self.takeValues(2, .double);
+                        const lhs: i32 = if (vx[0] < std.math.minInt(i32) or vx[0] > std.math.maxInt(i32))
+                            std.math.minInt(i32)
+                        else
+                            @intFromFloat(vx[0]);
+                        const rhs: i32 = if (vx[1] < std.math.minInt(i32) or vx[1] > std.math.maxInt(i32))
+                            std.math.minInt(i32)
+                        else
+                            @intFromFloat(vx[1]);
+                        try self.stack.append(self.allocator, .{
+                            .long = lhs ^ rhs,
+                        });
                     },
                     .PRAGMA_PRINTED => {
                         std.debug.assert(code.len - i + 1 >= 2);
@@ -474,6 +672,17 @@ pub fn Machine(comptime Effects: type) type {
                     // else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled opcode: {s}", .{@tagName(op)}),
                 }
             }
+        }
+
+        fn takeValues(self: *Self, comptime n: usize, comptime t: std.meta.Tag(isa.Value)) ![n]std.meta.TagPayload(isa.Value, t) {
+            // XXX: caller must free strings returned!
+            std.debug.assert(self.stack.items.len >= n);
+            const vals = self.stackTake(n);
+            errdefer self.valueFreeMany(&vals);
+            var r: [n]std.meta.TagPayload(isa.Value, t) = undefined;
+            inline for (0..n) |i|
+                r[i] = try self.assertType(vals[i], t);
+            return r;
         }
 
         fn assertType(self: *Self, v: isa.Value, comptime t: std.meta.Tag(isa.Value)) !std.meta.TagPayload(isa.Value, t) {

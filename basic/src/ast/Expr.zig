@@ -29,6 +29,8 @@ pub fn formatAst(self: Expr, indent: usize, writer: anytype) !void {
 }
 
 pub const Op = enum {
+    const Self = @This();
+
     add,
     mul,
     fdiv,
@@ -43,6 +45,13 @@ pub const Op = enum {
     @"and",
     @"or",
     xor,
+
+    pub fn all() []const Self {
+        comptime var tx: []const Self = &.{};
+        inline for (@typeInfo(Self).Enum.fields) |f|
+            tx = tx ++ .{@field(Self, f.name)};
+        return tx;
+    }
 };
 
 pub const Payload = union(enum) {
