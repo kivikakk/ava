@@ -1,16 +1,15 @@
-Ava BASIC
-=========
+Ava BASIC FPGA stack machine
+============================
 
-https://sr.ht/~kivikakk/ava
-    git: https://git.sr.ht/~kivikakk/ava
-   todo: https://todo.sr.ht/~kivikakk/ava
-  lists: https://sr.ht/~kivikakk/ava/lists
+`python -m avacore build -b icebreaker -p` will build for iCEBreaker and program.
 
-basic/
-  Compiler and host-side stack machine interpreter.
+`python -m avacore cxxrtl` will build and run the CXXRTL/Zig simulation.
 
-core/
-  FPGA stack machine.
+`python -m avacore` for usage.
+
+A `flake.nix` is provided -- you can directly run:
+
+  nix run 'git+https://git.sr.ht/~kivikakk/ava?dir=core'
 
 
 Legal

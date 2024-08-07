@@ -1,0 +1,31 @@
+[project]
+name = "avacore"
+version = "0.0"
+description = ""
+authors = [
+    {name = "name", email = "email@example.com"},
+]
+dependencies = [
+    "amaranth >= 0.5, < 0.7",
+    "niar >= 0.1.1",
+]
+requires-python = ">=3.8"
+license = {text = "BSD-2-Clause"}
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[project.scripts]
+avacore = "avacore:main"
+
+[tool.pdm.dev-dependencies]
+test = [
+    "amaranth-boards @ git+https://github.com/amaranth-lang/amaranth-boards@main",
+    "pytest>=8.2.2",
+    "pytest-xdist>=3.6.1",
+]
+
+[tool.pytest.ini_options]
+addopts = ["-n", "auto"]
+testpaths = ["tests"]

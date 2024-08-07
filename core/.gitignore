@@ -1,0 +1,7 @@
+__pycache__
+/build
+/result
+*.vcd
+.pdm-python
+.zig-cache
+zig-out
