@@ -36,16 +36,16 @@
       formatter = pkgs.alejandra;
 
       devShells.default = pkgs.mkShell {
-        name = "ava";
+        name = "avabasic";
         nativeBuildInputs = [
           zig
           zls
         ];
       };
 
-      packages.default = packages.basic;
-      packages.basic = pkgs.stdenvNoCC.mkDerivation {
-        name = "basic";
+      packages.default = packages.avabasic;
+      packages.avabasic = pkgs.stdenvNoCC.mkDerivation {
+        name = "avabasic";
         version = "main";
         src = gitignoreSource ./.;
         nativeBuildInputs = [zig];
