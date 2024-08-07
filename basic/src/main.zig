@@ -11,11 +11,13 @@ const Compiler = @import("Compiler.zig");
 const stack = @import("stack.zig");
 const PrintLoc = @import("PrintLoc.zig");
 const ErrorInfo = @import("ErrorInfo.zig");
+const Stmt = @import("ast/Stmt.zig");
 
 const Options = struct {
     pp: bool = false,
     ast: bool = false,
     bc: bool = false,
+    compile: bool = false,
     help: bool = false,
 };
 var options: Options = undefined;
@@ -50,6 +52,7 @@ fn usage(executable_name: ?[:0]const u8, status: u8) noreturn {
         \\  --pp       Pretty-prints [file] without executing.
         \\  --ast      Prints the AST of [file] without executing.
         \\  --bc       Dumps the bytecode compiled from [file] without executing.
+        \\  --compile  Compiles [file] without executing.
         \\  --help     Shows this information.
         \\
         \\Multiple of --pp, --ast, and/or --bc can be given at once.
@@ -98,27 +101,34 @@ fn mainRun(allocator: Allocator, filename: []const u8) !void {
     }
 
     if (options.bc) {
-        const code = Compiler.compile(allocator, sx, &errorinfo) catch |err| {
-            try ttyconf.setColor(stdoutwr, .bright_red);
-            try showErrorInfo(errorinfo, stdoutwr, .loc);
-            try std.fmt.format(stdoutwr, "compile: {s}\n\n", .{@errorName(err)});
-            try stdoutbw.flush();
-            return err;
-        };
+        const code = try compileSx(ttyconf, &stdoutbw, stdoutwr, allocator, sx);
         defer allocator.free(code);
 
         try stdoutbw.flush();
         try xxd(code);
     }
 
-    if (!options.ast and !options.pp and !options.bc) {
-        const code = Compiler.compile(allocator, sx, &errorinfo) catch |err| {
-            try ttyconf.setColor(stdoutwr, .bright_red);
-            try showErrorInfo(errorinfo, stdoutwr, .loc);
-            try std.fmt.format(stdoutwr, "compile: {s}\n\n", .{@errorName(err)});
-            try stdoutbw.flush();
-            return err;
+    if (options.compile) {
+        const code = try compileSx(ttyconf, &stdoutbw, stdoutwr, allocator, sx);
+        defer allocator.free(code);
+
+        const filenameOut = if (std.ascii.endsWithIgnoreCase(filename, ".bas")) o: {
+            var buf = try allocator.dupe(u8, filename);
+            @memcpy(buf[buf.len - 3 ..], "avc");
+            break :o buf;
+        } else o: {
+            var buf = try allocator.alloc(u8, filename.len + 3);
+            @memcpy(buf[0..filename.len], filename);
+            @memcpy(buf[buf.len - 3 ..], "avc");
+            break :o buf;
         };
+        defer allocator.free(filenameOut);
+
+        try std.fs.cwd().writeFile(.{ .sub_path = filenameOut, .data = code });
+    }
+
+    if (!options.ast and !options.pp and !options.bc and !options.compile) {
+        const code = try compileSx(ttyconf, &stdoutbw, stdoutwr, allocator, sx);
         defer allocator.free(code);
 
         var m = stack.Machine(RunEffects).init(allocator, try RunEffects.init(allocator, stdout), &errorinfo);
@@ -136,6 +146,24 @@ fn mainRun(allocator: Allocator, filename: []const u8) !void {
     }
 }
 
+// TODO: refactor with above/below.
+fn compileSx(
+    ttyconf: std.io.tty.Config,
+    stdoutbw: anytype,
+    stdoutwr: anytype,
+    allocator: Allocator,
+    sx: []Stmt,
+) ![]const u8 {
+    var errorinfo: ErrorInfo = .{};
+    return Compiler.compile(allocator, sx, &errorinfo) catch |err| {
+        try ttyconf.setColor(stdoutwr, .bright_red);
+        try showErrorInfo(errorinfo, stdoutwr, .loc);
+        try std.fmt.format(stdoutwr, "compile: {s}\n\n", .{@errorName(err)});
+        try stdoutbw.flush();
+        return err;
+    };
+}
+
 fn mainInteractive(allocator: Allocator) !void {
     const stdout = std.io.getStdOut();
     var stdoutbw = std.io.bufferedWriter(stdout.writer());
@@ -148,6 +176,14 @@ fn mainInteractive(allocator: Allocator) !void {
     try ttyconf.setColor(stdoutwr, .bright_cyan);
     try stdoutwr.writeAll("Ava BASIC\n");
     try ttyconf.setColor(stdoutwr, .reset);
+
+    if (options.compile) {
+        try ttyconf.setColor(stdoutwr, .bright_red);
+        try stdoutwr.writeAll("--compile not meaningful in interactive mode.\n");
+        try ttyconf.setColor(stdoutwr, .reset);
+        try stdoutbw.flush();
+        try std.process.exit(1);
+    }
 
     var errorinfo: ErrorInfo = .{};
     var c = try Compiler.init(allocator, &errorinfo);
@@ -257,7 +293,9 @@ fn xxd(code: []const u8) !void {
             const ch = code[i + j];
             if (j % 2 == 0)
                 try stdoutwr.writeByte(' ');
-            if (ch < 32 or ch > 126)
+            if (ch == 0)
+                try ttyconf.setColor(stdoutwr, .reset)
+            else if (ch < 32 or ch > 126)
                 try ttyconf.setColor(stdoutwr, .bright_yellow)
             else
                 try ttyconf.setColor(stdoutwr, .bright_green);
@@ -273,7 +311,10 @@ fn xxd(code: []const u8) !void {
         try stdoutwr.writeAll("  ");
         for (0..c) |j| {
             const ch = code[i + j];
-            if (ch < 32 or ch > 126) {
+            if (ch == 0) {
+                try ttyconf.setColor(stdoutwr, .reset);
+                try stdoutwr.writeByte('.');
+            } else if (ch < 32 or ch > 126) {
                 try ttyconf.setColor(stdoutwr, .bright_yellow);
                 try stdoutwr.writeByte('.');
             } else {

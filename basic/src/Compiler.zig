@@ -29,7 +29,7 @@ const Error = error{
     Overflow,
 };
 
-pub fn compile(allocator: Allocator, sx: []Stmt, errorinfo: ?*ErrorInfo) ![]const u8 {
+pub fn compile(allocator: Allocator, sx: []const Stmt, errorinfo: ?*ErrorInfo) ![]const u8 {
     var compiler = try init(allocator, errorinfo);
     defer compiler.deinit();
 
@@ -63,7 +63,7 @@ pub fn deinit(self: *Compiler) void {
     self.allocator.destroy(self);
 }
 
-pub fn compileStmts(self: *Compiler, sx: []Stmt) ![]const u8 {
+pub fn compileStmts(self: *Compiler, sx: []const Stmt) ![]const u8 {
     for (sx) |s|
         try self.compileStmt(s);
 
