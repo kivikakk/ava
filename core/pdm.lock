@@ -4,13 +4,16 @@
 [metadata]
 groups = ["default", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
-lock_version = "4.4.2"
-content_hash = "sha256:e4702e5eafd85f119b9f470936f31889766b9f38903b227f55e0212c56206ae7"
+lock_version = "4.4.1"
+content_hash = "sha256:66b605b4147c8e10b738203c6cbda791aeece3c75a73de461fb1bd8a28713d60"
 
 [[package]]
 name = "amaranth"
-version = "0.5.0"
+version = "0.6.0.dev38"
 requires_python = "~=3.8"
+git = "https://github.com/amaranth-lang/amaranth"
+ref = "ba1860553cacfbb5d358f9a9e0699fb7efce0451"
+revision = "ba1860553cacfbb5d358f9a9e0699fb7efce0451"
 summary = "Amaranth hardware definition language"
 groups = ["default", "test"]
 dependencies = [
@@ -19,22 +22,31 @@ dependencies = [
     "jschon~=0.11.1",
     "pyvcd<0.5,>=0.2.2",
 ]
-files = [
-    {file = "amaranth-0.5.0-py3-none-any.whl", hash = "sha256:3d05d38864d6e88e40db93ed29ac0bee7f2a351d12810d4414f5b65a7cb0e23f"},
-    {file = "amaranth-0.5.0.tar.gz", hash = "sha256:9d2a1893d6ac938e0ff3983892eff5b56033e06691cc89674eb8d500dc46cdf6"},
-]
 
 [[package]]
 name = "amaranth-boards"
-version = "0.1.dev248"
+version = "0.1.dev250"
 requires_python = "~=3.8"
 git = "https://github.com/amaranth-lang/amaranth-boards"
-ref = "main"
-revision = "ad5a939b86020c53e0e193620b96ca19d5960192"
+ref = "19b97324ecf9111c5d16377af79f82aad761c476"
+revision = "19b97324ecf9111c5d16377af79f82aad761c476"
 summary = "Board and connector definitions for Amaranth HDL"
 groups = ["test"]
 dependencies = [
-    "amaranth<0.6,>=0.4",
+    "amaranth<0.7,>=0.4",
+]
+
+[[package]]
+name = "amaranth-stdio"
+version = "0.1.dev35"
+requires_python = "~=3.8"
+git = "https://github.com/kivikakk/amaranth-stdio"
+ref = "ca4fac262a2290495c82d76aa785bd8707afa781"
+revision = "ca4fac262a2290495c82d76aa785bd8707afa781"
+summary = "Industry standard I/O for Amaranth HDL"
+groups = ["default"]
+dependencies = [
+    "amaranth<0.7,>=0.5",
 ]
 
 [[package]]
@@ -53,18 +65,14 @@ files = [
 
 [[package]]
 name = "amaranth"
-version = "0.5.0"
+version = "0.6.0.dev38"
 extras = ["builtin-yosys"]
 requires_python = "~=3.8"
 summary = "Amaranth hardware definition language"
 groups = ["default"]
 dependencies = [
     "amaranth-yosys>=0.40",
-    "amaranth==0.5.0",
-]
-files = [
-    {file = "amaranth-0.5.0-py3-none-any.whl", hash = "sha256:3d05d38864d6e88e40db93ed29ac0bee7f2a351d12810d4414f5b65a7cb0e23f"},
-    {file = "amaranth-0.5.0.tar.gz", hash = "sha256:9d2a1893d6ac938e0ff3983892eff5b56033e06691cc89674eb8d500dc46cdf6"},
+    "amaranth==0.6.0.dev38",
 ]
 
 [[package]]
@@ -217,16 +225,15 @@ files = [
 
 [[package]]
 name = "niar"
-version = "0.1.1"
+version = "0.1.3.dev2"
 requires_python = ">=3.8"
+git = "https://git.sr.ht/~kivikakk/niar"
+ref = "a478292edabfee100c450a59d0898f3f6bf91c51"
+revision = "a478292edabfee100c450a59d0898f3f6bf91c51"
 summary = "A small framework for building projects with Amaranth"
 groups = ["default"]
 dependencies = [
     "amaranth[builtin-yosys]>=0.5",
-]
-files = [
-    {file = "niar-0.1.1-py3-none-any.whl", hash = "sha256:70e692c124ed537f23bc2dbb62d4d33dcc443b6692e46e9a6241c0656cdbb8a2"},
-    {file = "niar-0.1.1.tar.gz", hash = "sha256:10ea5db4596fc0fb8304a53d8510f4020ecf3cad202c47f1b48ba8fb310d47b6"},
 ]
 
 [[package]]
@@ -253,7 +260,7 @@ files = [
 
 [[package]]
 name = "pytest"
-version = "8.2.2"
+version = "8.3.2"
 requires_python = ">=3.8"
 summary = "pytest: simple powerful testing with Python"
 groups = ["test"]
@@ -262,12 +269,12 @@ dependencies = [
     "exceptiongroup>=1.0.0rc8; python_version < \"3.11\"",
     "iniconfig",
     "packaging",
-    "pluggy<2.0,>=1.5",
+    "pluggy<2,>=1.5",
     "tomli>=1; python_version < \"3.11\"",
 ]
 files = [
-    {file = "pytest-8.2.2-py3-none-any.whl", hash = "sha256:c434598117762e2bd304e526244f67bf66bbd7b5d6cf22138be51ff661980343"},
-    {file = "pytest-8.2.2.tar.gz", hash = "sha256:de4bb8104e201939ccdc688b27a89a7be2079b22e2bd2b07f806b6ba71117977"},
+    {file = "pytest-8.3.2-py3-none-any.whl", hash = "sha256:4ba08f9ae7dcf84ded419494d229b48d0903ea6407b030eaec46df5e6a73bba5"},
+    {file = "pytest-8.3.2.tar.gz", hash = "sha256:c132345d12ce551242c87269de812483f5bcc87cdbb4722e48487ba194f9fdce"},
 ]
 
 [[package]]

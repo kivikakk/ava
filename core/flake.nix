@@ -37,43 +37,8 @@
       zig = zig-overlay.packages.${system}.master;
       zls = zls-flake.packages.${system}.zls;
 
-      python = let
-        packageOverrides = final: prev: {
-          amaranth = prev.amaranth.overridePythonAttrs {
-            src = pkgs.fetchFromGitHub {
-              owner = "amaranth-lang";
-              repo = "amaranth";
-              rev = "ba1860553cacfbb5d358f9a9e0699fb7efce0451";
-              hash = "sha256-RXHdNIf8S6eHZPswajLY72Fn4zB7P1C9iRcUWqACYT8=";
-            };
-          };
-        };
-      in
-        pkgs.python3.override {
-          inherit packageOverrides;
-          self = python;
-        };
-
-      niarVer = "0.1.3";
-      niarRev = "3b3125d40267b3a2438be8fd647c8ecf35ef7b0d";
-      niar = python.pkgs.buildPythonPackage {
-        name = "niar";
-        src = pkgs.fetchzip {
-          url = "https://git.sr.ht/~kivikakk/niar/archive/${niarRev}.tar.gz";
-          hash = "sha256-EH64Jl70DXITiZqLCgjCnHlMaS2lYtmkI8aaaRxKbAQ=";
-        };
-        PDM_BUILD_SCM_VERSION = niarVer;
-        pyproject = true;
-
-        build-system = [python.pkgs.pdm-backend];
-
-        propagatedBuildInputs = [
-          python.pkgs.amaranth
-          python.pkgs.amaranth-boards
-        ];
-
-        doCheck = true;
-      };
+      niar-pkg = import ./niar.nix {inherit pkgs;};
+      inherit (niar-pkg) python niar toolchain-pkgs;
     in rec {
       formatter = pkgs.alejandra;
 
@@ -83,15 +48,7 @@
         pyproject = true;
 
         build-system = [python.pkgs.pdm-backend];
-        nativeBuildInputs = [
-          pkgs.yosys
-          pkgs.icestorm
-          pkgs.trellis
-          pkgs.nextpnr
-          pkgs.openfpgaloader
-          zig
-          zls
-        ];
+        nativeBuildInputs = [pkgs.makeWrapper];
         propagatedBuildInputs = [niar];
 
         doCheck = true;
@@ -99,11 +56,42 @@
           python.pkgs.pytestCheckHook
           python.pkgs.pytest-xdist
         ];
+
+        postFixup = ''
+          wrapProgram $out/bin/avacore \
+            --run 'export NIAR_WORKING_DIRECTORY="$(pwd)"'
+        '';
       };
 
       apps.default = {
         type = "app";
         program = "${packages.default}/bin/avacore";
+      };
+
+      devShells.default = pkgs.mkShell {
+        name = "avacore";
+
+        buildInputs = [
+          python.pkgs.python-lsp-server
+          python.pkgs.pyls-isort
+          python.pkgs.pylsp-rope
+          (packages.default.override {doCheck = false;})
+          python.pkgs.pytest
+          python.pkgs.pytest-xdist
+        ];
+      };
+
+      devShells.pure-python = pkgs.mkShell {
+        name = "avacore-pure-python";
+
+        buildInputs =
+          [
+            pkgs.python3
+            pkgs.pdm
+            zig
+            zls
+          ]
+          ++ toolchain-pkgs;
       };
     });
 }

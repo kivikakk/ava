@@ -1,15 +1,10 @@
 import niar
 from amaranth_boards.icebreaker import ICEBreakerPlatform
-from amaranth_boards.ulx3s import ULX3S_45F_Platform
 
-__all__ = ["icebreaker", "ulx3s", "cxxrtl"]
+__all__ = ["icebreaker", "cxxrtl"]
 
 
 class icebreaker(ICEBreakerPlatform):
-    pass
-
-
-class ulx3s(ULX3S_45F_Platform):
     pass
 
 

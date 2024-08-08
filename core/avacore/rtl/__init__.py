@@ -1,8 +1,11 @@
-from amaranth import Module, Signal
-from amaranth.lib import wiring
-from amaranth.lib.wiring import Out
+from dataclasses import dataclass
 
-from ..targets import cxxrtl, icebreaker, ulx3s
+from amaranth import Module, ResetInserter, Signal
+from amaranth.lib import wiring
+from amaranth.lib.wiring import In, Out
+
+from ..targets import cxxrtl, icebreaker
+from .core import Core
 
 __all__ = ["Top"]
 
@@ -10,56 +13,44 @@ __all__ = ["Top"]
 class Top(wiring.Component):
     def __init__(self, platform):
         if isinstance(platform, cxxrtl):
-            super().__init__(
-                {
-                    "ledr": Out(1),
-                    "ledg": Out(1),
-                }
-            )
+            super().__init__({
+                "uart_rx": In(1),
+                "uart_tx": Out(1),
+            })
         else:
             super().__init__({})
 
     def elaborate(self, platform):
-
         m = Module()
 
-        m.submodules.blinker = blinker = Blinker()
+        rst = Signal()
+        m.d.sync += rst.eq(0)
+
+        core = Core()
 
         match platform:
             case icebreaker():
-                m.d.comb += platform.request("led_r").o.eq(blinker.ledr)
-                m.d.comb += platform.request("led_g").o.eq(blinker.ledg)
+                core.plat_uart = platform.request("uart")
 
-            case ulx3s():
-                m.d.comb += platform.request("led", 0).o.eq(blinker.ledr)
-                m.d.comb += platform.request("led", 1).o.eq(blinker.ledg)
+                btn = platform.request("button")
+                with m.If(btn.i):
+                    m.d.sync += rst.eq(1)
 
             case cxxrtl():
-                m.d.comb += self.ledr.eq(blinker.ledr)
-                m.d.comb += self.ledg.eq(blinker.ledg)
+                @dataclass
+                class FakeUartPin:
+                    i: Signal = None
+                    o: Signal = None
 
-        return m
+                @dataclass
+                class FakeUart:
+                    rx: FakeUartPin
+                    tx: FakeUartPin
 
+                core.plat_uart = FakeUart(
+                    rx=FakeUartPin(i=self.uart_rx),
+                    tx=FakeUartPin(o=self.uart_tx))
 
-class Blinker(wiring.Component):
-    ledr: Out(1)
-    ledg: Out(1)
-
-    def elaborate(self, platform):
-        m = Module()
-
-        m.d.comb += self.ledg.eq(1)
-
-        timer_top = (int(platform.default_clk_frequency) // 2) - 1
-        timer_half = (int(platform.default_clk_frequency) // 4) - 1
-        timer_reg = Signal(range(timer_top), init=timer_half)
-
-        with m.If(timer_reg == 0):
-            m.d.sync += [
-                self.ledr.eq(~self.ledr),
-                timer_reg.eq(timer_top),
-            ]
-        with m.Else():
-            m.d.sync += timer_reg.eq(timer_reg - 1)
+        m.submodules.core = ResetInserter(rst)(core)
 
         return m

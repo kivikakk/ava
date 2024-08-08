@@ -1,6 +1,7 @@
 from amaranth.hdl import Fragment
 from amaranth.sim import Simulator
-from avacore.rtl import Blinker
+
+from avacore.rtl import Core
 
 
 class test:
@@ -8,15 +9,15 @@ class test:
     default_clk_frequency = 8.0
 
 
-def test_blinks():
-    dut = Blinker()
+def test_echo():
+    dut = Core()
 
     async def testbench(ctx):
-        for ledr in [0, 1, 1, 0, 0, 1, 1, 0]:
-            for _ in range(2):
-                assert ctx.get(dut.ledr) == ledr
-                assert ctx.get(dut.ledg)
-                await ctx.tick()
+        ctx.set(dut.uart.rd.payload, 0x7a)
+        ctx.set(dut.uart.rd.valid, 1)
+        await ctx.tick()
+        assert ctx.get(dut.uart.wr.payload) == 0x7a
+        assert ctx.get(dut.uart.wr.valid) == 1
 
     sim = Simulator(Fragment.get(dut, test()))
     sim.add_clock(1 / 8)
