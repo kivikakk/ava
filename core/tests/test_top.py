@@ -19,17 +19,22 @@ def test_echo():
         # assert ctx.get(dut.uart.wr.payload) == 0x33
         print()
 
-        (v,) = await ctx.tick().sample(dut.stack.r_data).until(dut.stack.r_rdy)
+        (v,) = await ctx.tick().sample(dut.stack.r_stream.p).until(dut.stack.r_stream.valid)
         assert v == 1
-        ctx.set(dut.stack.r_en, 1)
+        print("passed first stage")
+        ctx.set(dut.stack.r_stream.ready, 1)
         await ctx.tick()
-        ctx.set(dut.stack.r_en, 0)
-        (v,) = await ctx.tick().sample(dut.stack.r_data).until(dut.stack.r_rdy)
+        ctx.set(dut.stack.r_stream.ready, 0)
+        (v,) = await ctx.tick().sample(dut.stack.r_stream.p).until(dut.stack.r_stream.valid)
         assert v == 2
-        ctx.set(dut.stack.r_en, 1)
+        ctx.set(dut.stack.r_stream.ready, 1)
         await ctx.tick()
-        ctx.set(dut.stack.r_en, 0)
+        ctx.set(dut.stack.r_stream.ready, 0)
         await ctx.tick().until(dut.done)
+
+        # (v,) = await ctx.tick().sample(dut.slots.data[0]).until(dut.slots.data[0] != 0)
+        # assert v == 1
+        # await ctx.tick().until(dut.done)
 
 
     sim = Simulator(Fragment.get(dut, test()))
