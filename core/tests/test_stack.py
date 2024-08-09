@@ -22,6 +22,7 @@ def test_stack():
         assertStack(ctx, rv=0, wr=1)
 
         # read on empty
+
         ctx.set(dut.r_stream.ready, 1)
 
         await ctx.tick()
@@ -30,6 +31,7 @@ def test_stack():
         assertStack(ctx, rv=0, wr=1)
 
         # write value
+
         ctx.set(dut.w_stream.payload, 0x84)  # BA
 
         await ctx.tick()
@@ -41,7 +43,7 @@ def test_stack():
 
         ctx.set(dut.w_stream.valid, 0)
 
-        for i in range(2):
+        for i in range(1):
             assertStack(ctx, rv=0, wr=1)
             await ctx.tick()
 
@@ -60,7 +62,7 @@ def test_stack():
 
         ctx.set(dut.w_stream.valid, 0)
 
-        for i in range(2):
+        for i in range(1):
             assertStack(ctx, rv=0, wr=0)
             await ctx.tick()
 
@@ -74,7 +76,7 @@ def test_stack():
 
         ctx.set(dut.r_stream.ready, 0)
 
-        for i in range(2):
+        for i in range(1):
             assertStack(ctx, rv=0, wr=1)
             await ctx.tick()
 

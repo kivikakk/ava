@@ -23,38 +23,35 @@ class Stack(Component):
         m = Module()
 
         m.submodules.mem = mem = Memory(shape=self.width, depth=self.depth, init=[])
-        mem_rd = mem.read_port()
         mem_wr = mem.write_port()
         m.d.sync += mem_wr.en.eq(0)
+        mem_rd = mem.read_port(transparent_for=[mem_wr])
 
         level = Signal(range(self.depth + 1))
-        delay = Signal(range(3))
-        top = Signal(self.width)
+        delay = Signal()
 
-        m.d.sync += delay.eq(Mux(delay == 0, 0, delay - 1))
+        m.d.sync += delay.eq(0)
 
-        m.d.comb += self.w_stream.ready.eq(level != self.depth)
+        m.d.comb += [
+            self.w_stream.ready.eq(level != self.depth),
+            self.r_stream.payload.eq(mem_rd.data),
+            self.r_stream.valid.eq(~delay & (level != 0)),
+            mem_rd.addr.eq(Mux(level == 0, 0, level - 1)),
+        ]
+
         with m.If(self.w_stream.ready & self.w_stream.valid):
             m.d.sync += [
-                top.eq(level),
-                delay.eq(2),
                 mem_wr.addr.eq(level),
                 mem_wr.data.eq(self.w_stream.payload),
                 mem_wr.en.eq(1),
                 level.eq(level + 1),
+                delay.eq(1),
             ]
-
-        m.d.comb += [
-            self.r_stream.payload.eq(mem_rd.data),
-            # self.r_stream.payload.eq(top),
-            mem_rd.addr.eq(Mux(level == 0, 0, level - 1)),
-            self.r_stream.valid.eq((delay == 0) & (level != 0)),
-        ]
 
         with m.If(self.r_stream.ready & self.r_stream.valid):
             m.d.sync += [
-                delay.eq(2),
                 level.eq(level - 1),
+                delay.eq(1),
             ]
 
         return m
