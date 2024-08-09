@@ -28,10 +28,16 @@ class Stack(Component):
         m.d.sync += mem_wr.en.eq(0)
 
         level = Signal(range(self.depth + 1))
+        delay = Signal(range(3))
+        top = Signal(self.width)
+
+        m.d.sync += delay.eq(Mux(delay == 0, 0, delay - 1))
 
         m.d.comb += self.w_stream.ready.eq(level != self.depth)
-        with m.If(self.w_stream.valid):
+        with m.If(self.w_stream.ready & self.w_stream.valid):
             m.d.sync += [
+                top.eq(level),
+                delay.eq(2),
                 mem_wr.addr.eq(level),
                 mem_wr.data.eq(self.w_stream.payload),
                 mem_wr.en.eq(1),
@@ -40,11 +46,15 @@ class Stack(Component):
 
         m.d.comb += [
             self.r_stream.payload.eq(mem_rd.data),
+            # self.r_stream.payload.eq(top),
             mem_rd.addr.eq(Mux(level == 0, 0, level - 1)),
-            self.r_stream.valid.eq(level != 0),
+            self.r_stream.valid.eq((delay == 0) & (level != 0)),
         ]
 
         with m.If(self.r_stream.ready & self.r_stream.valid):
-            m.d.sync += level.eq(level - 1)
-        
+            m.d.sync += [
+                delay.eq(2),
+                level.eq(level - 1),
+            ]
+
         return m
