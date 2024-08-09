@@ -1,7 +1,8 @@
-from amaranth import Module, Signal, Mux, Print
+from amaranth import Module, Signal, Mux
 from amaranth.lib import stream
 from amaranth.lib.memory import Memory
 from amaranth.lib.wiring import Component, In, Out
+
 
 __all__ = ["Stack"]
 
@@ -24,13 +25,15 @@ class Stack(Component):
 
         m.submodules.mem = mem = Memory(shape=self.width, depth=self.depth, init=[])
         mem_wr = mem.write_port()
-        m.d.sync += mem_wr.en.eq(0)
         mem_rd = mem.read_port(transparent_for=[mem_wr])
 
         level = Signal(range(self.depth + 1))
         delay = Signal()
 
-        m.d.sync += delay.eq(0)
+        m.d.sync += [
+            mem_wr.en.eq(0),
+            delay.eq(0),
+        ]
 
         m.d.comb += [
             self.w_stream.ready.eq(level != self.depth),
