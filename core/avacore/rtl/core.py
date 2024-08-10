@@ -1,4 +1,5 @@
-from amaranth import Elaboratable, Module, Signal, Print, Format, Mux, Assert
+from amaranth import *
+from amaranth.lib.enum import Enum
 from amaranth.lib.memory import Memory
 
 from .stack import Stack
@@ -9,11 +10,11 @@ __all__ = ["Core"]
 
 HELLO_AVC = [
     # 00
-    0x01, 0x01, 0x00,
+    0x01, 0x02, 0x00,
     # 03
     0x20, 0x00,
     # 05
-    0x01, 0x02, 0x00,
+    0x01, 0x04, 0x00,
     # 08
     0x20, 0x01,
     # 0a
@@ -21,12 +22,30 @@ HELLO_AVC = [
     # 0c
     0x0a, 0x01,
     # 0e
-    0xa0,
+    0xa5,
     # 0f
     0x80,
     # 10
     0x82,
 ]
+
+
+class Op(Enum, shape=3):
+    ADD = 0
+    MULTIPLY = 1
+    FDIVIDE = 2
+    IDIVIDE = 3
+    SUBTRACT = 4
+    NEGATE = 5
+    # ...
+
+
+class Type(Enum, shape=3):
+    INTEGER = 0
+    LONG = 1
+    SINGLE = 2
+    DOUBLE = 3
+    STRING = 4
 
 
 class Core(Elaboratable):
@@ -66,9 +85,11 @@ class Core(Elaboratable):
         self.done = done = Signal()
 
         dslot = Signal(range(self.SLOT_N + 1))  # SLOT_N value is sentinel. kinda meh.
-        op = Signal(range(1))
+
+        op = Signal(Op)
         opa = Signal(self.ITEM_SHAPE)
         opb = Signal(self.ITEM_SHAPE)
+        typ = Signal(Type)
 
         with m.If(~done):
             m.d.sync += Print(Format("pc={:02x} i$={:02x}", pc, imem_rd.data))
@@ -80,6 +101,8 @@ class Core(Elaboratable):
         # are handled by telling the stream we want to reset PC, at which point
         # it stalls until ready. We'd like something like this eventually anyway
         # when we load code from the host on-demand, and it'd simplify matters here.
+        #
+        # (It'd be nice for `pc` to actually be the program counter, too!)
 
         with m.FSM() as fsm:
             with m.State('init'):
@@ -120,7 +143,19 @@ class Core(Elaboratable):
                         m.next = 'decode'
                     with m.Case(0xa0): # OPERATOR_ADD_INTEGER
                         m.d.sync += Print(Format("{:>14s} |> OPERATOR_ADD_INTEGER", "decode"))
-                        m.d.sync += pc.eq(pc)
+                        m.d.sync += [
+                            pc.eq(pc),
+                            op.eq(Op.ADD),
+                            typ.eq(Type.INTEGER),
+                        ]
+                        m.next = 'alu'
+                    with m.Case(0xa5): # OPERATOR_MULTIPLY_INTEGER
+                        m.d.sync += Print(Format("{:>14s} |> OPERATOR_MULTIPLY_INTEGER", "decode"))
+                        m.d.sync += [
+                            pc.eq(pc),
+                            op.eq(Op.MULTIPLY),
+                            typ.eq(Type.INTEGER),
+                        ]
                         m.next = 'alu'
                     with m.Default():
                         m.d.sync += Print(Format("{:>14s} |> ?", "decode"))
@@ -222,13 +257,30 @@ class Core(Elaboratable):
                     m.d.sync += Print(Format("{:>14s} |> stall", "alu3"))
 
             with m.State('alu4'):
-                m.d.sync += Print(Format("{:>14s} |> push v{:04x} + v{:04x}", "alu4", opa, opb))
+                m.d.sync += Print(Format("{:>14s} |> v{:04x} v{:04x} ({})", "alu4", opa, opb, op))
                 m.d.sync += [
                     pc.eq(pc + 1),
-                    stack.w_stream.p.eq(opa + opb),
                     stack.w_stream.valid.eq(1),
                 ]
+
+                m.d.sync += Assert(typ == Type.INTEGER) # XXX
+
+                lhs = opa[:16].as_signed()
+                rhs = opb[:16].as_signed()
+
                 m.next = 'decode'
+                with m.Switch(op):
+                    with m.Case(Op.ADD):
+                        m.d.sync += stack.w_stream.p.eq(lhs + rhs)
+                    with m.Case(Op.MULTIPLY):
+                        m.d.sync += stack.w_stream.p.eq(lhs * rhs)
+                    with m.Case(Op.FDIVIDE):
+                        m.d.sync += Assert(0) # XXX
+                        m.next = 'done'
+                    with m.Case(Op.IDIVIDE):
+                        m.d.sync += stack.w_stream.p.eq(lhs // rhs)
+                    with m.Case(Op.SUBTRACT):
+                        m.d.sync += stack.w_stream.p.eq(lhs - rhs)
 
 
         return m
