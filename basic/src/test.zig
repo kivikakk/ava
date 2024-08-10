@@ -35,12 +35,12 @@ pub fn matchingBasPaths(prefix: []const u8) !Matches {
         out.deinit(testing.allocator);
     }
 
-    const dir = try std.fs.cwd().openDir("src/bas", .{ .iterate = true });
+    const dir = try std.fs.cwd().openDir("src/test", .{ .iterate = true });
 
     var it = dir.iterate();
     while (try it.next()) |e| {
         if (std.mem.startsWith(u8, e.name, prefix)) {
-            const path = try std.fmt.allocPrint(testing.allocator, "src/bas/{s}", .{e.name});
+            const path = try std.fmt.allocPrint(testing.allocator, "src/test/{s}", .{e.name});
             errdefer testing.allocator.free(path);
 
             const contents = try std.fs.cwd().readFileAlloc(testing.allocator, path, 1048576);
