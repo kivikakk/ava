@@ -34,35 +34,22 @@ pub fn main(allocator: Allocator, options: opts.Compile) !void {
 
     const filename = opts.global.positionals[0];
 
-    const stderr = std.io.getStdErr();
-    var stderrbw = std.io.bufferedWriter(stderr.writer());
-    const stderrwr = stderrbw.writer();
-    var stderrtc = std.io.tty.detectConfig(stderr);
-
     const inp = if (std.mem.eql(u8, filename, "-"))
-        try std.io.getStdIn().readToEndAlloc(allocator, 1048576)
+        try common.stdin.readToEndAlloc(allocator, 1048576)
     else
         try std.fs.cwd().readFileAlloc(allocator, filename, 1048576);
     defer allocator.free(inp);
 
     var errorinfo: ErrorInfo = .{};
     const code = Compiler.compileText(allocator, inp, &errorinfo) catch |err| {
-        try stderrtc.setColor(stderrwr, .bright_red);
-        try common.showErrorInfo(errorinfo, stderrwr, .loc);
-        try std.fmt.format(stderrwr, "compile: {s}\n\n", .{@errorName(err)});
-        try stderrtc.setColor(stderrwr, .reset);
-        try stderrbw.flush();
-        return err;
+        try common.handleError("compile", err, errorinfo, .stderr, .loc);
+        try common.handlesDeinit();
+        std.process.exit(2);
     };
     defer allocator.free(code);
 
     if (std.mem.eql(u8, filename, "-")) {
-        const stdout = std.io.getStdOut();
-        var stdoutbw = std.io.bufferedWriter(stdout.writer());
-        const stdoutwr = stdoutbw.writer();
-
-        try stdoutwr.writeAll(code);
-        try stdoutbw.flush();
+        try common.stdoutWr.writeAll(code);
     } else {
         const filenameOut = if (std.ascii.endsWithIgnoreCase(filename, ".bas")) bas: {
             var buf = try allocator.dupe(u8, filename);

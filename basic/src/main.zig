@@ -34,6 +34,9 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
+    common.handlesInit();
+    defer common.handlesDeinit() catch {};
+
     opts.global = try args.parseWithVerbForCurrentProcess(opts.Global, opts.Command, allocator, .print);
     defer opts.global.deinit();
 

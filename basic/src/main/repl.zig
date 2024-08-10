@@ -33,47 +33,35 @@ pub fn main(allocator: Allocator, options: opts.Repl) !void {
         usage(1);
     }
 
-    const stdout = std.io.getStdOut();
-    var stdoutbw = std.io.bufferedWriter(stdout.writer());
-    const stdoutwr = stdoutbw.writer();
-    var ttyconf = std.io.tty.detectConfig(stdout);
-
-    const stdin = std.io.getStdIn();
-    var stdinbuf = std.io.bufferedReader(stdin.reader());
-    var stdinrd = stdinbuf.reader();
-
-    try ttyconf.setColor(stdoutwr, .bright_cyan);
-    try stdoutwr.writeAll("Ava BASIC\n");
-    try ttyconf.setColor(stdoutwr, .reset);
+    try common.stdoutTc.setColor(common.stdoutWr, .bright_cyan);
+    try common.stdoutWr.writeAll("Ava BASIC\n");
+    try common.stdoutTc.setColor(common.stdoutWr, .reset);
 
     var errorinfo: ErrorInfo = .{};
     var c = try Compiler.init(allocator, &errorinfo);
     defer c.deinit();
 
-    var m = stack.Machine(common.RunEffects).init(allocator, try common.RunEffects.init(allocator, stdout), &errorinfo);
+    var m = stack.Machine(common.RunEffects).init(allocator, try common.RunEffects.init(allocator), &errorinfo);
     defer m.deinit();
 
     while (true) {
         defer errorinfo.clear(allocator);
 
         // TODO: readline(-like).
-        try ttyconf.setColor(stdoutwr, .reset);
-        try stdoutwr.writeAll("> ");
-        try ttyconf.setColor(stdoutwr, .bold);
-        try stdoutbw.flush();
+        try common.stdoutTc.setColor(common.stdoutWr, .reset);
+        try common.stdoutWr.writeAll("> ");
+        try common.stdoutTc.setColor(common.stdoutWr, .bold);
+        try common.stdoutBw.flush();
 
-        const inp = try stdinrd.readUntilDelimiterOrEofAlloc(allocator, '\n', 1048576) orelse
+        const inp = try common.stdinRd.readUntilDelimiterOrEofAlloc(allocator, '\n', 1048576) orelse
             break;
         defer allocator.free(inp);
 
-        try ttyconf.setColor(stdoutwr, .reset);
+        try common.stdoutTc.setColor(common.stdoutWr, .reset);
 
         errorinfo = .{};
         const sx = Parser.parse(allocator, inp, &errorinfo) catch |err| {
-            try ttyconf.setColor(stdoutwr, .bright_red);
-            try common.showErrorInfo(errorinfo, stdoutwr, .caret);
-            try std.fmt.format(stdoutwr, "parse: {s}\n\n", .{@errorName(err)});
-            try ttyconf.setColor(stdoutwr, .reset);
+            try common.handleError("parse", err, errorinfo, .stdout, .caret);
             continue;
         };
         defer Parser.free(allocator, sx);
@@ -82,26 +70,23 @@ pub fn main(allocator: Allocator, options: opts.Repl) !void {
             const out = try print.print(allocator, sx);
             defer allocator.free(out);
 
-            try ttyconf.setColor(stdoutwr, .blue);
-            try stdoutwr.writeAll(out);
-            try ttyconf.setColor(stdoutwr, .reset);
-            try stdoutbw.flush();
+            try common.stdoutTc.setColor(common.stdoutWr, .blue);
+            try common.stdoutWr.writeAll(out);
+            try common.stdoutTc.setColor(common.stdoutWr, .reset);
+            try common.stdoutBw.flush();
         }
 
         if (options.ast) {
-            try ttyconf.setColor(stdoutwr, .green);
+            try common.stdoutTc.setColor(common.stdoutWr, .green);
             for (sx) |s|
-                try s.formatAst(0, stdoutwr);
-            try ttyconf.setColor(stdoutwr, .reset);
-            try stdoutwr.writeByte('\n');
-            try stdoutbw.flush();
+                try s.formatAst(0, common.stdoutWr);
+            try common.stdoutTc.setColor(common.stdoutWr, .reset);
+            try common.stdoutWr.writeByte('\n');
+            try common.stdoutBw.flush();
         }
 
         const code = c.compileStmts(sx) catch |err| {
-            try ttyconf.setColor(stdoutwr, .bright_red);
-            try common.showErrorInfo(errorinfo, stdoutwr, .caret);
-            try std.fmt.format(stdoutwr, "compile: {s}\n\n", .{@errorName(err)});
-            try ttyconf.setColor(stdoutwr, .reset);
+            try common.handleError("compile", err, errorinfo, .stdout, .caret);
             continue;
         };
         defer allocator.free(code);
@@ -110,15 +95,12 @@ pub fn main(allocator: Allocator, options: opts.Repl) !void {
             try common.xxd(code);
 
         m.run(code) catch |err| {
-            try ttyconf.setColor(stdoutwr, .bright_red);
-            try common.showErrorInfo(errorinfo, stdoutwr, .loc);
-            try std.fmt.format(stdoutwr, "run error: {s}\n\n", .{@errorName(err)});
-            try ttyconf.setColor(stdoutwr, .reset);
+            try common.handleError("run", err, errorinfo, .stdout, .loc);
             continue;
         };
     }
 
-    try ttyconf.setColor(stdoutwr, .reset);
-    try stdoutwr.writeAll("\ngoobai\n");
-    try stdoutbw.flush();
+    try common.stdoutTc.setColor(common.stdoutWr, .reset);
+    try common.stdoutWr.writeAll("\ngoobai\n");
+    try common.stdoutBw.flush();
 }

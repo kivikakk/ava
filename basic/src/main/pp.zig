@@ -30,35 +30,22 @@ pub fn main(allocator: Allocator, options: opts.Pp) !void {
 
     const filename = opts.global.positionals[0];
 
-    const stdout = std.io.getStdOut();
-    var stdoutbw = std.io.bufferedWriter(stdout.writer());
-    const stdoutwr = stdoutbw.writer();
-
-    const stderr = std.io.getStdErr();
-    var stderrbw = std.io.bufferedWriter(stderr.writer());
-    const stderrwr = stderrbw.writer();
-    var stderrtc = std.io.tty.detectConfig(stderr);
-
     const inp = if (std.mem.eql(u8, filename, "-"))
-        try std.io.getStdIn().readToEndAlloc(allocator, 1048576)
+        try common.stdin.readToEndAlloc(allocator, 1048576)
     else
         try std.fs.cwd().readFileAlloc(allocator, filename, 1048576);
     defer allocator.free(inp);
 
     var errorinfo: ErrorInfo = .{};
     const sx = Parser.parse(allocator, inp, &errorinfo) catch |err| {
-        try stderrtc.setColor(stderrwr, .bright_red);
-        try common.showErrorInfo(errorinfo, stderrwr, .loc);
-        try std.fmt.format(stderrwr, "parse: {s}\n\n", .{@errorName(err)});
-        try stderrtc.setColor(stderrwr, .reset);
-        try stderrbw.flush();
-        return err;
+        try common.handleError("parse", err, errorinfo, .stderr, .loc);
+        try common.handlesDeinit();
+        std.process.exit(2);
     };
     defer Parser.free(allocator, sx);
 
     const out = try print.print(allocator, sx);
     defer allocator.free(out);
 
-    try stdoutwr.writeAll(out);
-    try stdoutbw.flush();
+    try common.stdoutWr.writeAll(out);
 }

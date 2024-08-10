@@ -49,13 +49,8 @@ pub fn main(allocator: Allocator, options: opts.Run) !void {
         usage(1);
     };
 
-    const stderr = std.io.getStdErr();
-    var stderrbw = std.io.bufferedWriter(stderr.writer());
-    const stderrwr = stderrbw.writer();
-    var stderrtc = std.io.tty.detectConfig(stderr);
-
     const inp = if (std.mem.eql(u8, filename, "-"))
-        try std.io.getStdIn().readToEndAlloc(allocator, 1048576)
+        try common.stdin.readToEndAlloc(allocator, 1048576)
     else
         try std.fs.cwd().readFileAlloc(allocator, filename, 1048576);
     defer allocator.free(inp);
@@ -63,12 +58,9 @@ pub fn main(allocator: Allocator, options: opts.Run) !void {
     var errorinfo: ErrorInfo = .{};
     const code = switch (mode) {
         .bas => Compiler.compileText(allocator, inp, &errorinfo) catch |err| {
-            try stderrtc.setColor(stderrwr, .bright_red);
-            try common.showErrorInfo(errorinfo, stderrwr, .loc);
-            try std.fmt.format(stderrwr, "compile: {s}\n\n", .{@errorName(err)});
-            try stderrtc.setColor(stderrwr, .reset);
-            try stderrbw.flush();
-            return err;
+            try common.handleError("compile", err, errorinfo, .stderr, .loc);
+            try common.handlesDeinit();
+            std.process.exit(2);
         },
         .avc => inp,
     };
@@ -77,15 +69,12 @@ pub fn main(allocator: Allocator, options: opts.Run) !void {
         .avc => {},
     };
 
-    var m = stack.Machine(common.RunEffects).init(allocator, try common.RunEffects.init(allocator, std.io.getStdOut()), &errorinfo);
+    var m = stack.Machine(common.RunEffects).init(allocator, try common.RunEffects.init(allocator), &errorinfo);
     defer m.deinit();
 
     m.run(code) catch |err| {
-        try stderrtc.setColor(stderrwr, .bright_red);
-        try common.showErrorInfo(errorinfo, stderrwr, .loc);
-        try std.fmt.format(stderrwr, "run error: {s}\n\n", .{@errorName(err)});
-        try stderrtc.setColor(stderrwr, .reset);
-        try stderrbw.flush();
-        return err;
+        try common.handleError("run", err, errorinfo, .stderr, .loc);
+        try common.handlesDeinit();
+        std.process.exit(3);
     };
 }

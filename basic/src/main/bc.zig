@@ -8,7 +8,7 @@ const opts = @import("opts.zig");
 const common = @import("common.zig");
 
 fn usage(status: u8) noreturn {
-    common.usageFor(status, "bc", "[file]",
+    common.usageFor(status, "bc", "[options] [file]",
     //    12345678901234567890123456789012345678901234567890123456789012345678901234567890
         \\Pretty-prints Ava BASIC bytecode.
         \\
@@ -43,13 +43,8 @@ pub fn main(allocator: Allocator, options: opts.Bc) !void {
         usage(1);
     };
 
-    const stderr = std.io.getStdErr();
-    var stderrbw = std.io.bufferedWriter(stderr.writer());
-    const stderrwr = stderrbw.writer();
-    var stderrtc = std.io.tty.detectConfig(stderr);
-
     const inp = if (std.mem.eql(u8, filename, "-"))
-        try std.io.getStdIn().readToEndAlloc(allocator, 1048576)
+        try common.stdin.readToEndAlloc(allocator, 1048576)
     else
         try std.fs.cwd().readFileAlloc(allocator, filename, 1048576);
     defer allocator.free(inp);
@@ -57,12 +52,9 @@ pub fn main(allocator: Allocator, options: opts.Bc) !void {
     var errorinfo: ErrorInfo = .{};
     const code = switch (mode) {
         .bas => Compiler.compileText(allocator, inp, &errorinfo) catch |err| {
-            try stderrtc.setColor(stderrwr, .bright_red);
-            try common.showErrorInfo(errorinfo, stderrwr, .loc);
-            try std.fmt.format(stderrwr, "compile: {s}\n\n", .{@errorName(err)});
-            try stderrtc.setColor(stderrwr, .reset);
-            try stderrbw.flush();
-            return err;
+            try common.handleError("compile", err, errorinfo, .stderr, .loc);
+            try common.handlesDeinit();
+            std.process.exit(2);
         },
         .avc => inp,
     };

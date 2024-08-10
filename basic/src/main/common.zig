@@ -7,6 +7,40 @@ const ErrorInfo = @import("../ErrorInfo.zig");
 
 const opts = @import("opts.zig");
 
+pub const Output = enum { stdout, stderr };
+pub var stdin: std.fs.File = undefined;
+pub var stdinBr: std.io.BufferedReader(4096, std.fs.File.Reader) = undefined;
+pub var stdinRd: @TypeOf(stdinBr).Reader = undefined;
+pub var stdout: std.fs.File = undefined;
+pub var stdoutBw: std.io.BufferedWriter(4096, std.fs.File.Writer) = undefined;
+pub var stdoutWr: @TypeOf(stdoutBw).Writer = undefined;
+pub var stdoutTc: std.io.tty.Config = undefined;
+pub var stderr: std.fs.File = undefined;
+pub var stderrBw: std.io.BufferedWriter(4096, std.fs.File.Writer) = undefined;
+pub var stderrWr: @TypeOf(stderrBw).Writer = undefined;
+pub var stderrTc: std.io.tty.Config = undefined;
+
+pub fn handlesInit() void {
+    stdin = std.io.getStdIn();
+    stdinBr = std.io.bufferedReader(stdin.reader());
+    stdinRd = stdinBr.reader();
+
+    stdout = std.io.getStdOut();
+    stdoutBw = std.io.bufferedWriter(stdout.writer());
+    stdoutWr = stdoutBw.writer();
+    stdoutTc = std.io.tty.detectConfig(stdout);
+
+    stderr = std.io.getStdErr();
+    stderrBw = std.io.bufferedWriter(stderr.writer());
+    stderrWr = stderrBw.writer();
+    stderrTc = std.io.tty.detectConfig(stderr);
+}
+
+pub fn handlesDeinit() !void {
+    try stderrBw.flush();
+    try stdoutBw.flush();
+}
+
 const helpText =
     \\
     \\Global options:
@@ -39,75 +73,87 @@ pub fn runModeFromFilename(filename: []const u8) ?RunMode {
         null;
 }
 
-pub fn showErrorInfo(errorinfo: ErrorInfo, writer: anytype, lockind: enum { caret, loc }) !void {
+pub const LocKind = enum { caret, loc };
+
+pub fn handleError(comptime what: []const u8, err: anyerror, errorinfo: ErrorInfo, output: Output, lockind: LocKind) !void {
+    const handles: struct {
+        bw: *std.io.BufferedWriter(4096, std.fs.File.Writer),
+        wr: std.io.BufferedWriter(4096, std.fs.File.Writer).Writer,
+        tc: std.io.tty.Config,
+    } = switch (output) {
+        .stdout => .{ .bw = &stdoutBw, .wr = stdoutWr, .tc = stdoutTc },
+        .stderr => .{ .bw = &stderrBw, .wr = stderrWr, .tc = stderrTc },
+    };
+
+    try handles.tc.setColor(handles.wr, .bright_red);
+
     if (errorinfo.loc) |errloc| {
         switch (lockind) {
             .caret => {
-                try writer.writeByteNTimes(' ', errloc.col + 1);
-                try writer.writeAll("^-- ");
+                try handles.wr.writeByteNTimes(' ', errloc.col + 1);
+                try handles.wr.writeAll("^-- ");
             },
-            .loc => try std.fmt.format(writer, "({d}:{d}) ", .{ errloc.row, errloc.col }),
+            .loc => try std.fmt.format(handles.wr, "({d}:{d}) ", .{ errloc.row, errloc.col }),
         }
     }
     if (errorinfo.msg) |m| {
-        try writer.writeAll(m);
-        try writer.writeByte('\n');
+        try handles.wr.writeAll(m);
+        try handles.wr.writeByte('\n');
     } else {
-        try writer.writeAll("(no info)\n");
+        try handles.wr.writeAll("(no info)\n");
     }
+
+    try std.fmt.format(handles.wr, what ++ ": {s}\n\n", .{@errorName(err)});
+    try handles.tc.setColor(handles.wr, .reset);
+    try handles.bw.flush();
 }
 
 pub fn xxd(code: []const u8) !void {
-    const stdout = std.io.getStdOut();
-    var stdoutbw = std.io.bufferedWriter(stdout.writer());
-    const stdoutwr = stdoutbw.writer();
-    var ttyconf = std.io.tty.detectConfig(stdout);
-
     var i: usize = 0;
 
     while (i < code.len) : (i += 16) {
-        try ttyconf.setColor(stdoutwr, .white);
-        try std.fmt.format(stdoutwr, "{x:0>4}:", .{i});
+        try stdoutTc.setColor(stdoutWr, .white);
+        try std.fmt.format(stdoutWr, "{x:0>4}:", .{i});
         const c = @min(code.len - i, 16);
         for (0..c) |j| {
             const ch = code[i + j];
             if (j % 2 == 0)
-                try stdoutwr.writeByte(' ');
+                try stdoutWr.writeByte(' ');
             if (ch == 0)
-                try ttyconf.setColor(stdoutwr, .reset)
+                try stdoutTc.setColor(stdoutWr, .reset)
             else if (ch < 32 or ch > 126)
-                try ttyconf.setColor(stdoutwr, .bright_yellow)
+                try stdoutTc.setColor(stdoutWr, .bright_yellow)
             else
-                try ttyconf.setColor(stdoutwr, .bright_green);
-            try std.fmt.format(stdoutwr, "{x:0>2}", .{ch});
+                try stdoutTc.setColor(stdoutWr, .bright_green);
+            try std.fmt.format(stdoutWr, "{x:0>2}", .{ch});
         }
 
         for (c..16) |j| {
             if (j % 2 == 0)
-                try stdoutwr.writeByte(' ');
-            try stdoutwr.writeAll("  ");
+                try stdoutWr.writeByte(' ');
+            try stdoutWr.writeAll("  ");
         }
 
-        try stdoutwr.writeAll("  ");
+        try stdoutWr.writeAll("  ");
         for (0..c) |j| {
             const ch = code[i + j];
             if (ch == 0) {
-                try ttyconf.setColor(stdoutwr, .reset);
-                try stdoutwr.writeByte('.');
+                try stdoutTc.setColor(stdoutWr, .reset);
+                try stdoutWr.writeByte('.');
             } else if (ch < 32 or ch > 126) {
-                try ttyconf.setColor(stdoutwr, .bright_yellow);
-                try stdoutwr.writeByte('.');
+                try stdoutTc.setColor(stdoutWr, .bright_yellow);
+                try stdoutWr.writeByte('.');
             } else {
-                try ttyconf.setColor(stdoutwr, .bright_green);
-                try stdoutwr.writeByte(ch);
+                try stdoutTc.setColor(stdoutWr, .bright_green);
+                try stdoutWr.writeByte(ch);
             }
         }
 
-        try stdoutwr.writeByte('\n');
+        try stdoutWr.writeByte('\n');
     }
 
-    try ttyconf.setColor(stdoutwr, .reset);
-    try stdoutbw.flush();
+    try stdoutTc.setColor(stdoutWr, .reset);
+    try stdoutBw.flush();
 }
 
 pub const RunEffects = struct {
@@ -116,16 +162,14 @@ pub const RunEffects = struct {
     const Writer = std.io.GenericWriter(*Self, std.fs.File.WriteError, writerFn);
 
     allocator: Allocator,
-    out: std.fs.File,
-    outwr: Writer,
+    writer: Writer,
     printloc: PrintLoc = .{},
 
-    pub fn init(allocator: Allocator, out: std.fs.File) !*Self {
+    pub fn init(allocator: Allocator) !*Self {
         const self = try allocator.create(Self);
         self.* = .{
             .allocator = allocator,
-            .out = out,
-            .outwr = Writer{ .context = self },
+            .writer = Writer{ .context = self },
         };
         return self;
     }
@@ -136,23 +180,24 @@ pub const RunEffects = struct {
 
     fn writerFn(self: *Self, m: []const u8) std.fs.File.WriteError!usize {
         self.printloc.write(m);
-        try self.out.writeAll(m);
+        try stdoutWr.writeAll(m);
+        try stdoutBw.flush();
         return m.len;
     }
 
     pub fn print(self: *Self, v: isa.Value) !void {
-        try isa.printFormat(self.allocator, self.outwr, v);
+        try isa.printFormat(self.allocator, self.writer, v);
     }
 
     pub fn printComma(self: *Self) !void {
         switch (self.printloc.comma()) {
-            .newline => try self.outwr.writeByte('\n'),
-            .spaces => |s| try self.outwr.writeByteNTimes(' ', s),
+            .newline => try self.writer.writeByte('\n'),
+            .spaces => |s| try self.writer.writeByteNTimes(' ', s),
         }
     }
 
     pub fn printLinefeed(self: *Self) !void {
-        try self.outwr.writeByte('\n');
+        try self.writer.writeByte('\n');
     }
 
     pub fn pragmaPrinted(self: *Self, s: []const u8) !void {
