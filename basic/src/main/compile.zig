@@ -35,7 +35,7 @@ pub fn main(allocator: Allocator, options: opts.Compile) !void {
     const filename = opts.global.positionals[0];
 
     const inp = if (std.mem.eql(u8, filename, "-"))
-        try common.stdin.readToEndAlloc(allocator, 1048576)
+        try common.stdin.file.readToEndAlloc(allocator, 1048576)
     else
         try std.fs.cwd().readFileAlloc(allocator, filename, 1048576);
     defer allocator.free(inp);
@@ -49,7 +49,7 @@ pub fn main(allocator: Allocator, options: opts.Compile) !void {
     defer allocator.free(code);
 
     if (std.mem.eql(u8, filename, "-")) {
-        try common.stdoutWr.writeAll(code);
+        try common.stdout.wr.writeAll(code);
     } else {
         const filenameOut = if (std.ascii.endsWithIgnoreCase(filename, ".bas")) bas: {
             var buf = try allocator.dupe(u8, filename);

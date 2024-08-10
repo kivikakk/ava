@@ -44,7 +44,7 @@ pub fn main(allocator: Allocator, options: opts.Bc) !void {
     };
 
     const inp = if (std.mem.eql(u8, filename, "-"))
-        try common.stdin.readToEndAlloc(allocator, 1048576)
+        try common.stdin.file.readToEndAlloc(allocator, 1048576)
     else
         try std.fs.cwd().readFileAlloc(allocator, filename, 1048576);
     defer allocator.free(inp);

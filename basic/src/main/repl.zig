@@ -33,9 +33,9 @@ pub fn main(allocator: Allocator, options: opts.Repl) !void {
         usage(1);
     }
 
-    try common.stdoutTc.setColor(common.stdoutWr, .bright_cyan);
-    try common.stdoutWr.writeAll("Ava BASIC\n");
-    try common.stdoutTc.setColor(common.stdoutWr, .reset);
+    try common.stdout.tc.setColor(common.stdout.wr, .bright_cyan);
+    try common.stdout.wr.writeAll("Ava BASIC\n");
+    try common.stdout.tc.setColor(common.stdout.wr, .reset);
 
     var errorinfo: ErrorInfo = .{};
     var c = try Compiler.init(allocator, &errorinfo);
@@ -48,16 +48,16 @@ pub fn main(allocator: Allocator, options: opts.Repl) !void {
         defer errorinfo.clear(allocator);
 
         // TODO: readline(-like).
-        try common.stdoutTc.setColor(common.stdoutWr, .reset);
-        try common.stdoutWr.writeAll("> ");
-        try common.stdoutTc.setColor(common.stdoutWr, .bold);
-        try common.stdoutBw.flush();
+        try common.stdout.tc.setColor(common.stdout.wr, .reset);
+        try common.stdout.wr.writeAll("> ");
+        try common.stdout.tc.setColor(common.stdout.wr, .bold);
+        try common.stdout.bw.flush();
 
-        const inp = try common.stdinRd.readUntilDelimiterOrEofAlloc(allocator, '\n', 1048576) orelse
+        const inp = try common.stdin.rd.readUntilDelimiterOrEofAlloc(allocator, '\n', 1048576) orelse
             break;
         defer allocator.free(inp);
 
-        try common.stdoutTc.setColor(common.stdoutWr, .reset);
+        try common.stdout.tc.setColor(common.stdout.wr, .reset);
 
         errorinfo = .{};
         const sx = Parser.parse(allocator, inp, &errorinfo) catch |err| {
@@ -70,19 +70,19 @@ pub fn main(allocator: Allocator, options: opts.Repl) !void {
             const out = try print.print(allocator, sx);
             defer allocator.free(out);
 
-            try common.stdoutTc.setColor(common.stdoutWr, .blue);
-            try common.stdoutWr.writeAll(out);
-            try common.stdoutTc.setColor(common.stdoutWr, .reset);
-            try common.stdoutBw.flush();
+            try common.stdout.tc.setColor(common.stdout.wr, .blue);
+            try common.stdout.wr.writeAll(out);
+            try common.stdout.tc.setColor(common.stdout.wr, .reset);
+            try common.stdout.bw.flush();
         }
 
         if (options.ast) {
-            try common.stdoutTc.setColor(common.stdoutWr, .green);
+            try common.stdout.tc.setColor(common.stdout.wr, .green);
             for (sx) |s|
-                try s.formatAst(0, common.stdoutWr);
-            try common.stdoutTc.setColor(common.stdoutWr, .reset);
-            try common.stdoutWr.writeByte('\n');
-            try common.stdoutBw.flush();
+                try s.formatAst(0, common.stdout.wr);
+            try common.stdout.tc.setColor(common.stdout.wr, .reset);
+            try common.stdout.wr.writeByte('\n');
+            try common.stdout.bw.flush();
         }
 
         const code = c.compileStmts(sx) catch |err| {
@@ -100,7 +100,7 @@ pub fn main(allocator: Allocator, options: opts.Repl) !void {
         };
     }
 
-    try common.stdoutTc.setColor(common.stdoutWr, .reset);
-    try common.stdoutWr.writeAll("\ngoobai\n");
-    try common.stdoutBw.flush();
+    try common.stdout.tc.setColor(common.stdout.wr, .reset);
+    try common.stdout.wr.writeAll("\ngoobai\n");
+    try common.stdout.bw.flush();
 }

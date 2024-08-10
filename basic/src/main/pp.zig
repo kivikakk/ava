@@ -31,7 +31,7 @@ pub fn main(allocator: Allocator, options: opts.Pp) !void {
     const filename = opts.global.positionals[0];
 
     const inp = if (std.mem.eql(u8, filename, "-"))
-        try common.stdin.readToEndAlloc(allocator, 1048576)
+        try common.stdin.file.readToEndAlloc(allocator, 1048576)
     else
         try std.fs.cwd().readFileAlloc(allocator, filename, 1048576);
     defer allocator.free(inp);
@@ -47,5 +47,5 @@ pub fn main(allocator: Allocator, options: opts.Pp) !void {
     const out = try print.print(allocator, sx);
     defer allocator.free(out);
 
-    try common.stdoutWr.writeAll(out);
+    try common.stdout.wr.writeAll(out);
 }
