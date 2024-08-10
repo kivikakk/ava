@@ -109,7 +109,8 @@ class Core(Elaboratable):
                         m.next = 'let'
                     with m.Case(0x80): # BUILTIN_PRINT
                         m.d.sync += Print(Format("{:>14s} |> BUILTIN_PRINT", "decode"))
-                        m.next = 'decode'
+                        m.d.sync += pc.eq(pc)
+                        m.next = 'print'
                     with m.Case(0x82): # BUILTIN_PRINT_LINEFEED
                         m.d.sync += Print(Format("{:>14s} |> BUILTIN_PRINT_LINEFEED", "decode"))
                         m.d.sync += [
@@ -182,6 +183,18 @@ class Core(Elaboratable):
                 with m.Else():
                     m.d.sync += Print(Format("{:>14s} |> stall", "let"))
 
+            with m.State('print'):
+                with m.If(stack.r_stream.valid):
+                    m.d.sync += Print(Format("{:>14s} |> v{:04x}", "print", stack.r_stream.p))
+                    m.d.sync += [
+                        pc.eq(pc + 1),
+                        uart.wr.payload.eq(ord(b'0') + stack.r_stream.p),
+                        uart.wr.valid.eq(1),
+                    ],
+                    m.next = 'decode'
+                with m.Else():
+                    m.d.sync += Print(Format("{:>14s} |> stall", "print"))
+
             with m.State('alu'):
                 with m.If(stack.r_stream.valid):
                     m.d.sync += Print(Format("{:>14s} |> opb <- v{:04x}", "alu", stack.r_stream.p))
@@ -211,9 +224,9 @@ class Core(Elaboratable):
             with m.State('alu4'):
                 m.d.sync += Print(Format("{:>14s} |> push v{:04x} + v{:04x}", "alu4", opa, opb))
                 m.d.sync += [
+                    pc.eq(pc + 1),
                     stack.w_stream.p.eq(opa + opb),
                     stack.w_stream.valid.eq(1),
-                    pc.eq(pc + 1),
                 ]
                 m.next = 'decode'
 

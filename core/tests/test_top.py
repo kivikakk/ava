@@ -25,6 +25,7 @@ def test_hello():
         assert v == 2
         await ctx.tick().until(dut.done)
 
+        print(f"printed: {printed.decode()!r}")
         assert printed == b'3\n'
 
     async def uart(ctx):
