@@ -55,6 +55,10 @@ class Core(Elaboratable):
         m.d.sync += slots_wr.en.eq(0)
 
         m.submodules.uart = self.uart = uart = UART(self.plat_uart)
+        m.d.sync += [
+            uart.wr.valid.eq(0),
+            uart.rd.ready.eq(0),
+        ]
 
         pc = Signal(range(len(HELLO_AVC) + 1))
         m.d.comb += imem_rd.addr.eq(pc)
@@ -71,6 +75,11 @@ class Core(Elaboratable):
 
         # The memory access latency is all tied up in every op and I don't
         # really like it.
+        #
+        # What if we explicitly modelled imem as a stream we read from? Jumps
+        # are handled by telling the stream we want to reset PC, at which point
+        # it stalls until ready. We'd like something like this eventually anyway
+        # when we load code from the host on-demand, and it'd simplify matters here.
 
         with m.FSM() as fsm:
             with m.State('init'):
@@ -103,6 +112,10 @@ class Core(Elaboratable):
                         m.next = 'decode'
                     with m.Case(0x82): # BUILTIN_PRINT_LINEFEED
                         m.d.sync += Print(Format("{:>14s} |> BUILTIN_PRINT_LINEFEED", "decode"))
+                        m.d.sync += [
+                            uart.wr.p.eq(ord(b'\n')),
+                            uart.wr.valid.eq(1),
+                        ]
                         m.next = 'decode'
                     with m.Case(0xa0): # OPERATOR_ADD_INTEGER
                         m.d.sync += Print(Format("{:>14s} |> OPERATOR_ADD_INTEGER", "decode"))
