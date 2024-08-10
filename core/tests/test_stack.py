@@ -2,11 +2,7 @@ from amaranth.hdl import Fragment
 from amaranth.sim import Simulator
 
 from avacore.rtl.stack import Stack
-
-
-class test:
-    simulation = True
-    default_clk_frequency = 8.0
+from tests import TestPlatform
 
 
 def test_stack():
@@ -18,30 +14,34 @@ def test_stack():
             assert ctx.get(dut.r_stream.payload) == rp
         assert ctx.get(dut.w_stream.ready) == wr
 
+    async def read(ctx):
+        ctx.set(dut.r_stream.ready, 1)
+        await ctx.tick()
+        ctx.set(dut.r_stream.ready, 0)
+
+    async def write(ctx, *, v=None):
+        ctx.set(dut.w_stream.valid, 1)
+        if v is not None:
+            ctx.set(dut.w_stream.payload, v)
+        await ctx.tick()
+        ctx.set(dut.w_stream.valid, 0)
+
     async def testbench(ctx):
         assertStack(ctx, rv=0, wr=1)
 
         # read on empty
 
-        ctx.set(dut.r_stream.ready, 1)
+        await read(ctx)
 
-        await ctx.tick()
-
-        ctx.set(dut.r_stream.ready, 0)
         assertStack(ctx, rv=0, wr=1)
 
         # write value
 
-        ctx.set(dut.w_stream.payload, 0x84)  # BA
-
+        ctx.set(dut.w_stream.payload, 0x12)
         await ctx.tick()
-
         assertStack(ctx, rv=0, wr=1)
-        ctx.set(dut.w_stream.valid, 1)
 
-        await ctx.tick()
-
-        ctx.set(dut.w_stream.valid, 0)
+        await write(ctx, v=0x84)
 
         for i in range(1):
             assertStack(ctx, rv=0, wr=1)
@@ -51,30 +51,21 @@ def test_stack():
 
         # write second value, make sure it's on top
 
-        ctx.set(dut.w_stream.payload, 0x14)  # KA
-
+        ctx.set(dut.w_stream.payload, 0x7a)
         await ctx.tick()
-
         assertStack(ctx, rv=1, wr=1)
-        ctx.set(dut.w_stream.valid, 1)
 
-        await ctx.tick()
-
-        ctx.set(dut.w_stream.valid, 0)
+        await write(ctx, v=0xf1)
 
         for i in range(1):
             assertStack(ctx, rv=0, wr=0)
             await ctx.tick()
 
-        assertStack(ctx, rv=1, rp=0x14, wr=0)
+        assertStack(ctx, rv=1, rp=0xf1, wr=0)
 
         # pop top value
 
-        ctx.set(dut.r_stream.ready, 1)
-
-        await ctx.tick()
-
-        ctx.set(dut.r_stream.ready, 0)
+        await read(ctx)
 
         for i in range(1):
             assertStack(ctx, rv=0, wr=1)
@@ -84,11 +75,7 @@ def test_stack():
 
         # pop last value
 
-        ctx.set(dut.r_stream.ready, 1)
-
-        await ctx.tick()
-
-        ctx.set(dut.r_stream.ready, 0)
+        await read(ctx)
 
         for i in range(2):
             assertStack(ctx, rv=0, wr=1)
@@ -96,7 +83,7 @@ def test_stack():
 
         assertStack(ctx, rv=0, wr=1)
 
-    sim = Simulator(Fragment.get(dut, test()))
+    sim = Simulator(Fragment.get(dut, TestPlatform()))
     sim.add_clock(1 / 8)
     sim.add_testbench(testbench)
     sim.run()

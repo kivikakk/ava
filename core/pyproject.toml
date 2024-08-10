@@ -25,6 +25,7 @@ test = [
     "amaranth-boards @ git+https://github.com/amaranth-lang/amaranth-boards@19b97324ecf9111c5d16377af79f82aad761c476",
     "pytest>=8.2.2",
     "pytest-xdist>=3.6.1",
+    "pytest-watcher>=0.4.2",
 ]
 
 [tool.pytest.ini_options]

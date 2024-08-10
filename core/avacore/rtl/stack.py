@@ -35,14 +35,17 @@ class Stack(Component):
             delay.eq(0),
         ]
 
+        w_fire = self.w_stream.ready & self.w_stream.valid
+        r_fire = self.r_stream.ready & self.r_stream.valid
+
         m.d.comb += [
             self.w_stream.ready.eq(level != self.depth),
             self.r_stream.payload.eq(mem_rd.data),
-            self.r_stream.valid.eq(~delay & (level != 0)),
+            self.r_stream.valid.eq(~w_fire & ~delay & (level != 0)),
             mem_rd.addr.eq(Mux(level == 0, 0, level - 1)),
         ]
 
-        with m.If(self.w_stream.ready & self.w_stream.valid):
+        with m.If(w_fire):
             m.d.sync += [
                 mem_wr.addr.eq(level),
                 mem_wr.data.eq(self.w_stream.payload),
@@ -51,7 +54,7 @@ class Stack(Component):
                 delay.eq(1),
             ]
 
-        with m.If(self.r_stream.ready & self.r_stream.valid):
+        with m.If(r_fire):
             m.d.sync += [
                 level.eq(level - 1),
                 delay.eq(1),

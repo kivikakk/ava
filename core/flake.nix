@@ -38,7 +38,7 @@
       zls = zls-flake.packages.${system}.zls;
 
       niar-pkg = import ./niar.nix {inherit pkgs;};
-      inherit (niar-pkg) python niar toolchain-pkgs;
+      inherit (niar-pkg) python niar pytest-watcher toolchain-pkgs;
     in rec {
       formatter = pkgs.alejandra;
 
@@ -52,7 +52,7 @@
         propagatedBuildInputs = [niar];
 
         doCheck = true;
-        nativeCheckInputs = [
+        nativeCheckInputs = with python.pkgs; [
           python.pkgs.pytestCheckHook
           python.pkgs.pytest-xdist
         ];
@@ -71,13 +71,14 @@
       devShells.default = pkgs.mkShell {
         name = "avacore";
 
-        buildInputs = [
-          python.pkgs.python-lsp-server
-          python.pkgs.pyls-isort
-          python.pkgs.pylsp-rope
+        buildInputs = with python.pkgs; [
+          python-lsp-server
+          pyls-isort
+          pylsp-rope
           (packages.default.override {doCheck = false;})
-          python.pkgs.pytest
-          python.pkgs.pytest-xdist
+          pytest
+          pytest-xdist
+          pytest-watcher
         ];
       };
 
