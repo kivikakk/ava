@@ -14,10 +14,8 @@ const commands = .{
 };
 
 fn usage(status: u8) noreturn {
-    std.debug.print(
+    common.usageFor(status, "[command]", "[options]",
     //    12345678901234567890123456789012345678901234567890123456789012345678901234567890
-        \\Usage: {?s} [command] [options]
-        \\
         \\Commands:
         \\
         \\  repl           Start an interactive session
@@ -28,8 +26,7 @@ fn usage(status: u8) noreturn {
         \\  ast            Print source AST
         \\  bc             Pretty-print bytecode
         \\
-    ++ common.helpText, .{opts.global.executable_name});
-    std.process.exit(status);
+    );
 }
 
 pub fn main() !void {

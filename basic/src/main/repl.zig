@@ -11,9 +11,9 @@ const opts = @import("opts.zig");
 const common = @import("common.zig");
 
 fn usage(status: u8) noreturn {
-    std.debug.print(
+    common.usageFor(status, "repl", "[options]",
     //    12345678901234567890123456789012345678901234567890123456789012345678901234567890
-        \\Usage: {?s} repl [options]
+        \\Starts an interactive BASIC session.
         \\
         \\Per-line options:
         \\
@@ -21,12 +21,7 @@ fn usage(status: u8) noreturn {
         \\  --ast          Print source AST before executing
         \\  --bc           Pretty-print bytecode before executing
         \\
-        \\Global options:
-        \\
-        \\  -h, --help     Show command-specific usage
-        \\
-    ++ common.helpText, .{opts.global.executable_name});
-    std.process.exit(status);
+    );
 }
 
 pub fn main(allocator: Allocator, options: opts.Repl) !void {

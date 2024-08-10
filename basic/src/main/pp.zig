@@ -9,15 +9,12 @@ const opts = @import("opts.zig");
 const common = @import("common.zig");
 
 fn usage(status: u8) noreturn {
-    std.debug.print(
+    common.usageFor(status, "pp", "[file]",
     //    12345678901234567890123456789012345678901234567890123456789012345678901234567890
-        \\Usage: {?s} pp [file]
-        \\
         \\Parses [file] and pretty-prints the source. `-' may be given to read from
         \\standard input.
         \\
-    ++ common.helpText, .{opts.global.executable_name});
-    std.process.exit(status);
+    );
 }
 
 pub fn main(allocator: Allocator, options: opts.Pp) !void {

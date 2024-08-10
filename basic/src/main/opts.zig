@@ -29,6 +29,10 @@ pub const Run = struct {
 pub const Compile = void;
 pub const Pp = void;
 pub const Ast = void;
-pub const Bc = void;
+
+pub const Bc = struct {
+    bas: bool = false,
+    avc: bool = false,
+};
 
 pub var global: args.ParseArgsResult(Global, Command) = undefined;

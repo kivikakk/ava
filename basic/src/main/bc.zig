@@ -8,20 +8,22 @@ const opts = @import("opts.zig");
 const common = @import("common.zig");
 
 fn usage(status: u8) noreturn {
-    std.debug.print(
+    common.usageFor(status, "bc", "[file]",
     //    12345678901234567890123456789012345678901234567890123456789012345678901234567890
-        \\Usage: {?s} bc [file]
+        \\Pretty-prints Ava BASIC bytecode.
         \\
-        \\Compile [file] and pretty-prints the bytecode. `-' may be given to read
-        \\from standard input.
+        \\The extension of [file] will be used to guess the run mode if no relevant
+        \\option is given. `-' may be given to read from standard input.
         \\
-    ++ common.helpText, .{opts.global.executable_name});
-    std.process.exit(status);
+        \\Run mode options:
+        \\
+        \\  --bas          Treat [file] as BASIC source
+        \\  --avc          Treat [file] as Ava BASIC object file
+        \\
+    );
 }
 
 pub fn main(allocator: Allocator, options: opts.Bc) !void {
-    _ = options;
-
     if (opts.global.options.help)
         usage(0);
 
@@ -31,6 +33,15 @@ pub fn main(allocator: Allocator, options: opts.Bc) !void {
     }
 
     const filename = opts.global.positionals[0];
+    const mode: common.RunMode =
+        if (options.bas)
+        .bas
+    else if (options.avc)
+        .avc
+    else if (common.runModeFromFilename(filename)) |m| m else {
+        std.debug.print("bc: could not infer run mode from filename; specify --bas or --avc.\n", .{});
+        usage(1);
+    };
 
     const stderr = std.io.getStdErr();
     var stderrbw = std.io.bufferedWriter(stderr.writer());
@@ -44,15 +55,21 @@ pub fn main(allocator: Allocator, options: opts.Bc) !void {
     defer allocator.free(inp);
 
     var errorinfo: ErrorInfo = .{};
-    const code = Compiler.compileText(allocator, inp, &errorinfo) catch |err| {
-        try stderrtc.setColor(stderrwr, .bright_red);
-        try common.showErrorInfo(errorinfo, stderrwr, .loc);
-        try std.fmt.format(stderrwr, "compile: {s}\n\n", .{@errorName(err)});
-        try stderrtc.setColor(stderrwr, .reset);
-        try stderrbw.flush();
-        return err;
+    const code = switch (mode) {
+        .bas => Compiler.compileText(allocator, inp, &errorinfo) catch |err| {
+            try stderrtc.setColor(stderrwr, .bright_red);
+            try common.showErrorInfo(errorinfo, stderrwr, .loc);
+            try std.fmt.format(stderrwr, "compile: {s}\n\n", .{@errorName(err)});
+            try stderrtc.setColor(stderrwr, .reset);
+            try stderrbw.flush();
+            return err;
+        },
+        .avc => inp,
     };
-    defer allocator.free(code);
+    defer switch (mode) {
+        .bas => allocator.free(code),
+        .avc => {},
+    };
 
     try common.xxd(code);
 }

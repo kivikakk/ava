@@ -8,9 +8,9 @@ const opts = @import("opts.zig");
 const common = @import("common.zig");
 
 fn usage(status: u8) noreturn {
-    std.debug.print(
+    common.usageFor(status, "compile", "[file]",
     //    12345678901234567890123456789012345678901234567890123456789012345678901234567890
-        \\Usage: {?s} compile [file]
+        \\Compiles BASIC source to Ava BASIC bytecode.
         \\
         \\If the extension of [file] is `.bas', the output file will be the
         \\corresponding `.avc' file. Otherwise, `.avc' will be appended.
@@ -18,8 +18,7 @@ fn usage(status: u8) noreturn {
         \\`-' may be given to read from standard input and write to standard
         \\output.
         \\
-    ++ common.helpText, .{opts.global.executable_name});
-    std.process.exit(status);
+    );
 }
 
 pub fn main(allocator: Allocator, options: opts.Compile) !void {

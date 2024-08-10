@@ -9,20 +9,19 @@ const opts = @import("opts.zig");
 const common = @import("common.zig");
 
 fn usage(status: u8) noreturn {
-    std.debug.print(
+    common.usageFor(status, "run", "[options] [file]",
     //    12345678901234567890123456789012345678901234567890123456789012345678901234567890
-        \\Usage: {?s} run [options] [file]
+        \\Executes [file].
         \\
         \\The extension of [file] will be used to guess the run mode if no relevant
         \\option is given. `-' may be given to read from standard input.
         \\
         \\Run mode options:
         \\
-        \\  --bas          Interpret [file] as BASIC source
-        \\  --avc          Interpret [file] as Ava BASIC object file
+        \\  --bas          Treat [file] as BASIC source
+        \\  --avc          Treat [file] as Ava BASIC object file
         \\
-    ++ common.helpText, .{opts.global.executable_name});
-    std.process.exit(status);
+    );
 }
 
 pub fn main(allocator: Allocator, options: opts.Run) !void {
@@ -40,8 +39,12 @@ pub fn main(allocator: Allocator, options: opts.Run) !void {
     }
 
     const filename = opts.global.positionals[0];
-    const mode: enum { bas, avc } =
-        if (options.bas) .bas else if (options.avc) .avc else if (std.ascii.endsWithIgnoreCase(filename, ".bas")) .bas else if (std.ascii.endsWithIgnoreCase(filename, ".avc")) .avc else {
+    const mode: common.RunMode =
+        if (options.bas)
+        .bas
+    else if (options.avc)
+        .avc
+    else if (common.runModeFromFilename(filename)) |m| m else {
         std.debug.print("run: could not infer run mode from filename; specify --bas or --avc.\n", .{});
         usage(1);
     };
@@ -58,7 +61,7 @@ pub fn main(allocator: Allocator, options: opts.Run) !void {
     defer allocator.free(inp);
 
     var errorinfo: ErrorInfo = .{};
-    const code: []const u8 = switch (mode) {
+    const code = switch (mode) {
         .bas => Compiler.compileText(allocator, inp, &errorinfo) catch |err| {
             try stderrtc.setColor(stderrwr, .bright_red);
             try common.showErrorInfo(errorinfo, stderrwr, .loc);

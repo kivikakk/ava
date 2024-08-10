@@ -5,7 +5,9 @@ const isa = @import("../isa.zig");
 const PrintLoc = @import("../PrintLoc.zig");
 const ErrorInfo = @import("../ErrorInfo.zig");
 
-pub const helpText =
+const opts = @import("opts.zig");
+
+const helpText =
     \\
     \\Global options:
     \\
@@ -17,6 +19,25 @@ pub const helpText =
     \\under certain conditions; type `LICENCE CONDITIONS' for details.
     \\
 ;
+
+pub fn usageFor(status: u8, comptime command: []const u8, comptime argsPart: []const u8, comptime body: []const u8) noreturn {
+    std.debug.print(
+    //    12345678901234567890123456789012345678901234567890123456789012345678901234567890
+        \\Usage: {?s} 
+    ++ command ++ (if (argsPart.len > 0) " " else "") ++ argsPart ++ "\n\n" ++
+        body ++ helpText, .{opts.global.executable_name});
+    std.process.exit(status);
+}
+
+pub const RunMode = enum { bas, avc };
+pub fn runModeFromFilename(filename: []const u8) ?RunMode {
+    return if (std.ascii.endsWithIgnoreCase(filename, ".bas"))
+        .bas
+    else if (std.ascii.endsWithIgnoreCase(filename, ".avc"))
+        .avc
+    else
+        null;
+}
 
 pub fn showErrorInfo(errorinfo: ErrorInfo, writer: anytype, lockind: enum { caret, loc }) !void {
     if (errorinfo.loc) |errloc| {
