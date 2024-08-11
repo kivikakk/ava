@@ -48,3 +48,12 @@ def test_n7():
 
 def test_10():
     _test_prints(10, b' 10 ')
+
+def test_10009():
+    _test_prints(10009, b' 10009 ')
+
+def test_32767():
+    _test_prints(32767, b' 32767 ')
+
+def test_n32768():
+    _test_prints(-32768, b'-32768 ')
