@@ -53,13 +53,14 @@ class Core(Elaboratable):
     SLOT_N = 4
     ITEM_SHAPE = 32
 
-    def __init__(self):
+    def __init__(self, *, code: bytes):
         self.plat_uart = None
+        self.code = code
 
     def elaborate(self, platform):
         m = Module()
 
-        m.submodules.imem = imem = Memory(shape=8, depth=len(HELLO_AVC), init=HELLO_AVC)
+        m.submodules.imem = imem = Memory(shape=8, depth=len(self.code), init=self.code)
         imem_rd = imem.read_port()
 
         m.submodules.stack = self.stack = stack = Stack(width=self.ITEM_SHAPE, depth=self.STACK_N)
@@ -79,7 +80,7 @@ class Core(Elaboratable):
             uart.rd.ready.eq(0),
         ]
 
-        pc = Signal(range(len(HELLO_AVC) + 1))
+        pc = Signal(range(len(self.code) + 1))
         m.d.comb += imem_rd.addr.eq(pc)
 
         self.done = done = Signal()
@@ -108,10 +109,7 @@ class Core(Elaboratable):
             with m.State('init'):
                 m.d.sync += Print(Format("{:>14s} |> stall", "init"))
                 m.d.sync += pc.eq(pc + 1)
-                with m.If(pc == len(HELLO_AVC)):
-                    m.next = 'done'
-                with m.Else():
-                    m.next = 'decode'
+                m.next = 'decode'
 
             with m.State('done'):
                 m.d.comb += done.eq(1)

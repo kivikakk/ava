@@ -2,11 +2,16 @@ from amaranth.hdl import Fragment
 from amaranth.sim import Simulator
 
 from avacore.rtl.core import Core
-from tests import TestPlatform
+from tests import TestPlatform, compiled
 
 
-def test_hello():
-    dut = Core()
+def test_248():
+    dut = Core(code=compiled('248.avc', """
+        a% = 2
+        b% = 4
+        c% = a% * b%
+        PRINT c%
+    """))
 
     printed = bytearray()
 

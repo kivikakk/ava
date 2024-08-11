@@ -23,6 +23,14 @@
       inputs.flake-utils.follows = "flake-utils";
       inputs.zig-overlay.follows = "zig-overlay";
     };
+
+    avabasic = {
+      url = path:../basic;
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-utils.follows = "flake-utils";
+      inputs.zig-overlay.follows = "zig-overlay";
+      inputs.zls-flake.follows = "zls-flake";
+    };
   };
 
   outputs = {
@@ -31,11 +39,13 @@
     flake-utils,
     zig-overlay,
     zls-flake,
+    avabasic,
   }:
     flake-utils.lib.eachDefaultSystem (system: let
       pkgs = import nixpkgs {inherit system;};
       zig = zig-overlay.packages.${system}.master;
       zls = zls-flake.packages.${system}.zls;
+      basic = avabasic.packages.${system}.avabasic;
 
       niar-pkg = import ./niar.nix {inherit pkgs;};
       inherit (niar-pkg) python niar pytest-watcher toolchain-pkgs;
@@ -49,6 +59,7 @@
 
         build-system = [python.pkgs.pdm-backend];
         nativeBuildInputs = [pkgs.makeWrapper];
+        buildInputs = [basic];
         propagatedBuildInputs = [niar];
 
         doCheck = true;
@@ -79,6 +90,7 @@
           pytest
           pytest-xdist
           pytest-watcher
+          basic
         ];
       };
 
@@ -91,6 +103,7 @@
             pkgs.pdm
             zig
             zls
+            basic
           ]
           ++ toolchain-pkgs;
       };

@@ -1,5 +1,32 @@
 {
   "nodes": {
+    "avabasic": {
+      "inputs": {
+        "flake-utils": [
+          "flake-utils"
+        ],
+        "gitignore": "gitignore",
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "zig-overlay": [
+          "zig-overlay"
+        ],
+        "zls-flake": [
+          "zls-flake"
+        ]
+      },
+      "locked": {
+        "lastModified": 1,
+        "narHash": "sha256-I1u6wTE/y5S00vId6CCCt1FwBzwCRw1plyVmk8cU8To=",
+        "path": "../basic",
+        "type": "path"
+      },
+      "original": {
+        "path": "../basic",
+        "type": "path"
+      }
+    },
     "flake-compat": {
       "flake": false,
       "locked": {
@@ -35,6 +62,27 @@
       }
     },
     "gitignore": {
+      "inputs": {
+        "nixpkgs": [
+          "avabasic",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1709087332,
+        "narHash": "sha256-HG2cCnktfHsKV0s4XW83gU3F57gaTljL9KNSuG6bnQs=",
+        "owner": "hercules-ci",
+        "repo": "gitignore.nix",
+        "rev": "637db329424fd7e46cf4185293b9cc8c88c95394",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hercules-ci",
+        "repo": "gitignore.nix",
+        "type": "github"
+      }
+    },
+    "gitignore_2": {
       "inputs": {
         "nixpkgs": [
           "zls-flake",
@@ -85,6 +133,7 @@
     },
     "root": {
       "inputs": {
+        "avabasic": "avabasic",
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs",
         "zig-overlay": "zig-overlay",
@@ -135,7 +184,7 @@
         "flake-utils": [
           "flake-utils"
         ],
-        "gitignore": "gitignore",
+        "gitignore": "gitignore_2",
         "langref": "langref",
         "nixpkgs": [
           "nixpkgs"
