@@ -13,21 +13,34 @@ class Printer(Component):
     def elaborate(self, platform):
         m = Module()
 
-        datum = Signal(32)
+        datum = Signal(signed(16))
 
         with m.FSM():
             with m.State('init'):
                 m.d.comb += self.w_stream.ready.eq(1)
                 with m.If(self.w_stream.valid):
                     m.d.sync += datum.eq(self.w_stream.p)
-                    m.next = 'do'
+                    m.next = 'sign'
 
-            with m.State('do'):
-                m.d.sync += Print(Format("datum: v{:04x}", datum))
-                m.d.comb += [
-                    self.r_stream.p.eq(ord(b'0') + datum),
-                    self.r_stream.valid.eq(1),
-                ]
+            with m.State('sign'):
+                with m.If(datum[15]):
+                    m.d.comb += self.r_stream.p.eq(ord(b'-'))
+                with m.Else():
+                    m.d.comb += self.r_stream.p.eq(ord(b' '))
+                m.d.comb += self.r_stream.valid.eq(1)
+                with m.If(self.r_stream.ready):
+                    m.d.sync += datum.eq(Mux(datum[15], -datum, datum))
+                    m.next = 'rest'
+
+            with m.State('rest'):
+                m.d.comb += self.r_stream.p.eq(ord(b'0') + datum)
+                m.d.comb += self.r_stream.valid.eq(1)
+                with m.If(self.r_stream.ready):
+                    m.next = 'trailing'
+
+            with m.State('trailing'):
+                m.d.comb += self.r_stream.p.eq(ord(b' '))
+                m.d.comb += self.r_stream.valid.eq(1)
                 with m.If(self.r_stream.ready):
                     m.next = 'init'
 
