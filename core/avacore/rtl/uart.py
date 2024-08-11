@@ -1,4 +1,4 @@
-from amaranth import Module
+from amaranth import *
 from amaranth.lib import stream
 from amaranth.lib.fifo import SyncFIFOBuffered
 from amaranth.lib.wiring import Component, In, Out
@@ -12,14 +12,12 @@ class UART(Component):
     wr: In(stream.Signature(8))
     rd: Out(stream.Signature(8))
 
-    _plat_uart: object
-    _baud: int
-    _tx_fifo: SyncFIFOBuffered
-    _rx_fifo: SyncFIFOBuffered
+    plat_uart: object
+    baud: int
 
     def __init__(self, plat_uart, baud=115_200):
-        self._plat_uart = plat_uart
-        self._baud = baud
+        self.plat_uart = plat_uart
+        self.baud = baud
         super().__init__()
 
     def elaborate(self, platform):
@@ -36,15 +34,15 @@ class UART(Component):
             pins=self._plat_uart)
 
         # tx
-        m.submodules.tx_fifo = self._tx_fifo = SyncFIFOBuffered(width=8, depth=8)
+        m.submodules.tx_fifo = tx_fifo = SyncFIFOBuffered(width=8, depth=8)
         m.d.comb += [
-            self._tx_fifo.w_data.eq(self.wr.payload),
-            self._tx_fifo.w_en.eq(self.wr.valid),
+            tx_fifo.w_data.eq(self.wr.payload),
+            tx_fifo.w_en.eq(self.wr.valid),
         ]
         with m.FSM() as fsm:
             with m.State("idle"):
-                with m.If(serial.tx.rdy & self._tx_fifo.r_rdy):
-                    m.d.sync += serial.tx.data.eq(self._tx_fifo.r_data)
+                with m.If(serial.tx.rdy & tx_fifo.r_rdy):
+                    m.d.sync += serial.tx.data.eq(tx_fifo.r_data)
                     m.next = "wait"
 
             with m.State("wait"):
@@ -52,26 +50,26 @@ class UART(Component):
 
             m.d.comb += [
                 serial.tx.ack.eq(fsm.ongoing("wait")),
-                self._tx_fifo.r_en.eq(fsm.ongoing("wait")),
+                tx_fifo.r_en.eq(fsm.ongoing("wait")),
             ]
 
         # rx
-        m.submodules.rx_fifo = self._rx_fifo = SyncFIFOBuffered(width=8, depth=8)
+        m.submodules.rx_fifo = rx_fifo = SyncFIFOBuffered(width=8, depth=8)
         m.d.comb += [
-            self.rd.valid.eq(self._rx_fifo.r_rdy),
-            self.rd.payload.eq(self._rx_fifo.r_data),
-            self._rx_fifo.r_en.eq(self.rd.ready),
+            self.rd.valid.eq(rx_fifo.r_rdy),
+            self.rd.payload.eq(rx_fifo.r_data),
+            rx_fifo.r_en.eq(self.rd.ready),
         ]
         with m.FSM() as fsm:
             with m.State("idle"):
-                m.d.sync += self._rx_fifo.w_en.eq(0)
+                m.d.sync += rx_fifo.w_en.eq(0)
                 with m.If(serial.rx.rdy):
                     m.next = "read"
 
             with m.State("read"):
                 m.d.sync += [
-                    self._rx_fifo.w_data.eq(serial.rx.data),
-                    self._rx_fifo.w_en.eq(1),
+                    _rx_fifo.w_data.eq(serial.rx.data),
+                    _rx_fifo.w_en.eq(1),
                 ]
                 m.next = "idle"
 

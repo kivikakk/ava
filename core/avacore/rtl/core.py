@@ -4,6 +4,7 @@ from amaranth.lib.memory import Memory
 
 from .stack import Stack
 from .uart import UART
+from .printer import Printer
 
 
 __all__ = ["Core"]
@@ -64,10 +65,6 @@ class Core(Elaboratable):
         imem_rd = imem.read_port()
 
         m.submodules.stack = self.stack = stack = Stack(width=self.ITEM_SHAPE, depth=self.STACK_N)
-        m.d.sync += [
-            stack.w_stream.valid.eq(0),
-            stack.r_stream.ready.eq(0),
-        ]
 
         m.submodules.slots = self.slots = slots = Memory(shape=self.ITEM_SHAPE, depth=self.SLOT_N, init=[])
         slots_rd = slots.read_port()
@@ -75,10 +72,20 @@ class Core(Elaboratable):
         m.d.sync += slots_wr.en.eq(0)
 
         m.submodules.uart = self.uart = uart = UART(self.plat_uart)
-        m.d.sync += [
-            uart.wr.valid.eq(0),
-            uart.rd.ready.eq(0),
+        uart_wr_valid = Signal()
+        uart_wr_p = Signal(8)
+        m.d.comb += [
+            uart.wr.valid.eq(uart_wr_valid),
+            uart.wr.p.eq(uart_wr_p),
         ]
+
+        m.submodules.printer = printer = Printer()
+        with m.If(printer.r_stream.valid):
+            m.d.comb += [
+                uart.wr.valid.eq(1),
+                uart.wr.p.eq(printer.r_stream.p),
+                printer.r_stream.ready.eq(1),
+            ]
 
         pc = Signal(range(len(self.code) + 1))
         m.d.comb += imem_rd.addr.eq(pc)
@@ -134,9 +141,9 @@ class Core(Elaboratable):
                         m.next = 'print'
                     with m.Case(0x82): # BUILTIN_PRINT_LINEFEED
                         m.d.sync += Print(Format("{:>14s} |> BUILTIN_PRINT_LINEFEED", "decode"))
-                        m.d.sync += [
-                            uart.wr.p.eq(ord(b'\n')),
-                            uart.wr.valid.eq(1),
+                        m.d.comb += [
+                            uart_wr_p.eq(ord(b'\n')),
+                            uart_wr_valid.eq(1),
                         ]
                         m.next = 'decode'
                     with m.Case(0xa0): # OPERATOR_ADD_INTEGER
@@ -173,8 +180,8 @@ class Core(Elaboratable):
                 m.d.sync += [
                     pc.eq(pc + 1),
                     stack.w_stream.p.eq(d),
-                    stack.w_stream.valid.eq(1),
                 ]
+                m.d.comb += stack.w_stream.valid.eq(1)
                 m.next = 'decode'
 
             with m.State('push.variable'):
@@ -193,8 +200,8 @@ class Core(Elaboratable):
                 m.d.sync += [
                     pc.eq(pc + 1),
                     stack.w_stream.p.eq(slots_rd.data),
-                    stack.w_stream.valid.eq(1),
                 ]
+                m.d.comb += stack.w_stream.valid.eq(1)
                 m.next = 'decode'
 
             with m.State('let'):
@@ -210,31 +217,32 @@ class Core(Elaboratable):
                         slots_wr.addr.eq(slot),
                         slots_wr.data.eq(stack.r_stream.p),
                         slots_wr.en.eq(1),
-                        stack.r_stream.ready.eq(1),
                     ]
+                    m.d.comb += stack.r_stream.ready.eq(1)
                     m.next = 'decode'
                 with m.Else():
                     m.d.sync += Print(Format("{:>14s} |> stall", "let"))
 
             with m.State('print'):
                 with m.If(stack.r_stream.valid):
-                    m.d.sync += Print(Format("{:>14s} |> v{:04x}", "print", stack.r_stream.p))
-                    m.d.sync += [
-                        pc.eq(pc + 1),
-                        uart.wr.payload.eq(ord(b'0') + stack.r_stream.p),
-                        uart.wr.valid.eq(1),
-                    ],
-                    m.next = 'decode'
+                    m.d.comb += [
+                        printer.w_stream.p.eq(stack.r_stream.p),
+                        printer.w_stream.valid.eq(1),
+                    ]
+                    with m.If(printer.w_stream.ready):
+                        m.d.sync += Print(Format("{:>14s} |> v{:04x}", "print", stack.r_stream.p))
+                        m.d.comb += stack.r_stream.ready.eq(1)
+                        m.next = 'decode'
+                    with m.Else():
+                        m.d.sync += Print(Format("{:>14s} |> stall printer", "print"))
                 with m.Else():
-                    m.d.sync += Print(Format("{:>14s} |> stall", "print"))
+                    m.d.sync += Print(Format("{:>14s} |> stall stack", "print"))
 
             with m.State('alu'):
                 with m.If(stack.r_stream.valid):
                     m.d.sync += Print(Format("{:>14s} |> opb <- v{:04x}", "alu", stack.r_stream.p))
-                    m.d.sync += [
-                        opb.eq(stack.r_stream.p),
-                        stack.r_stream.ready.eq(1),
-                    ]
+                    m.d.sync += opb.eq(stack.r_stream.p)
+                    m.d.comb += stack.r_stream.ready.eq(1)
                     m.next = 'alu2'
                 with m.Else():
                     m.d.sync += Print(Format("{:>14s} |> stall", "alu"))
@@ -246,20 +254,16 @@ class Core(Elaboratable):
             with m.State('alu3'):
                 with m.If(stack.r_stream.valid):
                     m.d.sync += Print(Format("{:>14s} |> opa <- v{:04x}", "alu3", stack.r_stream.p))
-                    m.d.sync += [
-                        opa.eq(stack.r_stream.p),
-                        stack.r_stream.ready.eq(1),
-                    ]
+                    m.d.sync += opa.eq(stack.r_stream.p)
+                    m.d.comb += stack.r_stream.ready.eq(1)
                     m.next = 'alu4'
                 with m.Else():
                     m.d.sync += Print(Format("{:>14s} |> stall", "alu3"))
 
             with m.State('alu4'):
                 m.d.sync += Print(Format("{:>14s} |> v{:04x} v{:04x} ({})", "alu4", opa, opb, op))
-                m.d.sync += [
-                    pc.eq(pc + 1),
-                    stack.w_stream.valid.eq(1),
-                ]
+                m.d.sync += pc.eq(pc + 1)
+                m.d.comb += stack.w_stream.valid.eq(1)
 
                 m.d.sync += Assert(typ == Type.INTEGER) # XXX
 

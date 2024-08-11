@@ -27,13 +27,10 @@ class Stack(Component):
         mem_wr = mem.write_port()
         mem_rd = mem.read_port(transparent_for=[mem_wr])
 
-        level = Signal(range(self.depth + 1))
+        self.level = level = Signal(range(self.depth + 1))
         delay = Signal()
 
-        m.d.sync += [
-            mem_wr.en.eq(0),
-            delay.eq(0),
-        ]
+        m.d.sync += delay.eq(0)
 
         w_fire = self.w_stream.ready & self.w_stream.valid
         r_fire = self.r_stream.ready & self.r_stream.valid
@@ -46,10 +43,12 @@ class Stack(Component):
         ]
 
         with m.If(w_fire):
-            m.d.sync += [
+            m.d.comb += [
                 mem_wr.addr.eq(level),
                 mem_wr.data.eq(self.w_stream.payload),
                 mem_wr.en.eq(1),
+            ]
+            m.d.sync += [
                 level.eq(level + 1),
                 delay.eq(1),
             ]

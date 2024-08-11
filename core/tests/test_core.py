@@ -17,16 +17,21 @@ def _test_output(filename, basic, output):
             elif clk_edge and wr_valid:
                 printed.append(wr_p)
 
+    finished = False
     async def testbench(ctx):
         await ctx.tick().until(dut.done)
         assert printed == output
+        assert ctx.get(dut.stack.level) == 0, "stack should be empty after running"
+        nonlocal finished
+        finished = True
 
     sim = Simulator(Fragment.get(dut, TestPlatform()))
-    sim.add_clock(1 / 8)
+    sim.add_clock(1e-4)
     sim.add_process(uart)
     sim.add_testbench(testbench)
-    sim.run()
+    sim.run_until(1)
 
+    assert finished
     assert avabasic_run_output(filename) == output
 
 
