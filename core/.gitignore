@@ -5,3 +5,4 @@ __pycache__
 .pdm-python
 .zig-cache
 zig-out
+/tests/.*.avc.bas

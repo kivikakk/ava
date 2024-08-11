@@ -7,20 +7,24 @@ __all__ = ["TestPlatform", "compiled", "avabasic_run_output"]
 
 class TestPlatform:
     simulation = True
-    default_clk_frequency = 8.0
+    default_clk_frequency = 1e4
 
 
 def compiled(filename, basic):
-    path = Path(__file__).parent / filename
-    if path.exists():
-        with open(path, "rb") as f:
-            return f.read()
+    baspath = Path(__file__).parent / f".{filename}.bas"
+    avcpath = Path(__file__).parent / filename
+    if baspath.exists():
+        if baspath.read_text() == basic:
+            if avcpath.exists():
+                return avcpath.read_bytes()
 
     compiled = subprocess.check_output(
         ["avabasic", "compile", "-"],
         input=basic.encode('utf-8'))
-    with open(path, "wb") as f:
-        f.write(compiled)
+
+    avcpath.write_bytes(compiled)
+    baspath.write_text(basic)
+
     return compiled
 
 

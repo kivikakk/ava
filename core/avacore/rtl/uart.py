@@ -30,8 +30,8 @@ class UART(Component):
         freq = platform.default_clk_frequency
 
         m.submodules.serial = serial = AsyncSerial(
-            divisor=int(freq // self._baud),
-            pins=self._plat_uart)
+            divisor=int(freq // self.baud),
+            pins=self.plat_uart)
 
         # tx
         m.submodules.tx_fifo = tx_fifo = SyncFIFOBuffered(width=8, depth=8)
@@ -68,8 +68,8 @@ class UART(Component):
 
             with m.State("read"):
                 m.d.sync += [
-                    _rx_fifo.w_data.eq(serial.rx.data),
-                    _rx_fifo.w_en.eq(1),
+                    rx_fifo.w_data.eq(serial.rx.data),
+                    rx_fifo.w_en.eq(1),
                 ]
                 m.next = "idle"
 

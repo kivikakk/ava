@@ -10,6 +10,19 @@ from .core import Core
 __all__ = ["Top"]
 
 
+HELLO_AVC = [
+    0x01, 0x02, 0x00,
+    0x20, 0x00,
+    0x01, 0x04, 0x00,
+    0x20, 0x01,
+    0x0a, 0x00,
+    0x0a, 0x01,
+    0xa5,
+    0x80,
+    0x82,
+]
+
+
 class Top(wiring.Component):
     def __init__(self, platform):
         if isinstance(platform, cxxrtl):
@@ -26,7 +39,7 @@ class Top(wiring.Component):
         rst = Signal()
         m.d.sync += rst.eq(0)
 
-        core = Core()
+        core = Core(code=HELLO_AVC)
 
         match platform:
             case icebreaker():

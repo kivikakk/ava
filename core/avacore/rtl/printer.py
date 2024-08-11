@@ -7,7 +7,7 @@ __all__ = ["Printer"]
 
 
 class Printer(Component):
-    w_stream: In(stream.Signature(32))
+    w_stream: In(stream.Signature(signed(32)))
     r_stream: Out(stream.Signature(8))
 
     def elaborate(self, platform):

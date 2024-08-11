@@ -84,6 +84,6 @@ def test_stack():
         assertStack(ctx, rv=0, wr=1)
 
     sim = Simulator(Fragment.get(dut, TestPlatform()))
-    sim.add_clock(1e-6)
+    sim.add_clock(1e-4)
     sim.add_testbench(testbench)
     sim.run()

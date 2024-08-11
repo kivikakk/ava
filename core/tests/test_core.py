@@ -5,22 +5,24 @@ from avacore.rtl.core import Core
 from tests import TestPlatform, compiled, avabasic_run_output
 
 
-def _test_output(filename, basic, output):
+def _test_output(filename, basic, expected):
     dut = Core(code=compiled(filename, basic))
 
     printed = bytearray()
 
     async def uart(ctx):
-        async for clk_edge, rst_value, wr_valid, wr_p in ctx.tick().sample(dut.uart.wr.valid, dut.uart.wr.p):
-            if rst_value:
-                pass
-            elif clk_edge and wr_valid:
-                printed.append(wr_p)
+        while True:
+            async for wr_valid, wr_p in ctx.changed(dut.uart.wr.valid, dut.uart.wr.p):
+                if wr_valid:
+                    ctx.set(dut.uart.wr.ready, 1)
+                    printed.append(wr_p)
+                    break
+            await ctx.tick()
+            ctx.set(dut.uart.wr.ready, 0)
 
     finished = False
     async def testbench(ctx):
         await ctx.tick().until(dut.done)
-        assert printed == output
         assert ctx.get(dut.stack.level) == 0, "stack should be empty after running"
         nonlocal finished
         finished = True
@@ -31,14 +33,15 @@ def _test_output(filename, basic, output):
     sim.add_testbench(testbench)
     sim.run_until(1)
 
+    assert printed == expected
     assert finished
-    assert avabasic_run_output(filename) == output
+    assert avabasic_run_output(filename) == expected
 
 
 def test_248():
     _test_output('248.avc', """
         a% = 2
-        b% = 4
+        b% = 34
         c% = a% * b%
         PRINT c%
-    """, b'8\n')
+    """, b' 68 \n')

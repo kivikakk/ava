@@ -2,33 +2,12 @@ from amaranth import *
 from amaranth.lib.enum import Enum
 from amaranth.lib.memory import Memory
 
+from .printer import Printer
 from .stack import Stack
 from .uart import UART
-from .printer import Printer
 
 
 __all__ = ["Core"]
-
-HELLO_AVC = [
-    # 00
-    0x01, 0x02, 0x00,
-    # 03
-    0x20, 0x00,
-    # 05
-    0x01, 0x04, 0x00,
-    # 08
-    0x20, 0x01,
-    # 0a
-    0x0a, 0x00,
-    # 0c
-    0x0a, 0x01,
-    # 0e
-    0xa5,
-    # 0f
-    0x80,
-    # 10
-    0x82,
-]
 
 
 class Op(Enum, shape=3):
@@ -84,8 +63,9 @@ class Core(Elaboratable):
             m.d.comb += [
                 uart.wr.valid.eq(1),
                 uart.wr.p.eq(printer.r_stream.p),
-                printer.r_stream.ready.eq(1),
             ]
+            with m.If(uart.wr.ready):
+                m.d.comb += printer.r_stream.ready.eq(1)
 
         pc = Signal(range(len(self.code) + 1))
         m.d.comb += imem_rd.addr.eq(pc)
@@ -232,11 +212,18 @@ class Core(Elaboratable):
                     with m.If(printer.w_stream.ready):
                         m.d.sync += Print(Format("{:>14s} |> v{:04x}", "print", stack.r_stream.p))
                         m.d.comb += stack.r_stream.ready.eq(1)
-                        m.next = 'decode'
+                        m.next = 'print.wait'
                     with m.Else():
                         m.d.sync += Print(Format("{:>14s} |> stall printer", "print"))
                 with m.Else():
                     m.d.sync += Print(Format("{:>14s} |> stall stack", "print"))
+
+            with m.State('print.wait'):
+                with m.If(printer.w_stream.ready):
+                    m.d.sync += pc.eq(pc + 1)
+                    m.next = 'decode'
+                with m.Else():
+                    m.d.sync += Print(Format("{:>14s} |> stall printer", "print.w"))
 
             with m.State('alu'):
                 with m.If(stack.r_stream.valid):
