@@ -57,3 +57,9 @@ def test_32767():
 
 def test_n32768():
     _test_prints(-32768, b'-32768 ')
+
+def test_2147483647():
+    _test_prints(2147483647, b' 2147483647 ')
+
+def test_n2147483648():
+    _test_prints(-2147483648, b'-2147483648 ')

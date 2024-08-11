@@ -13,10 +13,10 @@ class Printer(Component):
     def elaborate(self, platform):
         m = Module()
 
-        n = Signal(16)
+        n = Signal(32)
 
         d = Signal(range(20))  # digit counter
-        v = Signal(range(100001))  # divisor
+        v = Signal(range(10_000_000_000))  # divisor
 
         with m.FSM():
             with m.State('init'):
@@ -26,14 +26,14 @@ class Printer(Component):
                     m.next = 'sign'
 
             with m.State('sign'):
-                with m.If(n[15]):
+                with m.If(n[31]):
                     m.d.comb += self.r_stream.p.eq(ord(b'-'))
                 with m.Else():
                     m.d.comb += self.r_stream.p.eq(ord(b' '))
                 m.d.comb += self.r_stream.valid.eq(1)
                 with m.If(self.r_stream.ready):
                     m.d.sync += [
-                        n.eq(Mux(n[15], -n.as_signed(), n)),
+                        n.eq(Mux(n[31], -n.as_signed(), n)),
                         d.eq(1),
                         v.eq(10),
                     ]
