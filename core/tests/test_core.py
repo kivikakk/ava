@@ -2,16 +2,11 @@ from amaranth.hdl import Fragment
 from amaranth.sim import Simulator
 
 from avacore.rtl.core import Core
-from tests import TestPlatform, compiled
+from tests import TestPlatform, compiled, avabasic_run_output
 
 
-def test_248():
-    dut = Core(code=compiled('248.avc', """
-        a% = 2
-        b% = 4
-        c% = a% * b%
-        PRINT c%
-    """))
+def _test_output(filename, basic, output):
+    dut = Core(code=compiled(filename, basic))
 
     printed = bytearray()
 
@@ -24,10 +19,21 @@ def test_248():
 
     async def testbench(ctx):
         await ctx.tick().until(dut.done)
-        assert printed == b'8\n'
+        assert printed == output
 
     sim = Simulator(Fragment.get(dut, TestPlatform()))
     sim.add_clock(1 / 8)
     sim.add_process(uart)
     sim.add_testbench(testbench)
     sim.run()
+
+    assert avabasic_run_output(filename) == output
+
+
+def test_248():
+    _test_output('248.avc', """
+        a% = 2
+        b% = 4
+        c% = a% * b%
+        PRINT c%
+    """, b'8\n')
