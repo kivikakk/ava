@@ -34,30 +34,33 @@ __all__ = ["StreamingDivider", "Divider"]
 class StreamingDivider(Component):
     """
     Provides a stream-based interface to Divider.
+
+    Additionally allows signed operation.
     """
 
     @staticmethod
-    def request_layout(abits, dbits):
+    def request_layout(abits, dbits, sign):
         return data.StructLayout({
-            "a": abits,
-            "d": dbits,
+            "a": signed(abits) if sign else unsigned(abits),
+            "d": signed(dbits) if sign else unsigned(dbits),
         })
 
     @staticmethod
-    def response_layout(abits, dbits):
+    def response_layout(abits, dbits, sign):
         return data.StructLayout({
-            "q": abits,
-            "r": dbits,
+            "q": signed(abits) if sign else unsigned(abits),
+            "r": unsigned(dbits),
             "z": 1,
         })
 
-    def __init__(self, *, abits, dbits, rapow=1, pipelined=False):
+    def __init__(self, *, abits, dbits, sign, rapow=1, pipelined=False):
         super().__init__({
-            "w_stream": In(stream.Signature(self.request_layout(abits, dbits))),
-            "r_stream": Out(stream.Signature(self.response_layout(abits, dbits))),
+            "w_stream": In(stream.Signature(self.request_layout(abits, dbits, sign))),
+            "r_stream": Out(stream.Signature(self.response_layout(abits, dbits, sign))),
         })
         self.abits = abits
         self.dbits = dbits
+        self.sign = sign
         self.rapow = rapow
         self.pipelined = pipelined
 
@@ -66,6 +69,9 @@ class StreamingDivider(Component):
 
         m.submodules.divider = divider = Divider(abits=self.abits, dbits=self.dbits,
                                                  rapow=self.rapow, pipelined=self.pipelined)
+
+        an = Signal()
+        dn = Signal()
 
         with m.FSM():
             with m.State('idle'):
@@ -76,6 +82,22 @@ class StreamingDivider(Component):
                         divider.d.eq(self.w_stream.p.d),
                         divider.start.eq(1),
                     ]
+                    if self.sign:
+                        # TODO: refactor bit checks
+                        m.d.sync += [
+                            an.eq(self.w_stream.p.a[self.abits-1]),
+                            dn.eq(self.w_stream.p.d[self.dbits-1]),
+                            divider.d.eq(Mux(
+                                self.w_stream.p.d[self.dbits-1],
+                                -self.w_stream.p.d,
+                                self.w_stream.p.d,
+                            )),
+                            divider.a.eq(Mux(
+                                self.w_stream.p.a[self.abits-1],
+                                -self.w_stream.p.a,
+                                self.w_stream.p.a,
+                            )),
+                        ]
                     m.next = 'busy'
 
             with m.State('busy'):
@@ -87,6 +109,20 @@ class StreamingDivider(Component):
                         self.r_stream.p.z.eq(divider.z),
                         self.r_stream.valid.eq(1),
                     ]
+                    with m.If(an):
+                        q = Mux(
+                            divider.r == 0,
+                            -divider.q,
+                            -divider.q - 1,
+                        )
+                        m.d.sync += self.r_stream.p.q.eq(Mux(dn, -q, q))
+                        m.d.sync += self.r_stream.p.r.eq(Mux(
+                            divider.r == 0,
+                            0,
+                            divider.d - divider.r,
+                        ))
+                    with m.Elif(dn):
+                        m.d.sync += self.r_stream.p.q.eq(-divider.q)
                     m.next = 'done'
 
             with m.State('done'):

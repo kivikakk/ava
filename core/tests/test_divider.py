@@ -1,5 +1,6 @@
 import random
 
+import pytest
 from amaranth.hdl import Fragment
 from amaranth.sim import Simulator
 from amaranth.utils import bits_for
@@ -34,10 +35,10 @@ def _test_divides_one(*, a, d, q, r, z, rapow, pipelined):
             assert ctx.get(dut.z)
         else:
             assert [
-                ctx.get(dut.q),
+                ctx.get(dut.q.as_signed()),
                 ctx.get(dut.r),
                 ctx.get(dut.z),
-            ] == [q, r, z]
+            ] == [q, r, 0]
 
         # This behaviour is per the original VHDL, I think.
         for _ in range(3):
@@ -54,31 +55,33 @@ def _test_divides_one(*, a, d, q, r, z, rapow, pipelined):
     assert finished
 
 
-def _test_divides(*, a, d, q=None, r=None, z):
+def _test_divides(*, a, d, q=None, r=None, z=None):
     for rapow in (1, 2, 3):
         for pipelined in (False, True):
             _test_divides_one(a=a, d=d, q=q, r=r, z=z,
                               rapow=rapow, pipelined=pipelined)
 
 
+@pytest.mark.slow
 def test_divider():
-    # TODO: test negative numbers
-    _test_divides(a=7, d=3, q=2, r=1, z=0)
-    _test_divides(a=100, d=4, q=25, r=0, z=0)
-    _test_divides(a=779, d=8, q=97, r=3, z=0)
+    _test_divides(a=7, d=3, q=2, r=1)
+    _test_divides(a=100, d=4, q=25, r=0)
+    _test_divides(a=779, d=8, q=97, r=3)
     _test_divides(a=779, d=0, z=1)
     for _ in range(10):
         a = random.randint(0, 1000000)
         d = random.randint(1, 1000000)
-        _test_divides(a=a, d=d, q=a // d, r=a % d, z=0)
+        _test_divides(a=a, d=d, q=a // d, r=a % d)
 
 
-def test_streaming_divider():
-    a, d, q, r, z = 779, 8, 97, 3, 0
+def _test_streaming_divides(*, a, d, q=None, r=None, z=None):
     rapow = 3
     pipelined = True
 
-    dut = StreamingDivider(abits=bits_for(a), dbits=bits_for(d),
+    abits = bits_for(a, require_sign_bit=True)
+    dbits = bits_for(d, require_sign_bit=True)
+
+    dut = StreamingDivider(abits=abits, dbits=dbits, sign=True,
                            rapow=rapow, pipelined=pipelined)
 
     finished = False
@@ -94,7 +97,7 @@ def test_streaming_divider():
 
             assert not ctx.get(dut.w_stream.ready)
 
-            steps = (bits_for(a) + rapow - 1) // rapow + int(pipelined)
+            steps = (abits + rapow - 1) // rapow + int(pipelined)
             for i in range(steps + 2):
                 assert not ctx.get(dut.r_stream.valid)
                 await ctx.tick()
@@ -109,7 +112,7 @@ def test_streaming_divider():
                     ctx.get(dut.r_stream.p.q),
                     ctx.get(dut.r_stream.p.r),
                     ctx.get(dut.r_stream.p.z),
-                ] == [q, r, z]
+                ] == [q, r, 0]
 
             ctx.set(dut.r_stream.ready, 1)
             await ctx.tick()
@@ -124,3 +127,10 @@ def test_streaming_divider():
     sim.add_testbench(testbench)
     sim.run_until(1)
     assert finished
+
+def test_streaming_divider():
+    _test_streaming_divides(a=779, d=8, q=97, r=3)
+    _test_streaming_divides(a=779, d=-8, q=-97, r=3) # d<0
+    _test_streaming_divides(a=-779, d=8, q=-98, r=5) # a<0
+    _test_streaming_divides(a=-779, d=-8, q=98, r=5) # d<0, a<0
+    # NOTE: I'm unsure if QBASIC's REM and MOD act exactly this way. We'll see.
