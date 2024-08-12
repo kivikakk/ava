@@ -43,7 +43,7 @@ class StreamingDivider(Component):
     # drop-in fashion here, too, but ideally the StreamingDivider always uses a
     # pipelined Divider, and never stalls for input.
     #
-    # This implies we record an/d(/dn) for as many stages as the pipeline has,
+    # This implies we record an/d(/dn)/q/r/z for as many stages as the pipeline has,
     # which is steps(+1?? ugh. I need better intuition here).
 
     @staticmethod
