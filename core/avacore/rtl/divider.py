@@ -86,15 +86,15 @@ class StreamingDivider(Component):
                     if self.sign:
                         # TODO: refactor bit checks
                         m.d.sync += [
-                            an.eq(self.w_stream.p.a[self.abits-1]),
-                            dn.eq(self.w_stream.p.d[self.dbits-1]),
+                            an.eq(self.w_stream.p.a[-1]),
+                            dn.eq(self.w_stream.p.d[-1]),
                             divider.d.eq(Mux(
-                                self.w_stream.p.d[self.dbits-1],
+                                self.w_stream.p.d[-1],
                                 -self.w_stream.p.d,
                                 self.w_stream.p.d,
                             )),
                             divider.a.eq(Mux(
-                                self.w_stream.p.a[self.abits-1],
+                                self.w_stream.p.a[-1],
                                 -self.w_stream.p.a,
                                 self.w_stream.p.a,
                             )),
@@ -182,12 +182,14 @@ class Divider(Component):
             res = Signal(residue)
 
             win = av[trunk_bits + self.rapow:]
+            assert len(win) == self.dbits
+
             for i in range(self.rapow - 1, -1, -1):
                 dif = (Cat(av[trunk_bits+i], win) - dv)[:self.dbits+1]
-                win = Mux(~dif[self.dbits],
-                    dif[:self.dbits],
-                    Cat(av[trunk_bits+i], win[:self.dbits-1]))
-                m.d.comb += res[i].eq(~dif[self.dbits])
+                win = Mux(~dif[-1],
+                    dif[:-1],
+                    Cat(av[trunk_bits+i], win[:-1]))
+                m.d.comb += res[i].eq(~dif[-1])
 
             m.d.comb += res[self.rapow:].eq(Cat(av[:trunk_bits], win))
             return res
@@ -204,15 +206,15 @@ class Divider(Component):
 
             with m.If(self.start):
                 m.d.sync += cnt_exec.eq(-steps)
-            with m.Elif(cnt_exec[exec_bits-1]):
+            with m.Elif(cnt_exec[-1]):
                 m.d.sync += cnt_exec.eq(cnt_exec + 1)
 
-            m.d.comb += exec.eq(cnt_exec[exec_bits-1])
+            m.d.comb += exec.eq(cnt_exec[-1])
             m.d.comb += self.ready.eq(~exec)
         else:
             vld = Signal(steps+1)
-            m.d.sync += vld.eq(Cat(self.start, vld[:steps]))
-            m.d.sync += self.ready.eq(vld[steps])
+            m.d.sync += vld.eq(Cat(self.start, vld[:-1]))
+            m.d.sync += self.ready.eq(vld[-1])
 
         an = Cat(self.a, C(0, residue.width - self.abits))
         dn = self.d
@@ -225,14 +227,14 @@ class Divider(Component):
 
         with m.If(self.pipelined | (~self.start & exec)):
             m.d.sync += [
-                ar[depth].eq(an),
-                dr[depth].eq(dn),
+                ar[-1].eq(an),
+                dr[-1].eq(dn),
                 zr.eq(dn == 0),
             ]
 
         m.d.comb += [
-            self.q.eq(ar[depth][:self.abits]),
-            self.r.eq(ar[depth][steps*self.rapow:][:self.dbits]),
+            self.q.eq(ar[-1][:self.abits]),
+            self.r.eq(ar[-1][steps*self.rapow:][:self.dbits]),
             self.z.eq(zr),
         ]
 

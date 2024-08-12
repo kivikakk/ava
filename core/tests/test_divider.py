@@ -68,6 +68,9 @@ def test_divider():
     _test_divides(a=100, d=4, q=25, r=0)
     _test_divides(a=779, d=8, q=97, r=3)
     _test_divides(a=779, d=0, z=1)
+
+@pytest.mark.slow
+def test_divider_rand():
     for _ in range(10):
         a = random.randint(0, 1000000)
         d = random.randint(1, 1000000)
