@@ -1,4 +1,5 @@
 import random
+from functools import partial
 
 import pytest
 from amaranth.hdl import Fragment
@@ -9,7 +10,7 @@ from avacore.rtl.divider import Divider, StreamingDivider
 from tests import TestPlatform
 
 
-def _test_divides_one(*, a, d, q, r, z, rapow, pipelined):
+def _test_divides(*, a, d, q=None, r=None, z=None, rapow, pipelined):
     # TODO: actually check pipelined use.
     dut = Divider(abits=bits_for(a), dbits=bits_for(d),
                   rapow=rapow, pipelined=pipelined)
@@ -23,9 +24,13 @@ def _test_divides_one(*, a, d, q, r, z, rapow, pipelined):
         ctx.set(dut.d, d)
         ctx.set(dut.start, 1)
         await ctx.tick()
+
+        # Reset inputs to ensure it's not depending on them hanging around.
+        ctx.set(dut.a, 0)
+        ctx.set(dut.d, 0)
         ctx.set(dut.start, 0)
 
-        steps = (bits_for(a) + rapow - 1) // rapow + int(pipelined)
+        steps = (bits_for(a) + rapow - 1) // rapow
         for i in range(steps):
             assert not ctx.get(dut.ready)
             await ctx.tick()
@@ -55,36 +60,34 @@ def _test_divides_one(*, a, d, q, r, z, rapow, pipelined):
     assert finished
 
 
-def _test_divides(*, a, d, q=None, r=None, z=None):
-    for rapow in (1, 2, 3):
-        for pipelined in (False, True):
-            _test_divides_one(a=a, d=d, q=q, r=r, z=z,
-                              rapow=rapow, pipelined=pipelined)
-
-
+@pytest.mark.parametrize("pipelined", [False, True])
+@pytest.mark.parametrize("rapow", [1, 2, 3])
 @pytest.mark.slow
-def test_divider():
-    _test_divides(a=7, d=3, q=2, r=1)
-    _test_divides(a=100, d=4, q=25, r=0)
-    _test_divides(a=779, d=8, q=97, r=3)
-    _test_divides(a=779, d=0, z=1)
+def test_divider(rapow, pipelined):
+    f = partial(_test_divides, rapow=rapow, pipelined=pipelined)
+    f(a=7, d=3, q=2, r=1)
+    f(a=100, d=4, q=25, r=0)
+    f(a=779, d=8, q=97, r=3)
+    f(a=779, d=0, z=1)
 
+
+@pytest.mark.parametrize("pipelined", [False, True])
+@pytest.mark.parametrize("rapow", [1, 2, 3])
 @pytest.mark.slow
-def test_divider_rand():
+def test_divider_rand(rapow, pipelined):
+    f = partial(_test_divides, rapow=rapow, pipelined=pipelined)
     for _ in range(10):
         a = random.randint(0, 1000000)
         d = random.randint(1, 1000000)
-        _test_divides(a=a, d=d, q=a // d, r=a % d)
+        f(a=a, d=d, q=a // d, r=a % d)
 
 
-def _test_streaming_divides_one(*, a, d, q, r, z, rapow):
-    pipelined = False
-
+def _test_streaming_divides(*, a, d, q=None, r=None, z=None, rapow, pipelined):
     abits = bits_for(a, require_sign_bit=True)
     dbits = bits_for(d, require_sign_bit=True)
 
     dut = StreamingDivider(abits=abits, dbits=dbits, sign=True,
-                           rapow=rapow)
+                           rapow=rapow, pipelined=pipelined)
 
     finished = False
     async def testbench(ctx):
@@ -99,8 +102,8 @@ def _test_streaming_divides_one(*, a, d, q, r, z, rapow):
 
             assert not ctx.get(dut.w_stream.ready)
 
-            steps = (abits + rapow - 1) // rapow + int(pipelined)
-            for i in range(steps + 2):
+            steps = (abits + rapow - 1) // rapow
+            for i in range(steps + 1):
                 assert not ctx.get(dut.r_stream.valid)
                 await ctx.tick()
 
@@ -131,15 +134,13 @@ def _test_streaming_divides_one(*, a, d, q, r, z, rapow):
     assert finished
 
 
-def _test_streaming_divides(*, a, d, q=None, r=None, z=None):
+@pytest.mark.parametrize("pipelined", [False, True])
+@pytest.mark.parametrize("rapow", [1, 2, 3])
+def test_streaming_divider(rapow, pipelined):
     # TODO: implement and test a pipelined use of this.
-    for rapow in (1, 2, 3):
-        _test_streaming_divides_one(a=a, d=d, q=q, r=r, z=z, rapow=rapow)
-
-
-def test_streaming_divider():
-    _test_streaming_divides(a=779, d=8, q=97, r=3)
-    _test_streaming_divides(a=779, d=-8, q=-97, r=3) # d<0
-    _test_streaming_divides(a=-779, d=8, q=-98, r=5) # a<0
-    _test_streaming_divides(a=-779, d=-8, q=98, r=5) # d<0, a<0
     # NOTE: I'm unsure if QBASIC's REM and MOD act exactly this way. We'll see.
+    f = partial(_test_streaming_divides, rapow=rapow, pipelined=pipelined)
+    f(a=779, d=8, q=97, r=3)
+    f(a=779, d=-8, q=-97, r=3) # d<0
+    f(a=-779, d=8, q=-98, r=5) # a<0
+    f(a=-779, d=-8, q=98, r=5) # d<0, a<0

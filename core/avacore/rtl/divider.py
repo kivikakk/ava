@@ -38,7 +38,13 @@ class StreamingDivider(Component):
     Additionally allows signed operation.
     """
 
-    # TODO: support pipelined use.
+    # TODO: support actual pipelined use. For now we allow passing the parameter
+    # through to ensure the pipelined Divider can be tested to work in a
+    # drop-in fashion here, too, but ideally the StreamingDivider always uses a
+    # pipelined Divider, and never stalls for input.
+    #
+    # This implies we record an/d(/dn) for as many stages as the pipeline has,
+    # which is steps(+1?? ugh. I need better intuition here).
 
     @staticmethod
     def request_layout(abits, dbits, sign):
@@ -55,7 +61,7 @@ class StreamingDivider(Component):
             "z": 1,
         })
 
-    def __init__(self, *, abits, dbits, sign, rapow=1):
+    def __init__(self, *, abits, dbits, sign, rapow=1, pipelined=False):
         super().__init__({
             "w_stream": In(stream.Signature(self.request_layout(abits, dbits, sign))),
             "r_stream": Out(stream.Signature(self.response_layout(abits, dbits, sign))),
@@ -64,45 +70,49 @@ class StreamingDivider(Component):
         self.dbits = dbits
         self.sign = sign
         self.rapow = rapow
+        self.pipelined = pipelined
 
     def elaborate(self, platform):
         m = Module()
 
         m.submodules.divider = divider = Divider(abits=self.abits, dbits=self.dbits,
-                                                 rapow=self.rapow, pipelined=False)
+                                                 rapow=self.rapow, pipelined=self.pipelined)
 
+        # XXX: These can't work in a pipeline; we lose the context.
         an = Signal()
         dn = Signal()
+        d = Signal(self.dbits)
 
         with m.FSM():
             with m.State('idle'):
                 m.d.comb += self.w_stream.ready.eq(1)
                 with m.If(self.w_stream.valid):
-                    m.d.sync += [
+                    m.d.comb += [
                         divider.a.eq(self.w_stream.p.a),
                         divider.d.eq(self.w_stream.p.d),
                         divider.start.eq(1),
                     ]
                     if self.sign:
-                        # TODO: refactor bit checks
                         m.d.sync += [
                             an.eq(self.w_stream.p.a[-1]),
                             dn.eq(self.w_stream.p.d[-1]),
-                            divider.d.eq(Mux(
-                                self.w_stream.p.d[-1],
-                                -self.w_stream.p.d,
-                                self.w_stream.p.d,
-                            )),
+                            d.eq(self.w_stream.p.d),
+                        ]
+                        m.d.comb += [
                             divider.a.eq(Mux(
                                 self.w_stream.p.a[-1],
                                 -self.w_stream.p.a,
                                 self.w_stream.p.a,
                             )),
+                            divider.d.eq(Mux(
+                                self.w_stream.p.d[-1],
+                                -self.w_stream.p.d,
+                                self.w_stream.p.d,
+                            )),
                         ]
                     m.next = 'busy'
 
             with m.State('busy'):
-                m.d.sync += divider.start.eq(0)
                 with m.If(~divider.start & divider.ready):
                     m.d.sync += [
                         self.r_stream.p.q.eq(divider.q),
@@ -110,20 +120,22 @@ class StreamingDivider(Component):
                         self.r_stream.p.z.eq(divider.z),
                         self.r_stream.valid.eq(1),
                     ]
-                    with m.If(an):
-                        q = Mux(
-                            divider.r == 0,
-                            -divider.q,
-                            -divider.q - 1,
-                        )
-                        m.d.sync += self.r_stream.p.q.eq(Mux(dn, -q, q))
-                        m.d.sync += self.r_stream.p.r.eq(Mux(
-                            divider.r == 0,
-                            0,
-                            divider.d - divider.r,
-                        ))
-                    with m.Elif(dn):
-                        m.d.sync += self.r_stream.p.q.eq(-divider.q)
+
+                    if self.sign:
+                        with m.If(an & dn):
+                            m.d.sync += self.r_stream.p.q.eq(divider.q + (divider.r != 0))
+                        with m.Elif(an):
+                            m.d.sync += self.r_stream.p.q.eq(-(divider.q + (divider.r != 0)))
+                        with m.Elif(dn):
+                            m.d.sync += self.r_stream.p.q.eq(-divider.q)
+
+                        with m.If(an):
+                            m.d.sync += self.r_stream.p.r.eq(Mux(
+                                divider.r == 0,
+                                0,
+                                d - divider.r,
+                            ))
+
                     m.next = 'done'
 
             with m.State('done'):
@@ -154,6 +166,8 @@ class Divider(Component):
         self.rapow = rapow
         self.pipelined = pipelined
 
+        self.steps = (abits + rapow - 1) // rapow
+
         super().__init__({
             "start": In(1),
             "ready": Out(1),
@@ -167,7 +181,7 @@ class Divider(Component):
     def elaborate(self, platform):
         m = Module()
 
-        steps = (self.abits + self.rapow - 1) // self.rapow
+        steps = self.steps
         depth = steps if self.pipelined else 0
         trunk_bits = (steps - 1) * self.rapow
         active_bits = self.dbits + self.rapow
@@ -212,9 +226,9 @@ class Divider(Component):
             m.d.comb += exec.eq(cnt_exec[-1])
             m.d.comb += self.ready.eq(~exec)
         else:
-            vld = Signal(steps+1)
+            vld = Signal(steps + 1)
             m.d.sync += vld.eq(Cat(self.start, vld[:-1]))
-            m.d.sync += self.ready.eq(vld[-1])
+            m.d.comb += self.ready.eq(vld[-1])
 
         an = Cat(self.a, C(0, residue.width - self.abits))
         dn = self.d
