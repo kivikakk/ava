@@ -23,14 +23,90 @@
 # =============================================================================
 
 from amaranth import *
+from amaranth.lib import data, stream
 from amaranth.lib.wiring import Component, In, Out
 from amaranth.utils import ceil_log2
 
 
-__all__ = ["Divider"]
+__all__ = ["StreamingDivider", "Divider"]
+
+
+class StreamingDivider(Component):
+    """
+    Provides a stream-based interface to Divider.
+    """
+
+    @staticmethod
+    def request_layout(abits, dbits):
+        return data.StructLayout({
+            "a": abits,
+            "d": dbits,
+        })
+
+    @staticmethod
+    def response_layout(abits, dbits):
+        return data.StructLayout({
+            "q": abits,
+            "r": dbits,
+            "z": 1,
+        })
+
+    def __init__(self, *, abits, dbits, rapow=1, pipelined=False):
+        super().__init__({
+            "w_stream": In(stream.Signature(self.request_layout(abits, dbits))),
+            "r_stream": Out(stream.Signature(self.response_layout(abits, dbits))),
+        })
+        self.abits = abits
+        self.dbits = dbits
+        self.rapow = rapow
+        self.pipelined = pipelined
+
+    def elaborate(self, platform):
+        m = Module()
+
+        m.submodules.divider = divider = Divider(abits=self.abits, dbits=self.dbits,
+                                                 rapow=self.rapow, pipelined=self.pipelined)
+
+        with m.FSM():
+            with m.State('idle'):
+                m.d.comb += self.w_stream.ready.eq(1)
+                with m.If(self.w_stream.valid):
+                    m.d.sync += [
+                        divider.a.eq(self.w_stream.p.a),
+                        divider.d.eq(self.w_stream.p.d),
+                        divider.start.eq(1),
+                    ]
+                    m.next = 'busy'
+
+            with m.State('busy'):
+                m.d.sync += divider.start.eq(0)
+                with m.If(~divider.start & divider.ready):
+                    m.d.sync += [
+                        self.r_stream.p.q.eq(divider.q),
+                        self.r_stream.p.r.eq(divider.r),
+                        self.r_stream.p.z.eq(divider.z),
+                        self.r_stream.valid.eq(1),
+                    ]
+                    m.next = 'done'
+
+            with m.State('done'):
+                with m.If(self.r_stream.ready):
+                    m.d.sync += self.r_stream.valid.eq(0)
+                    m.next = 'idle'
+
+        return m
 
 
 class Divider(Component):
+    # Docstring per the original.
+    """
+    Implementation of a Non-Performing restoring divider with a configurable radix.
+    The multi-cycle division is controlled by 'start' / 'rdy'. A new division is
+    started by asserting 'start'. The result Q = A/D is available when 'rdy'
+    returns to '1'. A division by zero is identified by output Z. The Q and R
+    outputs are undefined in this case.
+    """
+
     def __init__(self, *, abits, dbits, rapow=1, pipelined=False):
         assert abits > 0
         assert dbits > 0
