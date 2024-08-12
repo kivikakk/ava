@@ -38,6 +38,8 @@ class StreamingDivider(Component):
     Additionally allows signed operation.
     """
 
+    # TODO: support pipelined use.
+
     @staticmethod
     def request_layout(abits, dbits, sign):
         return data.StructLayout({
@@ -53,7 +55,7 @@ class StreamingDivider(Component):
             "z": 1,
         })
 
-    def __init__(self, *, abits, dbits, sign, rapow=1, pipelined=False):
+    def __init__(self, *, abits, dbits, sign, rapow=1):
         super().__init__({
             "w_stream": In(stream.Signature(self.request_layout(abits, dbits, sign))),
             "r_stream": Out(stream.Signature(self.response_layout(abits, dbits, sign))),
@@ -62,13 +64,12 @@ class StreamingDivider(Component):
         self.dbits = dbits
         self.sign = sign
         self.rapow = rapow
-        self.pipelined = pipelined
 
     def elaborate(self, platform):
         m = Module()
 
         m.submodules.divider = divider = Divider(abits=self.abits, dbits=self.dbits,
-                                                 rapow=self.rapow, pipelined=self.pipelined)
+                                                 rapow=self.rapow, pipelined=False)
 
         an = Signal()
         dn = Signal()

@@ -10,6 +10,7 @@ from tests import TestPlatform
 
 
 def _test_divides_one(*, a, d, q, r, z, rapow, pipelined):
+    # TODO: actually check pipelined use.
     dut = Divider(abits=bits_for(a), dbits=bits_for(d),
                   rapow=rapow, pipelined=pipelined)
 
@@ -40,7 +41,6 @@ def _test_divides_one(*, a, d, q, r, z, rapow, pipelined):
                 ctx.get(dut.z),
             ] == [q, r, 0]
 
-        # This behaviour is per the original VHDL, I think.
         for _ in range(3):
             await ctx.tick()
             assert ctx.get(dut.ready) ^ pipelined
@@ -74,15 +74,14 @@ def test_divider():
         _test_divides(a=a, d=d, q=a // d, r=a % d)
 
 
-def _test_streaming_divides(*, a, d, q=None, r=None, z=None):
-    rapow = 3
-    pipelined = True
+def _test_streaming_divides_one(*, a, d, q, r, z, rapow):
+    pipelined = False
 
     abits = bits_for(a, require_sign_bit=True)
     dbits = bits_for(d, require_sign_bit=True)
 
     dut = StreamingDivider(abits=abits, dbits=dbits, sign=True,
-                           rapow=rapow, pipelined=pipelined)
+                           rapow=rapow)
 
     finished = False
     async def testbench(ctx):
@@ -127,6 +126,13 @@ def _test_streaming_divides(*, a, d, q=None, r=None, z=None):
     sim.add_testbench(testbench)
     sim.run_until(1)
     assert finished
+
+
+def _test_streaming_divides(*, a, d, q=None, r=None, z=None):
+    # TODO: implement and test a pipelined use of this.
+    for rapow in (1, 2, 3):
+        _test_streaming_divides_one(a=a, d=d, q=q, r=r, z=z, rapow=rapow)
+
 
 def test_streaming_divider():
     _test_streaming_divides(a=779, d=8, q=97, r=3)
