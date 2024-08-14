@@ -28,13 +28,11 @@ def _test(filename, basic, *, output=None, stacks=None):
                                   rs.valid, rs.ready, rs.p):
             if w_valid and w_ready:
                 stack.append(w_p)
-                print("asserting stack on write: ", stacks[0])
                 assert stacks.pop(0) == stack, f"stacks index {i} mismatch on write"
                 assert not (r_valid and r_ready)
                 i += 1
             if r_valid and r_ready:
                 stack.pop()
-                print("asserting stack on read:  ", stacks[0])
                 assert stacks.pop(0) == stack, f"stacks index {i} mismatch on read"
                 assert not (w_valid and w_ready)
                 i += 1

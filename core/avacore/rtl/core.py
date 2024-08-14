@@ -55,17 +55,13 @@ class Core(Elaboratable):
         m.submodules.uart = self.uart = uart = UART(self.plat_uart)
         uart_wr_valid = Signal()
         uart_wr_p = Signal(8)
-        m.d.comb += [
-            uart.wr.valid.eq(uart_wr_valid),
-            uart.wr.p.eq(uart_wr_p),
-        ]
+        m.d.comb += uart.wr.valid.eq(uart_wr_valid)
+        m.d.comb += uart.wr.p.eq(uart_wr_p)
 
         m.submodules.printer = printer = Printer()
         with m.If(printer.r_stream.valid):
-            m.d.comb += [
-                uart.wr.valid.eq(1),
-                uart.wr.p.eq(printer.r_stream.p),
-            ]
+            m.d.comb += uart.wr.valid.eq(1)
+            m.d.comb += uart.wr.p.eq(printer.r_stream.p)
             with m.If(uart.wr.ready):
                 m.d.comb += printer.r_stream.ready.eq(1)
 
@@ -123,10 +119,8 @@ class Core(Elaboratable):
                         m.next = 'print'
                     with m.Case(0x82): # BUILTIN_PRINT_LINEFEED
                         m.d.sync += Print(Format("{:>14s} |> BUILTIN_PRINT_LINEFEED", "decode"))
-                        m.d.comb += [
-                            uart_wr_p.eq(ord(b'\n')),
-                            uart_wr_valid.eq(1),
-                        ]
+                        m.d.comb += uart_wr_p.eq(ord(b'\n'))
+                        m.d.comb += uart_wr_valid.eq(1)
                         m.next = 'decode'
                     with m.Case(0xa0): # OPERATOR_ADD_INTEGER
                         m.d.sync += Print(Format("{:>14s} |> OPERATOR_ADD_INTEGER", "decode"))
@@ -150,10 +144,8 @@ class Core(Elaboratable):
 
             with m.State('push.imm.integer'):
                 m.d.sync += Print(Format("{:>14s} |> acc", "p.i.i"))
-                m.d.sync += [
-                    pc.eq(pc + 1),
-                    stack.w_stream.p.eq(imem_rd.data),
-                ]
+                m.d.sync += pc.eq(pc + 1)
+                m.d.sync += stack.w_stream.p.eq(imem_rd.data)
                 m.next = 'push.imm.integer.2'
 
             with m.State('push.imm.integer.2'):
@@ -162,15 +154,13 @@ class Core(Elaboratable):
                 m.d.sync += [
                     pc.eq(pc + 1),
                     stack.w_stream.p.eq(d),
+                    stack.w_stream.valid.eq(1),
                 ]
-                m.d.sync += stack.w_stream.valid.eq(1)
                 m.next = 'decode'
 
             with m.State('push.variable'):
                 m.d.sync += Print(Format("{:>14s} |> push s{:02x}", "p.v", imem_rd.data))
-                m.d.sync += [
-                    slots_rd.addr.eq(imem_rd.data),
-                ]
+                m.d.sync += slots_rd.addr.eq(imem_rd.data)
                 m.next = 'push.variable.2'
 
             with m.State('push.variable.2'):
@@ -182,8 +172,8 @@ class Core(Elaboratable):
                 m.d.sync += [
                     pc.eq(pc + 1),
                     stack.w_stream.p.eq(slots_rd.data),
+                    stack.w_stream.valid.eq(1),
                 ]
-                m.d.sync += stack.w_stream.valid.eq(1)
                 m.next = 'decode'
 
             with m.State('let'):
@@ -207,10 +197,8 @@ class Core(Elaboratable):
 
             with m.State('print'):
                 with m.If(stack.r_stream.valid):
-                    m.d.comb += [
-                        printer.w_stream.p.eq(stack.r_stream.p),
-                        printer.w_stream.valid.eq(1),
-                    ]
+                    m.d.comb += printer.w_stream.p.eq(stack.r_stream.p)
+                    m.d.comb += printer.w_stream.valid.eq(1)
                     with m.If(printer.w_stream.ready):
                         m.d.sync += Print(Format("{:>14s} |> v{:04x}", "print", stack.r_stream.p))
                         m.d.sync += stack.r_stream.ready.eq(1)
