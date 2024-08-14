@@ -80,19 +80,18 @@ fn compileStmt(self: *Compiler, s: Stmt) !void {
             return ErrorInfo.ret(self, Error.Unimplemented, "call to \"{s}\"", .{c.name.payload});
         },
         .print => |p| {
-            // Each argument gets BUILTIN_PRINTed.
-            // Between arguments, BUILTIN_PRINT_COMMA advances to the next print zone.
-            // At the end, if there's a trailing comma, another BUILTIN_PRINT_COMMA is used.
+            // Each argument gets PRINTed.
+            // Between arguments, PRINT_COMMA advances to the next print zone.
+            // At the end, if there's a trailing comma, another PRINT_COMMA is used.
             // If there's a trailing semicolon, we do nothing.
-            // Otherwise, we BUILTIN_PRINT_LINEFEED.
+            // Otherwise, we PRINT_LINEFEED.
             for (p.args, 0..) |a, i| {
-                // TODO: probably want BUILTIN_PRINT_{type}.
-                _ = try self.compileExpr(a.payload);
-                try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT});
+                const t = try self.compileExpr(a.payload);
+                try isa.assembleInto(self.writer, .{isa.Opcode{ .op = .PRINT, .t = isa.Type.fromTy(t) }});
                 if (i < p.separators.len) {
                     switch (p.separators[i].payload) {
                         ';' => {},
-                        ',' => try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT_COMMA}),
+                        ',' => try isa.assembleInto(self.writer, .{isa.Opcode{ .op = .PRINT_COMMA }}),
                         else => unreachable,
                     }
                 }
@@ -100,11 +99,11 @@ fn compileStmt(self: *Compiler, s: Stmt) !void {
             if (p.separators.len == p.args.len and p.separators.len > 0) {
                 switch (p.separators[p.args.len - 1].payload) {
                     ';' => {},
-                    ',' => try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT_COMMA}),
+                    ',' => try isa.assembleInto(self.writer, .{isa.Opcode{ .op = .PRINT_COMMA }}),
                     else => unreachable,
                 }
             } else {
-                try isa.assembleInto(self.writer, .{isa.Opcode.BUILTIN_PRINT_LINEFEED});
+                try isa.assembleInto(self.writer, .{isa.Opcode{ .op = .PRINT_LINEFEED }});
             }
         },
         .let => |l| {
@@ -112,13 +111,12 @@ fn compileStmt(self: *Compiler, s: Stmt) !void {
             const rhsType = try self.compileExpr(l.rhs.payload);
             try self.compileCoerce(rhsType, resolved.type);
             try isa.assembleInto(self.writer, .{
-                isa.Opcode.LET,
-                resolved.slot,
+                isa.Opcode{ .op = .LET, .slot = resolved.slot },
             });
         },
         .pragma_printed => |p| {
             try isa.assembleInto(self.writer, .{
-                isa.Opcode.PRAGMA_PRINTED,
+                isa.Opcode{ .op = .PRAGMA },
                 isa.Value{ .string = p.payload },
             });
         },
@@ -130,35 +128,35 @@ fn compileExpr(self: *Compiler, e: Expr.Payload) (Allocator.Error || Error)!ty.T
     switch (e) {
         .imm_integer => |n| {
             try isa.assembleInto(self.writer, .{
-                isa.Opcode.PUSH_IMM_INTEGER,
+                isa.Opcode{ .op = .PUSH, .t = .INTEGER },
                 isa.Value{ .integer = n },
             });
             return .integer;
         },
         .imm_long => |n| {
             try isa.assembleInto(self.writer, .{
-                isa.Opcode.PUSH_IMM_LONG,
+                isa.Opcode{ .op = .PUSH, .t = .LONG },
                 isa.Value{ .long = n },
             });
             return .long;
         },
         .imm_single => |n| {
             try isa.assembleInto(self.writer, .{
-                isa.Opcode.PUSH_IMM_SINGLE,
+                isa.Opcode{ .op = .PUSH, .t = .SINGLE },
                 isa.Value{ .single = n },
             });
             return .single;
         },
         .imm_double => |n| {
             try isa.assembleInto(self.writer, .{
-                isa.Opcode.PUSH_IMM_DOUBLE,
+                isa.Opcode{ .op = .PUSH, .t = .DOUBLE },
                 isa.Value{ .double = n },
             });
             return .double;
         },
         .imm_string => |s| {
             try isa.assembleInto(self.writer, .{
-                isa.Opcode.PUSH_IMM_STRING,
+                isa.Opcode{ .op = .PUSH, .t = .STRING },
                 isa.Value{ .string = s },
             });
             return .string;
@@ -167,8 +165,7 @@ fn compileExpr(self: *Compiler, e: Expr.Payload) (Allocator.Error || Error)!ty.T
             const resolved = try self.labelResolve(l, .read);
             if (resolved.slot) |slot| {
                 try isa.assembleInto(self.writer, .{
-                    isa.Opcode.PUSH_VARIABLE,
-                    slot,
+                    isa.Opcode{ .op = .PUSH, .slot = slot },
                 });
             } else {
                 // autovivify
@@ -178,165 +175,52 @@ fn compileExpr(self: *Compiler, e: Expr.Payload) (Allocator.Error || Error)!ty.T
         },
         .binop => |b| {
             const tyx = try self.compileBinopOperands(b.lhs.payload, b.op.payload, b.rhs.payload);
-
-            const opc: isa.Opcode = switch (b.op.payload) {
-                .add => switch (tyx.widened) {
-                    .integer => .OPERATOR_ADD_INTEGER,
-                    .long => .OPERATOR_ADD_LONG,
-                    .single => .OPERATOR_ADD_SINGLE,
-                    .double => .OPERATOR_ADD_DOUBLE,
-                    .string => .OPERATOR_ADD_STRING,
+            try isa.assembleInto(self.writer, .{
+                isa.Opcode{
+                    .op = .ALU,
+                    .t = isa.Type.fromTy(tyx.widened),
+                    .alu = isa.AluOp.fromExprOp(b.op.payload),
                 },
-                .mul => switch (tyx.widened) {
-                    .integer => .OPERATOR_MULTIPLY_INTEGER,
-                    .long => .OPERATOR_MULTIPLY_LONG,
-                    .single => .OPERATOR_MULTIPLY_SINGLE,
-                    .double => .OPERATOR_MULTIPLY_DOUBLE,
-                    .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot multiply a STRING", .{}),
-                },
-                .fdiv => switch (tyx.widened) {
-                    .integer => .OPERATOR_FDIVIDE_INTEGER,
-                    .long => .OPERATOR_FDIVIDE_LONG,
-                    .single => .OPERATOR_FDIVIDE_SINGLE,
-                    .double => .OPERATOR_FDIVIDE_DOUBLE,
-                    .string => unreachable,
-                },
-                .idiv => switch (tyx.widened) {
-                    .integer => .OPERATOR_IDIVIDE_INTEGER,
-                    .long => .OPERATOR_IDIVIDE_LONG,
-                    .single => .OPERATOR_IDIVIDE_SINGLE,
-                    .double => .OPERATOR_IDIVIDE_DOUBLE,
-                    .string => unreachable,
-                },
-                .sub => switch (tyx.widened) {
-                    .integer => .OPERATOR_SUBTRACT_INTEGER,
-                    .long => .OPERATOR_SUBTRACT_LONG,
-                    .single => .OPERATOR_SUBTRACT_SINGLE,
-                    .double => .OPERATOR_SUBTRACT_DOUBLE,
-                    .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot subtract a STRING", .{}),
-                },
-                .eq => switch (tyx.widened) {
-                    .integer => .OPERATOR_EQ_INTEGER,
-                    .long => .OPERATOR_EQ_LONG,
-                    .single => .OPERATOR_EQ_SINGLE,
-                    .double => .OPERATOR_EQ_DOUBLE,
-                    .string => .OPERATOR_EQ_STRING,
-                },
-                .neq => switch (tyx.widened) {
-                    .integer => .OPERATOR_NEQ_INTEGER,
-                    .long => .OPERATOR_NEQ_LONG,
-                    .single => .OPERATOR_NEQ_SINGLE,
-                    .double => .OPERATOR_NEQ_DOUBLE,
-                    .string => .OPERATOR_NEQ_STRING,
-                },
-                .lt => switch (tyx.widened) {
-                    .integer => .OPERATOR_LT_INTEGER,
-                    .long => .OPERATOR_LT_LONG,
-                    .single => .OPERATOR_LT_SINGLE,
-                    .double => .OPERATOR_LT_DOUBLE,
-                    .string => .OPERATOR_LT_STRING,
-                },
-                .gt => switch (tyx.widened) {
-                    .integer => .OPERATOR_GT_INTEGER,
-                    .long => .OPERATOR_GT_LONG,
-                    .single => .OPERATOR_GT_SINGLE,
-                    .double => .OPERATOR_GT_DOUBLE,
-                    .string => .OPERATOR_GT_STRING,
-                },
-                .lte => switch (tyx.widened) {
-                    .integer => .OPERATOR_LTE_INTEGER,
-                    .long => .OPERATOR_LTE_LONG,
-                    .single => .OPERATOR_LTE_SINGLE,
-                    .double => .OPERATOR_LTE_DOUBLE,
-                    .string => .OPERATOR_LTE_STRING,
-                },
-                .gte => switch (tyx.widened) {
-                    .integer => .OPERATOR_GTE_INTEGER,
-                    .long => .OPERATOR_GTE_LONG,
-                    .single => .OPERATOR_GTE_SINGLE,
-                    .double => .OPERATOR_GTE_DOUBLE,
-                    .string => .OPERATOR_GTE_STRING,
-                },
-                .@"and" => switch (tyx.widened) {
-                    .integer => .OPERATOR_AND_INTEGER,
-                    .long => .OPERATOR_AND_LONG,
-                    .single => .OPERATOR_AND_SINGLE,
-                    .double => .OPERATOR_AND_DOUBLE,
-                    .string => unreachable,
-                },
-                .@"or" => switch (tyx.widened) {
-                    .integer => .OPERATOR_OR_INTEGER,
-                    .long => .OPERATOR_OR_LONG,
-                    .single => .OPERATOR_OR_SINGLE,
-                    .double => .OPERATOR_OR_DOUBLE,
-                    .string => unreachable,
-                },
-                .xor => switch (tyx.widened) {
-                    .integer => .OPERATOR_XOR_INTEGER,
-                    .long => .OPERATOR_XOR_LONG,
-                    .single => .OPERATOR_XOR_SINGLE,
-                    .double => .OPERATOR_XOR_DOUBLE,
-                    .string => unreachable,
-                },
-                // else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled opc: {s}", .{@tagName(b.op.payload)}),
-            };
-            try isa.assembleInto(self.writer, .{opc});
+            });
 
             return tyx.result;
         },
         .paren => |e2| return try self.compileExpr(e2.payload),
-        .negate => |e2| {
-            const resultType = try self.compileExpr(e2.payload);
-            const op: isa.Opcode = switch (resultType) {
-                .integer => .OPERATOR_NEGATE_INTEGER,
-                .long => .OPERATOR_NEGATE_LONG,
-                .single => .OPERATOR_NEGATE_SINGLE,
-                .double => .OPERATOR_NEGATE_DOUBLE,
-                .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot negate a STRING", .{}),
-            };
-            try isa.assembleInto(self.writer, .{op});
-            return resultType;
-        },
-        // else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled Expr type in Compiler.push: {s}", .{@tagName(e.payload)}),
+        // .negate => |e2| {
+        //     const resultType = try self.compileExpr(e2.payload);
+        //     switch (resultType) {
+        //         .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot negate a STRING", .{}),
+        //         else => {},
+        //     }
+        //     const opc = isa.Opcode{
+        //         .op = .ALU,
+        //         .t = isa.Type.fromTy(resultType),
+        //         .alu = .NEG,
+        //     };
+        //     try isa.assembleInto(self.writer, .{opc});
+        //     return resultType;
+        // },
+        else => return ErrorInfo.ret(self, Error.Unimplemented, "unhandled Expr type in Compiler.push: {s}", .{@tagName(e)}),
     }
 }
 
 fn compileCoerce(self: *Compiler, from: ty.Type, to: ty.Type) !void {
     if (from == to) return;
 
-    const op: isa.Opcode = switch (from) {
-        .integer => switch (to) {
-            .integer => unreachable,
-            .long => .PROMOTE_INTEGER_LONG,
-            .single => .COERCE_INTEGER_SINGLE,
-            .double => .COERCE_INTEGER_DOUBLE,
+    switch (from) {
+        .integer, .long, .single, .double => switch (to) {
             .string => return self.cannotCoerce(from, to),
-        },
-        .long => switch (to) {
-            .integer => .COERCE_LONG_INTEGER,
-            .long => unreachable,
-            .single => .COERCE_LONG_SINGLE,
-            .double => .COERCE_LONG_DOUBLE,
-            .string => return self.cannotCoerce(from, to),
-        },
-        .single => switch (to) {
-            .integer => .COERCE_SINGLE_INTEGER,
-            .long => .COERCE_SINGLE_LONG,
-            .single => unreachable,
-            .double => .PROMOTE_SINGLE_DOUBLE,
-            .string => return self.cannotCoerce(from, to),
-        },
-        .double => switch (to) {
-            .integer => .COERCE_DOUBLE_INTEGER,
-            .long => .COERCE_DOUBLE_LONG,
-            .single => .COERCE_DOUBLE_SINGLE,
-            .double => unreachable,
-            .string => return self.cannotCoerce(from, to),
+            else => {},
         },
         .string => return self.cannotCoerce(from, to),
-    };
+    }
 
-    try isa.assembleInto(self.writer, .{op});
+    try isa.assembleInto(self.writer, .{
+        isa.Opcode{
+            .op = .CAST,
+            .tc = .{ .from = isa.TypeCast.fromTy(from), .to = isa.TypeCast.fromTy(to) },
+        },
+    });
 }
 
 fn cannotCoerce(self: *const Compiler, from: ty.Type, to: ty.Type) (Error || Allocator.Error) {
@@ -372,7 +256,11 @@ fn compileBinopOperands(self: *Compiler, lhs: Expr.Payload, op: Expr.Op, rhs: Ex
     // compilation to know what was placed on the stack; the latter is necessary
     // to determine which opcode to produce.
     const resultType: ty.Type = switch (op) {
-        .mul => widenedType,
+        .add => widenedType,
+        .mul => switch (widenedType) {
+            .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot multiply a STRING", .{}),
+            else => widenedType,
+        },
         .fdiv => switch (widenedType) {
             .integer, .single => .single,
             .long, .double => .double,
@@ -383,8 +271,10 @@ fn compileBinopOperands(self: *Compiler, lhs: Expr.Payload, op: Expr.Op, rhs: Ex
             .long, .double => .long,
             .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot idivide a STRING", .{}),
         },
-        .add => widenedType,
-        .sub => widenedType,
+        .sub => switch (widenedType) {
+            .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot subtract a STRING", .{}),
+            else => widenedType,
+        },
         .eq, .neq, .lt, .gt, .lte, .gte => .integer,
         .@"and", .@"or", .xor => switch (widenedType) {
             .integer => .integer,
@@ -460,10 +350,10 @@ test "compile shrimple" {
         \\PRINT 123
         \\
     , .{
-        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
         isa.Value{ .integer = 123 },
-        isa.Opcode.BUILTIN_PRINT,
-        isa.Opcode.BUILTIN_PRINT_LINEFEED,
+        isa.Opcode{ .op = .PRINT, .t = .INTEGER },
+        isa.Opcode{ .op = .PRINT_LINEFEED },
     });
 }
 
@@ -472,23 +362,23 @@ test "compile less shrimple" {
         \\PRINT 6 + 5 * 4, 3; 2
         \\
     , .{
-        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
         isa.Value{ .integer = 6 },
-        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
         isa.Value{ .integer = 5 },
-        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
         isa.Value{ .integer = 4 },
-        isa.Opcode.OPERATOR_MULTIPLY_INTEGER,
-        isa.Opcode.OPERATOR_ADD_INTEGER,
-        isa.Opcode.BUILTIN_PRINT,
-        isa.Opcode.BUILTIN_PRINT_COMMA,
-        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Opcode{ .op = .ALU, .alu = .MUL, .t = .INTEGER },
+        isa.Opcode{ .op = .ALU, .alu = .ADD, .t = .INTEGER },
+        isa.Opcode{ .op = .PRINT, .t = .INTEGER },
+        isa.Opcode{ .op = .PRINT_COMMA },
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
         isa.Value{ .integer = 3 },
-        isa.Opcode.BUILTIN_PRINT,
-        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Opcode{ .op = .PRINT, .t = .INTEGER },
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
         isa.Value{ .integer = 2 },
-        isa.Opcode.BUILTIN_PRINT,
-        isa.Opcode.BUILTIN_PRINT_LINEFEED,
+        isa.Opcode{ .op = .PRINT, .t = .INTEGER },
+        isa.Opcode{ .op = .PRINT_LINEFEED },
     });
 }
 
@@ -498,21 +388,16 @@ test "compile variable access" {
         \\b% = 34
         \\c% = a% + b%
     , .{
-        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
         isa.Value{ .integer = 12 },
-        isa.Opcode.LET,
-        0,
-        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Opcode{ .op = .LET, .slot = 0 },
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
         isa.Value{ .integer = 34 },
-        isa.Opcode.LET,
-        1,
-        isa.Opcode.PUSH_VARIABLE,
-        0,
-        isa.Opcode.PUSH_VARIABLE,
-        1,
-        isa.Opcode.OPERATOR_ADD_INTEGER,
-        isa.Opcode.LET,
-        2,
+        isa.Opcode{ .op = .LET, .slot = 1 },
+        isa.Opcode{ .op = .PUSH, .slot = 0 },
+        isa.Opcode{ .op = .PUSH, .slot = 1 },
+        isa.Opcode{ .op = .ALU, .alu = .ADD, .t = .INTEGER },
+        isa.Opcode{ .op = .LET, .slot = 2 },
     });
 }
 
@@ -544,19 +429,18 @@ test "promotion and coercion" {
     try expectCompile(
         \\a% = 1 + 1.5 * 100000
     , .{
-        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
         isa.Value{ .integer = 1 },
-        isa.Opcode.COERCE_INTEGER_SINGLE,
-        isa.Opcode.PUSH_IMM_SINGLE,
+        isa.Opcode{ .op = .CAST, .tc = .{ .from = .INTEGER, .to = .SINGLE } },
+        isa.Opcode{ .op = .PUSH, .t = .SINGLE },
         isa.Value{ .single = 1.5 },
-        isa.Opcode.PUSH_IMM_LONG,
+        isa.Opcode{ .op = .PUSH, .t = .LONG },
         isa.Value{ .long = 100000 },
-        isa.Opcode.COERCE_LONG_SINGLE,
-        isa.Opcode.OPERATOR_MULTIPLY_SINGLE,
-        isa.Opcode.OPERATOR_ADD_SINGLE,
-        isa.Opcode.COERCE_SINGLE_INTEGER,
-        isa.Opcode.LET,
-        0,
+        isa.Opcode{ .op = .CAST, .tc = .{ .from = .LONG, .to = .SINGLE } },
+        isa.Opcode{ .op = .ALU, .alu = .MUL, .t = .SINGLE },
+        isa.Opcode{ .op = .ALU, .alu = .ADD, .t = .SINGLE },
+        isa.Opcode{ .op = .CAST, .tc = .{ .from = .SINGLE, .to = .INTEGER } },
+        isa.Opcode{ .op = .LET, .slot = 0 },
     });
 }
 
@@ -564,13 +448,13 @@ test "autovivification" {
     try expectCompile(
         \\PRINT a%; a$
     , .{
-        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
         isa.Value{ .integer = 0 },
-        isa.Opcode.BUILTIN_PRINT,
-        isa.Opcode.PUSH_IMM_STRING,
+        isa.Opcode{ .op = .PRINT, .t = .INTEGER },
+        isa.Opcode{ .op = .PUSH, .t = .STRING },
         isa.Value{ .string = "" },
-        isa.Opcode.BUILTIN_PRINT,
-        isa.Opcode.BUILTIN_PRINT_LINEFEED,
+        isa.Opcode{ .op = .PRINT, .t = .STRING },
+        isa.Opcode{ .op = .PRINT_LINEFEED },
     });
 }
 

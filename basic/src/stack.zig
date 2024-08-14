@@ -76,127 +76,132 @@ pub fn Machine(comptime Effects: type) type {
         pub fn run(self: *Self, code: []const u8) (Error || Allocator.Error || Effects.Error)!void {
             var i: usize = 0;
             while (i < code.len) {
-                const op = @as(isa.Opcode, @enumFromInt(code[i]));
+                const ix: isa.InsnX = @bitCast(code[i]);
+                const it: isa.InsnT = @bitCast(code[i]);
+                const itc: isa.InsnTC = @bitCast(code[i]);
                 i += 1;
+                const op = ix.op;
+
                 switch (op) {
-                    .PUSH_IMM_INTEGER => {
-                        std.debug.assert(code.len - i + 1 >= 2);
-                        const imm = code[i..][0..2];
-                        i += 2;
-                        try self.stack.append(
-                            self.allocator,
-                            .{ .integer = std.mem.readInt(i16, imm, .little) },
-                        );
-                    },
-                    .PUSH_IMM_LONG => {
-                        std.debug.assert(code.len - i + 1 >= 4);
-                        const imm = code[i..][0..4];
-                        i += 4;
-                        try self.stack.append(
-                            self.allocator,
-                            .{ .long = std.mem.readInt(i32, imm, .little) },
-                        );
-                    },
-                    .PUSH_IMM_SINGLE => {
-                        std.debug.assert(code.len - i + 1 >= 4);
-                        const imm = code[i..][0..4];
-                        i += 4;
-                        var r: [1]f32 = undefined;
-                        @memcpy(std.mem.sliceAsBytes(r[0..]), imm);
-                        try self.stack.append(self.allocator, .{ .single = r[0] });
-                    },
-                    .PUSH_IMM_DOUBLE => {
-                        std.debug.assert(code.len - i + 1 >= 8);
-                        const imm = code[i..][0..8];
-                        i += 8;
-                        var r: [1]f64 = undefined;
-                        @memcpy(std.mem.sliceAsBytes(r[0..]), imm);
-                        try self.stack.append(self.allocator, .{ .double = r[0] });
-                    },
-                    .PUSH_IMM_STRING => {
-                        std.debug.assert(code.len - i + 1 >= 2);
-                        const lenb = code[i..][0..2];
-                        i += 2;
-                        const len = std.mem.readInt(u16, lenb, .little);
-                        const str = code[i..][0..len];
-                        i += len;
-                        const s = try self.allocator.dupe(u8, str);
-                        errdefer self.allocator.free(s);
-                        try self.stack.append(self.allocator, .{ .string = s });
-                    },
-                    .PUSH_VARIABLE => {
+                    .PUSH => if (ix.rest == 0b1000) {
                         std.debug.assert(code.len - i + 1 >= 1);
                         const slot = code[i];
                         i += 1;
                         const v = try self.variableGet(slot);
                         errdefer self.valueFree(v);
                         try self.stack.append(self.allocator, v);
+                    } else switch (it.t) {
+                        .INTEGER => {
+                            std.debug.assert(code.len - i + 1 >= 2);
+                            const imm = code[i..][0..2];
+                            i += 2;
+                            try self.stack.append(
+                                self.allocator,
+                                .{ .integer = std.mem.readInt(i16, imm, .little) },
+                            );
+                        },
+                        .LONG => {
+                            std.debug.assert(code.len - i + 1 >= 4);
+                            const imm = code[i..][0..4];
+                            i += 4;
+                            try self.stack.append(
+                                self.allocator,
+                                .{ .long = std.mem.readInt(i32, imm, .little) },
+                            );
+                        },
+                        .SINGLE => {
+                            std.debug.assert(code.len - i + 1 >= 4);
+                            const imm = code[i..][0..4];
+                            i += 4;
+                            var r: [1]f32 = undefined;
+                            @memcpy(std.mem.sliceAsBytes(r[0..]), imm);
+                            try self.stack.append(self.allocator, .{ .single = r[0] });
+                        },
+                        .DOUBLE => {
+                            std.debug.assert(code.len - i + 1 >= 8);
+                            const imm = code[i..][0..8];
+                            i += 8;
+                            var r: [1]f64 = undefined;
+                            @memcpy(std.mem.sliceAsBytes(r[0..]), imm);
+                            try self.stack.append(self.allocator, .{ .double = r[0] });
+                        },
+                        .STRING => {
+                            std.debug.assert(code.len - i + 1 >= 2);
+                            const lenb = code[i..][0..2];
+                            i += 2;
+                            const len = std.mem.readInt(u16, lenb, .little);
+                            const str = code[i..][0..len];
+                            i += len;
+                            const s = try self.allocator.dupe(u8, str);
+                            errdefer self.allocator.free(s);
+                            try self.stack.append(self.allocator, .{ .string = s });
+                        },
                     },
-                    .PROMOTE_INTEGER_LONG => {
-                        const vx = try self.takeValues(1, .integer);
-                        try self.stack.append(self.allocator, .{ .long = vx[0] });
-                    },
-                    .COERCE_INTEGER_SINGLE => {
-                        const vx = try self.takeValues(1, .integer);
-                        try self.stack.append(self.allocator, .{ .single = @floatFromInt(vx[0]) });
-                    },
-                    .COERCE_INTEGER_DOUBLE => {
-                        const vx = try self.takeValues(1, .integer);
-                        try self.stack.append(self.allocator, .{ .double = @floatFromInt(vx[0]) });
-                    },
-                    .COERCE_LONG_INTEGER => {
-                        const vx = try self.takeValues(1, .long);
-                        if (vx[0] < std.math.minInt(i16) or vx[0] > std.math.maxInt(i16))
-                            return ErrorInfo.ret(self, Error.Overflow, "overflow coercing LONG to INTEGER", .{});
-                        try self.stack.append(self.allocator, .{ .integer = @intCast(vx[0]) });
-                    },
-                    .COERCE_LONG_SINGLE => {
-                        const vx = try self.takeValues(1, .long);
-                        try self.stack.append(self.allocator, .{ .single = @floatFromInt(vx[0]) });
-                    },
-                    .COERCE_LONG_DOUBLE => {
-                        const vx = try self.takeValues(1, .long);
-                        try self.stack.append(self.allocator, .{ .double = @floatFromInt(vx[0]) });
-                    },
-                    .COERCE_SINGLE_INTEGER => {
-                        const vx = try self.takeValues(1, .single);
-                        const r: i16 = if (vx[0] < std.math.minInt(i16) or vx[0] > std.math.maxInt(i16))
-                            std.math.minInt(i16)
-                        else
-                            @intFromFloat(vx[0]);
-                        try self.stack.append(self.allocator, .{ .integer = r });
-                    },
-                    .COERCE_SINGLE_LONG => {
-                        const vx = try self.takeValues(1, .single);
-                        const r: i32 = if (vx[0] < std.math.minInt(i32) or vx[0] > std.math.maxInt(i32))
-                            std.math.minInt(i32)
-                        else
-                            @intFromFloat(vx[0]);
-                        try self.stack.append(self.allocator, .{ .long = r });
-                    },
-                    .PROMOTE_SINGLE_DOUBLE => {
-                        const vx = try self.takeValues(1, .single);
-                        try self.stack.append(self.allocator, .{ .double = vx[0] });
-                    },
-                    .COERCE_DOUBLE_INTEGER => {
-                        const vx = try self.takeValues(1, .double);
-                        const r: i16 = if (vx[0] < std.math.minInt(i16) or vx[0] > std.math.maxInt(i16))
-                            std.math.minInt(i16)
-                        else
-                            @intFromFloat(vx[0]);
-                        try self.stack.append(self.allocator, .{ .integer = r });
-                    },
-                    .COERCE_DOUBLE_LONG => {
-                        const vx = try self.takeValues(1, .double);
-                        const r: i32 = if (vx[0] < std.math.minInt(i32) or vx[0] > std.math.maxInt(i32))
-                            std.math.minInt(i32)
-                        else
-                            @intFromFloat(vx[0]);
-                        try self.stack.append(self.allocator, .{ .long = r });
-                    },
-                    .COERCE_DOUBLE_SINGLE => {
-                        const vx = try self.takeValues(1, .double);
-                        try self.stack.append(self.allocator, .{ .single = @floatCast(vx[0]) });
+                    .CAST => switch (itc.tf) {
+                        .INTEGER => {
+                            const v = (try self.takeValues(1, .integer))[0];
+                            const r: isa.Value = switch (itc.tt) {
+                                .INTEGER => unreachable,
+                                .LONG => .{ .long = v },
+                                .SINGLE => .{ .single = @floatFromInt(v) },
+                                .DOUBLE => .{ .double = @floatFromInt(v) },
+                            };
+                            try self.stack.append(self.allocator, r);
+                        },
+                        .LONG => {
+                            const v = (try self.takeValues(1, .long))[0];
+                            const r: isa.Value = switch (itc.tt) {
+                                .INTEGER => i: {
+                                    if (v < std.math.minInt(i16) or v > std.math.maxInt(i16))
+                                        return ErrorInfo.ret(self, Error.Overflow, "overflow coercing LONG to INTEGER", .{});
+                                    break :i .{ .integer = @intCast(v) };
+                                },
+                                .LONG => unreachable,
+                                .SINGLE => .{ .single = @floatFromInt(v) },
+                                .DOUBLE => .{ .double = @floatFromInt(v) },
+                            };
+                            try self.stack.append(self.allocator, r);
+                        },
+                        .SINGLE => {
+                            const v = (try self.takeValues(1, .single))[0];
+                            const r: isa.Value = switch (itc.tt) {
+                                .INTEGER => .{
+                                    .integer = if (v < std.math.minInt(i16) or v > std.math.maxInt(i16))
+                                        std.math.minInt(i16)
+                                    else
+                                        @intFromFloat(v),
+                                },
+                                .LONG => .{
+                                    .long = if (v < std.math.minInt(i32) or v > std.math.maxInt(i32))
+                                        std.math.minInt(i32)
+                                    else
+                                        @intFromFloat(v),
+                                },
+                                .SINGLE => unreachable,
+                                .DOUBLE => .{ .double = v },
+                            };
+                            try self.stack.append(self.allocator, r);
+                        },
+                        .DOUBLE => {
+                            const v = (try self.takeValues(1, .double))[0];
+                            const r: isa.Value = switch (itc.tt) {
+                                .INTEGER => .{
+                                    .integer = if (v < std.math.minInt(i16) or v > std.math.maxInt(i16))
+                                        std.math.minInt(i16)
+                                    else
+                                        @intFromFloat(v),
+                                },
+                                .LONG => .{
+                                    .long = if (v < std.math.minInt(i32) or v > std.math.maxInt(i32))
+                                        std.math.minInt(i32)
+                                    else
+                                        @intFromFloat(v),
+                                },
+                                .SINGLE => .{ .single = @floatCast(v) },
+                                .DOUBLE => unreachable,
+                            };
+                            try self.stack.append(self.allocator, r);
+                        },
                     },
                     .LET => {
                         std.debug.assert(code.len - i + 1 >= 1);
@@ -207,457 +212,498 @@ pub fn Machine(comptime Effects: type) type {
                         errdefer self.valueFreeMany(&val);
                         try self.variableOwn(slot, val[0]);
                     },
-                    .BUILTIN_PRINT => {
+                    .PRINT => {
                         const val = self.stackTake(1);
                         defer self.valueFreeMany(&val);
                         try self.effects.print(val[0]);
                     },
-                    .BUILTIN_PRINT_COMMA => try self.effects.printComma(),
-                    .BUILTIN_PRINT_LINEFEED => try self.effects.printLinefeed(),
-                    .OPERATOR_ADD_INTEGER => {
-                        const vx = try self.takeValues(2, .integer);
-                        // TODO: catch overflow and return error.
-                        try self.stack.append(self.allocator, .{ .integer = vx[0] + vx[1] });
-                    },
-                    .OPERATOR_ADD_LONG => {
-                        const vx = try self.takeValues(2, .long);
-                        // TODO: catch overflow and return error.
-                        try self.stack.append(self.allocator, .{ .long = vx[0] + vx[1] });
-                    },
-                    .OPERATOR_ADD_SINGLE => {
-                        const vx = try self.takeValues(2, .single);
-                        // TODO: catch overflow and return error.
-                        try self.stack.append(self.allocator, .{ .single = vx[0] + vx[1] });
-                    },
-                    .OPERATOR_ADD_DOUBLE => {
-                        const vx = try self.takeValues(2, .double);
-                        // TODO: catch overflow and return error.
-                        try self.stack.append(self.allocator, .{ .double = vx[0] + vx[1] });
-                    },
-                    .OPERATOR_ADD_STRING => {
-                        const vx = try self.takeValues(2, .string);
-                        defer self.allocator.free(vx[0]);
-                        defer self.allocator.free(vx[1]);
-                        // TODO: catch overflow and return error.
-                        const v = try self.allocator.alloc(u8, vx[0].len + vx[1].len);
-                        errdefer self.allocator.free(v);
-                        @memcpy(v[0..vx[0].len], vx[0]);
-                        @memcpy(v[vx[0].len..], vx[1]);
-                        try self.stack.append(self.allocator, .{ .string = v });
-                    },
-                    .OPERATOR_MULTIPLY_INTEGER => {
-                        const vx = try self.takeValues(2, .integer);
-                        // TODO: handle overflow.
-                        try self.stack.append(self.allocator, .{ .integer = vx[0] * vx[1] });
-                    },
-                    .OPERATOR_MULTIPLY_LONG => {
-                        const vx = try self.takeValues(2, .long);
-                        // TODO: handle overflow.
-                        try self.stack.append(self.allocator, .{ .long = vx[0] * vx[1] });
-                    },
-                    .OPERATOR_MULTIPLY_SINGLE => {
-                        const vx = try self.takeValues(2, .single);
-                        // TODO: handle overflow.
-                        try self.stack.append(self.allocator, .{ .single = vx[0] * vx[1] });
-                    },
-                    .OPERATOR_MULTIPLY_DOUBLE => {
-                        const vx = try self.takeValues(2, .double);
-                        // TODO: handle overflow.
-                        try self.stack.append(self.allocator, .{ .double = vx[0] * vx[1] });
-                    },
-                    .OPERATOR_FDIVIDE_INTEGER => {
-                        const vx = try self.takeValues(2, .integer);
-                        try self.stack.append(self.allocator, .{
-                            .single = @as(f32, @floatFromInt(vx[0])) / @as(f32, @floatFromInt(vx[1])),
-                        });
-                    },
-                    .OPERATOR_FDIVIDE_LONG => {
-                        const vx = try self.takeValues(2, .long);
-                        try self.stack.append(self.allocator, .{
-                            .double = @as(f64, @floatFromInt(vx[0])) / @as(f64, @floatFromInt(vx[1])),
-                        });
-                    },
-                    .OPERATOR_FDIVIDE_SINGLE => {
-                        const vx = try self.takeValues(2, .single);
-                        try self.stack.append(self.allocator, .{ .single = vx[0] / vx[1] });
-                    },
-                    .OPERATOR_FDIVIDE_DOUBLE => {
-                        const vx = try self.takeValues(2, .double);
-                        try self.stack.append(self.allocator, .{ .double = vx[0] / vx[1] });
-                    },
-                    .OPERATOR_IDIVIDE_INTEGER => {
-                        const vx = try self.takeValues(2, .integer);
-                        try self.stack.append(self.allocator, .{ .integer = @divTrunc(vx[0], vx[1]) });
-                    },
-                    .OPERATOR_IDIVIDE_LONG => {
-                        const vx = try self.takeValues(2, .long);
-                        try self.stack.append(self.allocator, .{ .long = @divTrunc(vx[0], vx[1]) });
-                    },
-                    .OPERATOR_IDIVIDE_SINGLE => {
-                        const vx = try self.takeValues(2, .single);
-                        try self.stack.append(self.allocator, .{
-                            .integer = @divTrunc(
-                                @as(i16, @intFromFloat(@round(vx[0]))),
-                                @as(i16, @intFromFloat(@round(vx[1]))),
-                            ),
-                        });
-                    },
-                    .OPERATOR_IDIVIDE_DOUBLE => {
-                        const vx = try self.takeValues(2, .double);
-                        try self.stack.append(self.allocator, .{
-                            .long = @divTrunc(
-                                @as(i32, @intFromFloat(@round(vx[0]))),
-                                @as(i32, @intFromFloat(@round(vx[1]))),
-                            ),
-                        });
-                    },
-                    .OPERATOR_SUBTRACT_INTEGER => {
-                        const vx = try self.takeValues(2, .integer);
-                        try self.stack.append(self.allocator, .{ .integer = vx[0] - vx[1] });
-                    },
-                    .OPERATOR_SUBTRACT_LONG => {
-                        const vx = try self.takeValues(2, .long);
-                        try self.stack.append(self.allocator, .{ .long = vx[0] - vx[1] });
-                    },
-                    .OPERATOR_SUBTRACT_SINGLE => {
-                        const vx = try self.takeValues(2, .single);
-                        try self.stack.append(self.allocator, .{ .single = vx[0] - vx[1] });
-                    },
-                    .OPERATOR_SUBTRACT_DOUBLE => {
-                        const vx = try self.takeValues(2, .double);
-                        try self.stack.append(self.allocator, .{ .double = vx[0] - vx[1] });
-                    },
-                    .OPERATOR_NEGATE_INTEGER => {
-                        const vx = try self.takeValues(1, .integer);
-                        try self.stack.append(self.allocator, .{ .integer = -vx[0] });
-                    },
-                    .OPERATOR_NEGATE_LONG => {
-                        const vx = try self.takeValues(1, .long);
-                        try self.stack.append(self.allocator, .{ .long = -vx[0] });
-                    },
-                    .OPERATOR_NEGATE_SINGLE => {
-                        const vx = try self.takeValues(1, .single);
-                        try self.stack.append(self.allocator, .{ .single = -vx[0] });
-                    },
-                    .OPERATOR_NEGATE_DOUBLE => {
-                        const vx = try self.takeValues(1, .double);
-                        try self.stack.append(self.allocator, .{ .double = -vx[0] });
-                    },
-                    .OPERATOR_EQ_INTEGER => {
-                        const vx = try self.takeValues(2, .integer);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] == vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_EQ_LONG => {
-                        const vx = try self.takeValues(2, .long);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] == vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_EQ_SINGLE => {
-                        const vx = try self.takeValues(2, .single);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] == vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_EQ_DOUBLE => {
-                        const vx = try self.takeValues(2, .double);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] == vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_EQ_STRING => {
-                        const vx = try self.takeValues(2, .string);
-                        defer self.allocator.free(vx[0]);
-                        defer self.allocator.free(vx[1]);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (std.mem.eql(u8, vx[0], vx[1])) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_NEQ_INTEGER => {
-                        const vx = try self.takeValues(2, .integer);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] != vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_NEQ_LONG => {
-                        const vx = try self.takeValues(2, .long);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] != vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_NEQ_SINGLE => {
-                        const vx = try self.takeValues(2, .single);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] != vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_NEQ_DOUBLE => {
-                        const vx = try self.takeValues(2, .double);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] != vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_NEQ_STRING => {
-                        const vx = try self.takeValues(2, .string);
-                        defer self.allocator.free(vx[0]);
-                        defer self.allocator.free(vx[1]);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (!std.mem.eql(u8, vx[0], vx[1])) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_LT_INTEGER => {
-                        const vx = try self.takeValues(2, .integer);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] < vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_LT_LONG => {
-                        const vx = try self.takeValues(2, .long);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] < vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_LT_SINGLE => {
-                        const vx = try self.takeValues(2, .single);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] < vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_LT_DOUBLE => {
-                        const vx = try self.takeValues(2, .double);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] < vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_LT_STRING => {
-                        const vx = try self.takeValues(2, .string);
-                        defer self.allocator.free(vx[0]);
-                        defer self.allocator.free(vx[1]);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (std.mem.order(u8, vx[0], vx[1]) == .lt) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_GT_INTEGER => {
-                        const vx = try self.takeValues(2, .integer);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] > vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_GT_LONG => {
-                        const vx = try self.takeValues(2, .long);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] > vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_GT_SINGLE => {
-                        const vx = try self.takeValues(2, .single);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] > vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_GT_DOUBLE => {
-                        const vx = try self.takeValues(2, .double);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] > vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_GT_STRING => {
-                        const vx = try self.takeValues(2, .string);
-                        defer self.allocator.free(vx[0]);
-                        defer self.allocator.free(vx[1]);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (std.mem.order(u8, vx[0], vx[1]) == .gt) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_LTE_INTEGER => {
-                        const vx = try self.takeValues(2, .integer);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] <= vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_LTE_LONG => {
-                        const vx = try self.takeValues(2, .long);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] <= vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_LTE_SINGLE => {
-                        const vx = try self.takeValues(2, .single);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] <= vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_LTE_DOUBLE => {
-                        const vx = try self.takeValues(2, .double);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] <= vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_LTE_STRING => {
-                        const vx = try self.takeValues(2, .string);
-                        defer self.allocator.free(vx[0]);
-                        defer self.allocator.free(vx[1]);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (std.mem.order(u8, vx[0], vx[1]) != .gt) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_GTE_INTEGER => {
-                        const vx = try self.takeValues(2, .integer);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] >= vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_GTE_LONG => {
-                        const vx = try self.takeValues(2, .long);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] >= vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_GTE_SINGLE => {
-                        const vx = try self.takeValues(2, .single);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] >= vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_GTE_DOUBLE => {
-                        const vx = try self.takeValues(2, .double);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (vx[0] >= vx[1]) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_GTE_STRING => {
-                        const vx = try self.takeValues(2, .string);
-                        defer self.allocator.free(vx[0]);
-                        defer self.allocator.free(vx[1]);
-                        try self.stack.append(self.allocator, .{
-                            .integer = if (std.mem.order(u8, vx[0], vx[1]) != .lt) -1 else 0,
-                        });
-                    },
-                    .OPERATOR_AND_INTEGER => {
-                        const vx = try self.takeValues(2, .integer);
-                        try self.stack.append(self.allocator, .{
-                            .integer = vx[0] & vx[1],
-                        });
-                    },
-                    .OPERATOR_AND_LONG => {
-                        const vx = try self.takeValues(2, .long);
-                        try self.stack.append(self.allocator, .{
-                            .long = vx[0] & vx[1],
-                        });
-                    },
-                    .OPERATOR_AND_SINGLE => {
-                        // Float bitwise ops are probably better handled by
-                        // compiling the casts in.
-                        const vx = try self.takeValues(2, .single);
-                        const lhs: i32 = if (vx[0] < std.math.minInt(i32) or vx[0] > std.math.maxInt(i32))
-                            std.math.minInt(i32)
-                        else
-                            @intFromFloat(vx[0]);
-                        const rhs: i32 = if (vx[1] < std.math.minInt(i32) or vx[1] > std.math.maxInt(i32))
-                            std.math.minInt(i32)
-                        else
-                            @intFromFloat(vx[1]);
-                        try self.stack.append(self.allocator, .{
-                            .long = lhs & rhs,
-                        });
-                    },
-                    .OPERATOR_AND_DOUBLE => {
-                        const vx = try self.takeValues(2, .double);
-                        const lhs: i32 = if (vx[0] < std.math.minInt(i32) or vx[0] > std.math.maxInt(i32))
-                            std.math.minInt(i32)
-                        else
-                            @intFromFloat(vx[0]);
-                        const rhs: i32 = if (vx[1] < std.math.minInt(i32) or vx[1] > std.math.maxInt(i32))
-                            std.math.minInt(i32)
-                        else
-                            @intFromFloat(vx[1]);
-                        try self.stack.append(self.allocator, .{
-                            .long = lhs & rhs,
-                        });
-                    },
-                    .OPERATOR_OR_INTEGER => {
-                        const vx = try self.takeValues(2, .integer);
-                        try self.stack.append(self.allocator, .{
-                            .integer = vx[0] | vx[1],
-                        });
-                    },
-                    .OPERATOR_OR_LONG => {
-                        const vx = try self.takeValues(2, .long);
-                        try self.stack.append(self.allocator, .{
-                            .long = vx[0] | vx[1],
-                        });
-                    },
-                    .OPERATOR_OR_SINGLE => {
-                        const vx = try self.takeValues(2, .single);
-                        const lhs: i32 = if (vx[0] < std.math.minInt(i32) or vx[0] > std.math.maxInt(i32))
-                            std.math.minInt(i32)
-                        else
-                            @intFromFloat(vx[0]);
-                        const rhs: i32 = if (vx[1] < std.math.minInt(i32) or vx[1] > std.math.maxInt(i32))
-                            std.math.minInt(i32)
-                        else
-                            @intFromFloat(vx[1]);
-                        try self.stack.append(self.allocator, .{
-                            .long = lhs | rhs,
-                        });
-                    },
-                    .OPERATOR_OR_DOUBLE => {
-                        const vx = try self.takeValues(2, .double);
-                        const lhs: i32 = if (vx[0] < std.math.minInt(i32) or vx[0] > std.math.maxInt(i32))
-                            std.math.minInt(i32)
-                        else
-                            @intFromFloat(vx[0]);
-                        const rhs: i32 = if (vx[1] < std.math.minInt(i32) or vx[1] > std.math.maxInt(i32))
-                            std.math.minInt(i32)
-                        else
-                            @intFromFloat(vx[1]);
-                        try self.stack.append(self.allocator, .{
-                            .long = lhs | rhs,
-                        });
-                    },
-                    .OPERATOR_XOR_INTEGER => {
-                        const vx = try self.takeValues(2, .integer);
-                        try self.stack.append(self.allocator, .{
-                            .integer = vx[0] ^ vx[1],
-                        });
-                    },
-                    .OPERATOR_XOR_LONG => {
-                        const vx = try self.takeValues(2, .long);
-                        try self.stack.append(self.allocator, .{
-                            .long = vx[0] ^ vx[1],
-                        });
-                    },
-                    .OPERATOR_XOR_SINGLE => {
-                        const vx = try self.takeValues(2, .single);
-                        const lhs: i32 = if (vx[0] < std.math.minInt(i32) or vx[0] > std.math.maxInt(i32))
-                            std.math.minInt(i32)
-                        else
-                            @intFromFloat(vx[0]);
-                        const rhs: i32 = if (vx[1] < std.math.minInt(i32) or vx[1] > std.math.maxInt(i32))
-                            std.math.minInt(i32)
-                        else
-                            @intFromFloat(vx[1]);
-                        try self.stack.append(self.allocator, .{
-                            .long = lhs ^ rhs,
-                        });
-                    },
-                    .OPERATOR_XOR_DOUBLE => {
-                        const vx = try self.takeValues(2, .double);
-                        const lhs: i32 = if (vx[0] < std.math.minInt(i32) or vx[0] > std.math.maxInt(i32))
-                            std.math.minInt(i32)
-                        else
-                            @intFromFloat(vx[0]);
-                        const rhs: i32 = if (vx[1] < std.math.minInt(i32) or vx[1] > std.math.maxInt(i32))
-                            std.math.minInt(i32)
-                        else
-                            @intFromFloat(vx[1]);
-                        try self.stack.append(self.allocator, .{
-                            .long = lhs ^ rhs,
-                        });
-                    },
-                    .PRAGMA_PRINTED => {
+                    .PRINT_COMMA => try self.effects.printComma(),
+                    .PRINT_LINEFEED => try self.effects.printLinefeed(),
+                    .ALU => {
+                        const ia: isa.InsnAlu = @bitCast(code[i - 1 ..][0..2].*);
+                        i += 1;
+                        switch (ia.alu) {
+                            .ADD => switch (ia.t) {
+                                .INTEGER => {
+                                    const vx = try self.takeValues(2, .integer);
+                                    // TODO: catch overflow and return error.
+                                    try self.stack.append(self.allocator, .{ .integer = vx[0] + vx[1] });
+                                },
+                                .LONG => {
+                                    const vx = try self.takeValues(2, .long);
+                                    // TODO: catch overflow and return error.
+                                    try self.stack.append(self.allocator, .{ .long = vx[0] + vx[1] });
+                                },
+                                .SINGLE => {
+                                    const vx = try self.takeValues(2, .single);
+                                    // TODO: catch overflow and return error.
+                                    try self.stack.append(self.allocator, .{ .single = vx[0] + vx[1] });
+                                },
+                                .DOUBLE => {
+                                    const vx = try self.takeValues(2, .double);
+                                    // TODO: catch overflow and return error.
+                                    try self.stack.append(self.allocator, .{ .double = vx[0] + vx[1] });
+                                },
+                                .STRING => {
+                                    const vx = try self.takeValues(2, .string);
+                                    defer self.allocator.free(vx[0]);
+                                    defer self.allocator.free(vx[1]);
+                                    // TODO: catch overflow and return error.
+                                    const v = try self.allocator.alloc(u8, vx[0].len + vx[1].len);
+                                    errdefer self.allocator.free(v);
+                                    @memcpy(v[0..vx[0].len], vx[0]);
+                                    @memcpy(v[vx[0].len..], vx[1]);
+                                    try self.stack.append(self.allocator, .{ .string = v });
+                                },
+                            },
+                            .MUL => switch (ia.t) {
+                                .INTEGER => {
+                                    const vx = try self.takeValues(2, .integer);
+                                    // TODO: handle overflow.
+                                    try self.stack.append(self.allocator, .{ .integer = vx[0] * vx[1] });
+                                },
+                                .LONG => {
+                                    const vx = try self.takeValues(2, .long);
+                                    // TODO: handle overflow.
+                                    try self.stack.append(self.allocator, .{ .long = vx[0] * vx[1] });
+                                },
+                                .SINGLE => {
+                                    const vx = try self.takeValues(2, .single);
+                                    // TODO: handle overflow.
+                                    try self.stack.append(self.allocator, .{ .single = vx[0] * vx[1] });
+                                },
+                                .DOUBLE => {
+                                    const vx = try self.takeValues(2, .double);
+                                    // TODO: handle overflow.
+                                    try self.stack.append(self.allocator, .{ .double = vx[0] * vx[1] });
+                                },
+                                .STRING => unreachable,
+                            },
+                            .FDIV => switch (ia.t) {
+                                .INTEGER => {
+                                    const vx = try self.takeValues(2, .integer);
+                                    try self.stack.append(self.allocator, .{
+                                        .single = @as(f32, @floatFromInt(vx[0])) / @as(f32, @floatFromInt(vx[1])),
+                                    });
+                                },
+                                .LONG => {
+                                    const vx = try self.takeValues(2, .long);
+                                    try self.stack.append(self.allocator, .{
+                                        .double = @as(f64, @floatFromInt(vx[0])) / @as(f64, @floatFromInt(vx[1])),
+                                    });
+                                },
+                                .SINGLE => {
+                                    const vx = try self.takeValues(2, .single);
+                                    try self.stack.append(self.allocator, .{ .single = vx[0] / vx[1] });
+                                },
+                                .DOUBLE => {
+                                    const vx = try self.takeValues(2, .double);
+                                    try self.stack.append(self.allocator, .{ .double = vx[0] / vx[1] });
+                                },
+                                .STRING => unreachable,
+                            },
+                            .IDIV => switch (ia.t) {
+                                .INTEGER => {
+                                    const vx = try self.takeValues(2, .integer);
+                                    try self.stack.append(self.allocator, .{ .integer = @divTrunc(vx[0], vx[1]) });
+                                },
+                                .LONG => {
+                                    const vx = try self.takeValues(2, .long);
+                                    try self.stack.append(self.allocator, .{ .long = @divTrunc(vx[0], vx[1]) });
+                                },
+                                .SINGLE => {
+                                    const vx = try self.takeValues(2, .single);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = @divTrunc(
+                                            @as(i16, @intFromFloat(@round(vx[0]))),
+                                            @as(i16, @intFromFloat(@round(vx[1]))),
+                                        ),
+                                    });
+                                },
+                                .DOUBLE => {
+                                    const vx = try self.takeValues(2, .double);
+                                    try self.stack.append(self.allocator, .{
+                                        .long = @divTrunc(
+                                            @as(i32, @intFromFloat(@round(vx[0]))),
+                                            @as(i32, @intFromFloat(@round(vx[1]))),
+                                        ),
+                                    });
+                                },
+                                .STRING => unreachable,
+                            },
+                            .SUB => switch (ia.t) {
+                                .INTEGER => {
+                                    const vx = try self.takeValues(2, .integer);
+                                    try self.stack.append(self.allocator, .{ .integer = vx[0] - vx[1] });
+                                },
+                                .LONG => {
+                                    const vx = try self.takeValues(2, .long);
+                                    try self.stack.append(self.allocator, .{ .long = vx[0] - vx[1] });
+                                },
+                                .SINGLE => {
+                                    const vx = try self.takeValues(2, .single);
+                                    try self.stack.append(self.allocator, .{ .single = vx[0] - vx[1] });
+                                },
+                                .DOUBLE => {
+                                    const vx = try self.takeValues(2, .double);
+                                    try self.stack.append(self.allocator, .{ .double = vx[0] - vx[1] });
+                                },
+                                .STRING => unreachable,
+                            },
+                            .EQ => switch (ia.t) {
+                                .INTEGER => {
+                                    const vx = try self.takeValues(2, .integer);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] == vx[1]) -1 else 0,
+                                    });
+                                },
+                                .LONG => {
+                                    const vx = try self.takeValues(2, .long);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] == vx[1]) -1 else 0,
+                                    });
+                                },
+                                .SINGLE => {
+                                    const vx = try self.takeValues(2, .single);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] == vx[1]) -1 else 0,
+                                    });
+                                },
+                                .DOUBLE => {
+                                    const vx = try self.takeValues(2, .double);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] == vx[1]) -1 else 0,
+                                    });
+                                },
+                                .STRING => {
+                                    const vx = try self.takeValues(2, .string);
+                                    defer self.allocator.free(vx[0]);
+                                    defer self.allocator.free(vx[1]);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (std.mem.eql(u8, vx[0], vx[1])) -1 else 0,
+                                    });
+                                },
+                            },
+                            .NEQ => switch (ia.t) {
+                                .INTEGER => {
+                                    const vx = try self.takeValues(2, .integer);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] != vx[1]) -1 else 0,
+                                    });
+                                },
+                                .LONG => {
+                                    const vx = try self.takeValues(2, .long);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] != vx[1]) -1 else 0,
+                                    });
+                                },
+                                .SINGLE => {
+                                    const vx = try self.takeValues(2, .single);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] != vx[1]) -1 else 0,
+                                    });
+                                },
+                                .DOUBLE => {
+                                    const vx = try self.takeValues(2, .double);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] != vx[1]) -1 else 0,
+                                    });
+                                },
+                                .STRING => {
+                                    const vx = try self.takeValues(2, .string);
+                                    defer self.allocator.free(vx[0]);
+                                    defer self.allocator.free(vx[1]);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (!std.mem.eql(u8, vx[0], vx[1])) -1 else 0,
+                                    });
+                                },
+                            },
+                            .LT => switch (ia.t) {
+                                .INTEGER => {
+                                    const vx = try self.takeValues(2, .integer);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] < vx[1]) -1 else 0,
+                                    });
+                                },
+                                .LONG => {
+                                    const vx = try self.takeValues(2, .long);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] < vx[1]) -1 else 0,
+                                    });
+                                },
+                                .SINGLE => {
+                                    const vx = try self.takeValues(2, .single);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] < vx[1]) -1 else 0,
+                                    });
+                                },
+                                .DOUBLE => {
+                                    const vx = try self.takeValues(2, .double);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] < vx[1]) -1 else 0,
+                                    });
+                                },
+                                .STRING => {
+                                    const vx = try self.takeValues(2, .string);
+                                    defer self.allocator.free(vx[0]);
+                                    defer self.allocator.free(vx[1]);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (std.mem.order(u8, vx[0], vx[1]) == .lt) -1 else 0,
+                                    });
+                                },
+                            },
+                            .GT => switch (ia.t) {
+                                .INTEGER => {
+                                    const vx = try self.takeValues(2, .integer);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] > vx[1]) -1 else 0,
+                                    });
+                                },
+                                .LONG => {
+                                    const vx = try self.takeValues(2, .long);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] > vx[1]) -1 else 0,
+                                    });
+                                },
+                                .SINGLE => {
+                                    const vx = try self.takeValues(2, .single);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] > vx[1]) -1 else 0,
+                                    });
+                                },
+                                .DOUBLE => {
+                                    const vx = try self.takeValues(2, .double);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] > vx[1]) -1 else 0,
+                                    });
+                                },
+                                .STRING => {
+                                    const vx = try self.takeValues(2, .string);
+                                    defer self.allocator.free(vx[0]);
+                                    defer self.allocator.free(vx[1]);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (std.mem.order(u8, vx[0], vx[1]) == .gt) -1 else 0,
+                                    });
+                                },
+                            },
+                            .LTE => switch (ia.t) {
+                                .INTEGER => {
+                                    const vx = try self.takeValues(2, .integer);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] <= vx[1]) -1 else 0,
+                                    });
+                                },
+                                .LONG => {
+                                    const vx = try self.takeValues(2, .long);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] <= vx[1]) -1 else 0,
+                                    });
+                                },
+                                .SINGLE => {
+                                    const vx = try self.takeValues(2, .single);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] <= vx[1]) -1 else 0,
+                                    });
+                                },
+                                .DOUBLE => {
+                                    const vx = try self.takeValues(2, .double);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] <= vx[1]) -1 else 0,
+                                    });
+                                },
+                                .STRING => {
+                                    const vx = try self.takeValues(2, .string);
+                                    defer self.allocator.free(vx[0]);
+                                    defer self.allocator.free(vx[1]);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (std.mem.order(u8, vx[0], vx[1]) != .gt) -1 else 0,
+                                    });
+                                },
+                            },
+                            .GTE => switch (ia.t) {
+                                .INTEGER => {
+                                    const vx = try self.takeValues(2, .integer);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] >= vx[1]) -1 else 0,
+                                    });
+                                },
+                                .LONG => {
+                                    const vx = try self.takeValues(2, .long);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] >= vx[1]) -1 else 0,
+                                    });
+                                },
+                                .SINGLE => {
+                                    const vx = try self.takeValues(2, .single);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] >= vx[1]) -1 else 0,
+                                    });
+                                },
+                                .DOUBLE => {
+                                    const vx = try self.takeValues(2, .double);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (vx[0] >= vx[1]) -1 else 0,
+                                    });
+                                },
+                                .STRING => {
+                                    const vx = try self.takeValues(2, .string);
+                                    defer self.allocator.free(vx[0]);
+                                    defer self.allocator.free(vx[1]);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = if (std.mem.order(u8, vx[0], vx[1]) != .lt) -1 else 0,
+                                    });
+                                },
+                            },
+                            .AND => switch (ia.t) {
+                                .INTEGER => {
+                                    const vx = try self.takeValues(2, .integer);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = vx[0] & vx[1],
+                                    });
+                                },
+                                .LONG => {
+                                    const vx = try self.takeValues(2, .long);
+                                    try self.stack.append(self.allocator, .{
+                                        .long = vx[0] & vx[1],
+                                    });
+                                },
+                                .SINGLE => {
+                                    // Float bitwise ops are probably better handled by
+                                    // compiling the casts in.
+                                    const vx = try self.takeValues(2, .single);
+                                    const lhs: i32 = if (vx[0] < std.math.minInt(i32) or vx[0] > std.math.maxInt(i32))
+                                        std.math.minInt(i32)
+                                    else
+                                        @intFromFloat(vx[0]);
+                                    const rhs: i32 = if (vx[1] < std.math.minInt(i32) or vx[1] > std.math.maxInt(i32))
+                                        std.math.minInt(i32)
+                                    else
+                                        @intFromFloat(vx[1]);
+                                    try self.stack.append(self.allocator, .{
+                                        .long = lhs & rhs,
+                                    });
+                                },
+                                .DOUBLE => {
+                                    const vx = try self.takeValues(2, .double);
+                                    const lhs: i32 = if (vx[0] < std.math.minInt(i32) or vx[0] > std.math.maxInt(i32))
+                                        std.math.minInt(i32)
+                                    else
+                                        @intFromFloat(vx[0]);
+                                    const rhs: i32 = if (vx[1] < std.math.minInt(i32) or vx[1] > std.math.maxInt(i32))
+                                        std.math.minInt(i32)
+                                    else
+                                        @intFromFloat(vx[1]);
+                                    try self.stack.append(self.allocator, .{
+                                        .long = lhs & rhs,
+                                    });
+                                },
+                                .STRING => unreachable,
+                            },
+                            .OR => switch (ia.t) {
+                                .INTEGER => {
+                                    const vx = try self.takeValues(2, .integer);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = vx[0] | vx[1],
+                                    });
+                                },
+                                .LONG => {
+                                    const vx = try self.takeValues(2, .long);
+                                    try self.stack.append(self.allocator, .{
+                                        .long = vx[0] | vx[1],
+                                    });
+                                },
+                                .SINGLE => {
+                                    const vx = try self.takeValues(2, .single);
+                                    const lhs: i32 = if (vx[0] < std.math.minInt(i32) or vx[0] > std.math.maxInt(i32))
+                                        std.math.minInt(i32)
+                                    else
+                                        @intFromFloat(vx[0]);
+                                    const rhs: i32 = if (vx[1] < std.math.minInt(i32) or vx[1] > std.math.maxInt(i32))
+                                        std.math.minInt(i32)
+                                    else
+                                        @intFromFloat(vx[1]);
+                                    try self.stack.append(self.allocator, .{
+                                        .long = lhs | rhs,
+                                    });
+                                },
+                                .DOUBLE => {
+                                    const vx = try self.takeValues(2, .double);
+                                    const lhs: i32 = if (vx[0] < std.math.minInt(i32) or vx[0] > std.math.maxInt(i32))
+                                        std.math.minInt(i32)
+                                    else
+                                        @intFromFloat(vx[0]);
+                                    const rhs: i32 = if (vx[1] < std.math.minInt(i32) or vx[1] > std.math.maxInt(i32))
+                                        std.math.minInt(i32)
+                                    else
+                                        @intFromFloat(vx[1]);
+                                    try self.stack.append(self.allocator, .{
+                                        .long = lhs | rhs,
+                                    });
+                                },
+                                .STRING => unreachable,
+                            },
+                            .XOR => switch (ia.t) {
+                                .INTEGER => {
+                                    const vx = try self.takeValues(2, .integer);
+                                    try self.stack.append(self.allocator, .{
+                                        .integer = vx[0] ^ vx[1],
+                                    });
+                                },
+                                .LONG => {
+                                    const vx = try self.takeValues(2, .long);
+                                    try self.stack.append(self.allocator, .{
+                                        .long = vx[0] ^ vx[1],
+                                    });
+                                },
+                                .SINGLE => {
+                                    const vx = try self.takeValues(2, .single);
+                                    const lhs: i32 = if (vx[0] < std.math.minInt(i32) or vx[0] > std.math.maxInt(i32))
+                                        std.math.minInt(i32)
+                                    else
+                                        @intFromFloat(vx[0]);
+                                    const rhs: i32 = if (vx[1] < std.math.minInt(i32) or vx[1] > std.math.maxInt(i32))
+                                        std.math.minInt(i32)
+                                    else
+                                        @intFromFloat(vx[1]);
+                                    try self.stack.append(self.allocator, .{
+                                        .long = lhs ^ rhs,
+                                    });
+                                },
+                                .DOUBLE => {
+                                    const vx = try self.takeValues(2, .double);
+                                    const lhs: i32 = if (vx[0] < std.math.minInt(i32) or vx[0] > std.math.maxInt(i32))
+                                        std.math.minInt(i32)
+                                    else
+                                        @intFromFloat(vx[0]);
+                                    const rhs: i32 = if (vx[1] < std.math.minInt(i32) or vx[1] > std.math.maxInt(i32))
+                                        std.math.minInt(i32)
+                                    else
+                                        @intFromFloat(vx[1]);
+                                    try self.stack.append(self.allocator, .{
+                                        .long = lhs ^ rhs,
+                                    });
+                                },
+                                .STRING => unreachable,
+                            },
+                        }
+                    },
+                    // .OPERATOR_NEGATE_INTEGER => {
+                    //     const vx = try self.takeValues(1, .integer);
+                    //     try self.stack.append(self.allocator, .{ .integer = -vx[0] });
+                    // },
+                    // .OPERATOR_NEGATE_LONG => {
+                    //     const vx = try self.takeValues(1, .long);
+                    //     try self.stack.append(self.allocator, .{ .long = -vx[0] });
+                    // },
+                    // .OPERATOR_NEGATE_SINGLE => {
+                    //     const vx = try self.takeValues(1, .single);
+                    //     try self.stack.append(self.allocator, .{ .single = -vx[0] });
+                    // },
+                    // .OPERATOR_NEGATE_DOUBLE => {
+                    //     const vx = try self.takeValues(1, .double);
+                    //     try self.stack.append(self.allocator, .{ .double = -vx[0] });
+                    // },
+                    .PRAGMA => {
                         std.debug.assert(code.len - i + 1 >= 2);
                         const lenb = code[i..][0..2];
                         i += 2;
@@ -777,7 +823,7 @@ fn testRun(inp: anytype) !Machine(TestEffects) {
 
 test "simple push" {
     var m = try testRun(.{
-        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
         isa.Value{ .integer = 0x7fff },
     });
     defer m.deinit();
@@ -787,10 +833,10 @@ test "simple push" {
 
 test "actually print a thing" {
     var m = try testRun(.{
-        isa.Opcode.PUSH_IMM_INTEGER,
+        isa.Opcode{ .op = .PUSH, .t = .INTEGER },
         isa.Value{ .integer = 123 },
-        isa.Opcode.BUILTIN_PRINT,
-        isa.Opcode.BUILTIN_PRINT_LINEFEED,
+        isa.Opcode{ .op = .PRINT, .t = .INTEGER },
+        isa.Opcode{ .op = .PRINT_LINEFEED },
     });
     defer m.deinit();
 

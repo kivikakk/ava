@@ -3,98 +3,121 @@ const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
 const ty = @import("ty.zig");
+const Expr = @import("ast/Expr.zig");
 
-pub const Opcode = enum(u8) {
-    PUSH_IMM_INTEGER = 0x01,
-    PUSH_IMM_LONG = 0x02,
-    PUSH_IMM_SINGLE = 0x03,
-    PUSH_IMM_DOUBLE = 0x04,
-    PUSH_IMM_STRING = 0x05,
-    PUSH_VARIABLE = 0x0a,
-    PROMOTE_INTEGER_LONG = 0x10,
-    COERCE_INTEGER_SINGLE = 0x11,
-    COERCE_INTEGER_DOUBLE = 0x12,
-    COERCE_LONG_INTEGER = 0x13,
-    COERCE_LONG_SINGLE = 0x14,
-    COERCE_LONG_DOUBLE = 0x15,
-    COERCE_SINGLE_INTEGER = 0x16,
-    COERCE_SINGLE_LONG = 0x17,
-    PROMOTE_SINGLE_DOUBLE = 0x18,
-    COERCE_DOUBLE_INTEGER = 0x19,
-    COERCE_DOUBLE_LONG = 0x1a,
-    COERCE_DOUBLE_SINGLE = 0x1b,
-    LET = 0x20,
-    BUILTIN_PRINT = 0x80,
-    BUILTIN_PRINT_COMMA = 0x81,
-    BUILTIN_PRINT_LINEFEED = 0x82,
-    OPERATOR_ADD_INTEGER = 0xa0,
-    OPERATOR_ADD_LONG = 0xa1,
-    OPERATOR_ADD_SINGLE = 0xa2,
-    OPERATOR_ADD_DOUBLE = 0xa3,
-    OPERATOR_ADD_STRING = 0xa4,
-    OPERATOR_MULTIPLY_INTEGER = 0xa5,
-    OPERATOR_MULTIPLY_LONG = 0xa6,
-    OPERATOR_MULTIPLY_SINGLE = 0xa7,
-    OPERATOR_MULTIPLY_DOUBLE = 0xa8,
-    OPERATOR_FDIVIDE_INTEGER = 0xa9,
-    OPERATOR_FDIVIDE_LONG = 0xaa,
-    OPERATOR_FDIVIDE_SINGLE = 0xab,
-    OPERATOR_FDIVIDE_DOUBLE = 0xac,
-    OPERATOR_IDIVIDE_INTEGER = 0xad,
-    OPERATOR_IDIVIDE_LONG = 0xae,
-    OPERATOR_IDIVIDE_SINGLE = 0xaf,
-    OPERATOR_IDIVIDE_DOUBLE = 0xb0,
-    OPERATOR_SUBTRACT_INTEGER = 0xb1,
-    OPERATOR_SUBTRACT_LONG = 0xb2,
-    OPERATOR_SUBTRACT_SINGLE = 0xb3,
-    OPERATOR_SUBTRACT_DOUBLE = 0xb4,
-    OPERATOR_NEGATE_INTEGER = 0xb5,
-    OPERATOR_NEGATE_LONG = 0xb6,
-    OPERATOR_NEGATE_SINGLE = 0xb7,
-    OPERATOR_NEGATE_DOUBLE = 0xb8,
-    OPERATOR_EQ_INTEGER = 0xb9,
-    OPERATOR_EQ_LONG = 0xba,
-    OPERATOR_EQ_SINGLE = 0xbb,
-    OPERATOR_EQ_DOUBLE = 0xbc,
-    OPERATOR_EQ_STRING = 0xbd,
-    OPERATOR_NEQ_INTEGER = 0xbe,
-    OPERATOR_NEQ_LONG = 0xbf,
-    OPERATOR_NEQ_SINGLE = 0xc0,
-    OPERATOR_NEQ_DOUBLE = 0xc1,
-    OPERATOR_NEQ_STRING = 0xc2,
-    OPERATOR_LT_INTEGER = 0xc3,
-    OPERATOR_LT_LONG = 0xc4,
-    OPERATOR_LT_SINGLE = 0xc5,
-    OPERATOR_LT_DOUBLE = 0xc6,
-    OPERATOR_LT_STRING = 0xc7,
-    OPERATOR_GT_INTEGER = 0xc8,
-    OPERATOR_GT_LONG = 0xc9,
-    OPERATOR_GT_SINGLE = 0xca,
-    OPERATOR_GT_DOUBLE = 0xcb,
-    OPERATOR_GT_STRING = 0xcc,
-    OPERATOR_LTE_INTEGER = 0xcd,
-    OPERATOR_LTE_LONG = 0xce,
-    OPERATOR_LTE_SINGLE = 0xcf,
-    OPERATOR_LTE_DOUBLE = 0xd0,
-    OPERATOR_LTE_STRING = 0xd1,
-    OPERATOR_GTE_INTEGER = 0xd2,
-    OPERATOR_GTE_LONG = 0xd3,
-    OPERATOR_GTE_SINGLE = 0xd4,
-    OPERATOR_GTE_DOUBLE = 0xd5,
-    OPERATOR_GTE_STRING = 0xd6,
-    OPERATOR_AND_INTEGER = 0xd7,
-    OPERATOR_AND_LONG = 0xd8,
-    OPERATOR_AND_SINGLE = 0xd9,
-    OPERATOR_AND_DOUBLE = 0xda,
-    OPERATOR_OR_INTEGER = 0xdb,
-    OPERATOR_OR_LONG = 0xdc,
-    OPERATOR_OR_SINGLE = 0xdd,
-    OPERATOR_OR_DOUBLE = 0xde,
-    OPERATOR_XOR_INTEGER = 0xdf,
-    OPERATOR_XOR_LONG = 0xe0,
-    OPERATOR_XOR_SINGLE = 0xe1,
-    OPERATOR_XOR_DOUBLE = 0xe2,
-    PRAGMA_PRINTED = 0xfe,
+pub const Type = enum(u3) {
+    INTEGER = 0b000,
+    LONG = 0b001,
+    SINGLE = 0b010,
+    DOUBLE = 0b011,
+    STRING = 0b100,
+
+    pub fn fromTy(t: ty.Type) Type {
+        return switch (t) {
+            .integer => .INTEGER,
+            .long => .LONG,
+            .single => .SINGLE,
+            .double => .DOUBLE,
+            .string => .STRING,
+        };
+    }
+};
+
+pub const TypeCast = enum(u2) {
+    INTEGER = 0b00,
+    LONG = 0b01,
+    SINGLE = 0b10,
+    DOUBLE = 0b11,
+
+    pub fn fromTy(t: ty.Type) TypeCast {
+        return switch (t) {
+            .integer => .INTEGER,
+            .long => .LONG,
+            .single => .SINGLE,
+            .double => .DOUBLE,
+            .string => unreachable,
+        };
+    }
+};
+
+pub const Op = enum(u4) {
+    PUSH = 0b0001,
+    CAST = 0b0010,
+    LET = 0b0011,
+    PRINT = 0b0100,
+    PRINT_COMMA = 0b0101, // TODO: use space in rest of opcode for this
+    PRINT_LINEFEED = 0b0110, // and this.
+    ALU = 0b0111,
+    PRAGMA = 0b1110,
+};
+
+pub const AluOp = enum(u5) {
+    ADD = 0b00000,
+    MUL = 0b00001,
+    FDIV = 0b00010,
+    IDIV = 0b00011,
+    SUB = 0b00100,
+    // NEG = 0b00101, // XXX unimpl
+    EQ = 0b00110,
+    NEQ = 0b00111,
+    LT = 0b01000,
+    GT = 0b01001,
+    LTE = 0b01010,
+    GTE = 0b01011,
+    AND = 0b01100,
+    OR = 0b01101,
+    XOR = 0b01110,
+
+    pub fn fromExprOp(op: Expr.Op) AluOp {
+        return switch (op) {
+            .add => .ADD,
+            .mul => .MUL,
+            .fdiv => .FDIV,
+            .idiv => .IDIV,
+            .sub => .SUB,
+            .eq => .EQ,
+            .neq => .NEQ,
+            .lt => .LT,
+            .gt => .GT,
+            .lte => .LTE,
+            .gte => .GTE,
+            .@"and" => .AND,
+            .@"or" => .OR,
+            .xor => .XOR,
+        };
+    }
+};
+
+pub const InsnX = packed struct(u8) {
+    op: Op,
+    rest: u4 = 0,
+};
+
+pub const InsnT = packed struct(u8) {
+    op: Op,
+    t: Type,
+    rest: u1 = 0,
+};
+
+pub const InsnTC = packed struct(u8) {
+    op: Op,
+    tf: TypeCast,
+    tt: TypeCast,
+};
+
+pub const InsnAlu = packed struct(u16) {
+    op: Op,
+    t: Type,
+    alu: AluOp,
+    rest: u4 = 0,
+};
+
+pub const Opcode = struct {
+    op: Op,
+    t: ?Type = null,
+    tc: ?struct { from: TypeCast, to: TypeCast } = null,
+    alu: ?AluOp = null,
+    slot: ?u8 = null,
 };
 
 pub const Value = union(enum) {
@@ -209,7 +232,43 @@ fn printFormatFloating(allocator: Allocator, writer: anytype, f: anytype) !void 
 
 pub fn assembleOne(e: anytype, writer: anytype) !void {
     switch (@TypeOf(e)) {
-        Opcode => try writer.writeByte(@intFromEnum(e)),
+        Opcode => {
+            switch (e.op) {
+                .PUSH => {
+                    if (e.slot) |slot| {
+                        std.debug.assert(e.t == null);
+                        const insn = InsnX{ .op = e.op, .rest = 0b1000 };
+                        try writer.writeInt(u8, @bitCast(insn), .little);
+                        try writer.writeInt(u8, slot, .little);
+                    } else {
+                        const insn = InsnT{ .op = e.op, .t = e.t.? };
+                        try writer.writeInt(u8, @bitCast(insn), .little);
+                    }
+                },
+                .CAST => {
+                    const insn = InsnTC{ .op = e.op, .tf = e.tc.?.from, .tt = e.tc.?.to };
+                    try writer.writeInt(u8, @bitCast(insn), .little);
+                },
+                .LET => {
+                    const insn = InsnX{ .op = e.op };
+                    try writer.writeInt(u8, @bitCast(insn), .little);
+                    try writer.writeInt(u8, e.slot.?, .little);
+                },
+                .PRINT => {
+                    const insn = InsnT{ .op = e.op, .t = e.t.? };
+                    std.debug.assert(e.slot == null);
+                    try writer.writeInt(u8, @bitCast(insn), .little);
+                },
+                .PRINT_COMMA, .PRINT_LINEFEED, .PRAGMA => {
+                    const insn = InsnX{ .op = e.op };
+                    try writer.writeInt(u8, @bitCast(insn), .little);
+                },
+                .ALU => {
+                    const insn = InsnAlu{ .op = e.op, .t = e.t.?, .alu = e.alu.? };
+                    try writer.writeInt(u16, @bitCast(insn), .little);
+                },
+            }
+        },
         Value => {
             switch (e) {
                 .integer => |i| try writer.writeInt(i16, i, .little),
@@ -222,7 +281,6 @@ pub fn assembleOne(e: anytype, writer: anytype) !void {
                 },
             }
         },
-        u8, comptime_int => try writer.writeByte(e),
         []const u8 => {
             // label; one byte for length.
             try writer.writeByte(@intCast(e.len));
@@ -244,11 +302,51 @@ pub fn assemble(allocator: Allocator, inp: anytype) ![]const u8 {
     return try out.toOwnedSlice(allocator);
 }
 
-test "assembles" {
-    const code = try assemble(testing.allocator, .{
-        Opcode.PUSH_IMM_INTEGER,
-        Value{ .integer = 0x7fff },
-    });
+fn expectAssembles(inp: anytype, expected: []const u8) !void {
+    const code = try assemble(testing.allocator, inp);
     defer testing.allocator.free(code);
-    try testing.expectEqualSlices(u8, "\x01\xff\x7f", code);
+    try testing.expectEqualSlices(u8, expected, code);
+}
+
+test "assembles" {
+    try expectAssembles(.{
+        Opcode{ .op = .PUSH, .t = .INTEGER },
+        Value{ .integer = 0x7fff },
+    }, &.{ 0x01, 0xff, 0x7f });
+
+    try expectAssembles(.{
+        Opcode{ .op = .PUSH, .slot = 0x7b },
+    }, &.{ 0x81, 0x7b });
+
+    try expectAssembles(.{
+        Opcode{ .op = .PUSH, .t = .STRING },
+        Value{ .string = "Eks" },
+        Opcode{ .op = .PRINT, .t = .STRING },
+    }, &.{ 0x41, 0x03, 0x00, 'E', 'k', 's', 0x44 });
+
+    try expectAssembles(.{
+        Opcode{ .op = .CAST, .tc = .{ .from = .INTEGER, .to = .LONG } },
+        Opcode{ .op = .CAST, .tc = .{ .from = .LONG, .to = .INTEGER } },
+        Opcode{ .op = .CAST, .tc = .{ .from = .SINGLE, .to = .DOUBLE } },
+        Opcode{ .op = .CAST, .tc = .{ .from = .DOUBLE, .to = .SINGLE } },
+    }, &.{ 0x42, 0x12, 0xe2, 0xb2 });
+
+    try expectAssembles(.{
+        Opcode{ .op = .LET, .slot = 0xa1 },
+    }, &.{ 0x03, 0xa1 });
+
+    try expectAssembles(.{
+        Opcode{ .op = .PRINT_COMMA },
+        Opcode{ .op = .PRINT_LINEFEED },
+    }, &.{ 0x05, 0x06 });
+
+    try expectAssembles(.{
+        Opcode{ .op = .ALU, .t = .STRING, .alu = .ADD },
+        Opcode{ .op = .ALU, .t = .SINGLE, .alu = .MUL },
+        Opcode{ .op = .ALU, .t = .DOUBLE, .alu = .LTE },
+    }, &.{ 0x47, 0x00, 0xa7, 0x00, 0x37, 0x05 });
+
+    try expectAssembles(.{
+        Opcode{ .op = .PRAGMA },
+    }, &.{0x0e});
 }

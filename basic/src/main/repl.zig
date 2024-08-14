@@ -91,8 +91,10 @@ pub fn main(allocator: Allocator, options: opts.Repl) !void {
         };
         defer allocator.free(code);
 
-        if (options.bc)
+        if (options.bc) {
             try common.xxd(code);
+            try common.disasm(allocator, code);
+        }
 
         m.run(code) catch |err| {
             try common.handleError("run", err, errorinfo, .stdout, .loc);

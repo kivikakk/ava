@@ -90,11 +90,11 @@ pub const Payload = union(enum) {
 
     pub fn formatAst(self: Self, indent: usize, writer: anytype) @TypeOf(writer).Error!void {
         switch (self) {
-            .imm_integer => |n| try std.fmt.format(writer, "Integer({d})\n", .{n}),
-            .imm_long => |n| try std.fmt.format(writer, "Long({d})\n", .{n}),
-            .imm_single => |n| try std.fmt.format(writer, "Single({d})\n", .{n}),
-            .imm_double => |n| try std.fmt.format(writer, "Double({d})\n", .{n}),
-            .imm_string => |s| try std.fmt.format(writer, "String({s})\n", .{s}),
+            .imm_integer => |n| try std.fmt.format(writer, "Integer({d})", .{n}),
+            .imm_long => |n| try std.fmt.format(writer, "Long({d})", .{n}),
+            .imm_single => |n| try std.fmt.format(writer, "Single({d})", .{n}),
+            .imm_double => |n| try std.fmt.format(writer, "Double({d})", .{n}),
+            .imm_string => |s| try std.fmt.format(writer, "String({s})", .{s}),
             .label => |l| try std.fmt.format(writer, "Label({s})", .{l}),
             .binop => |b| {
                 try std.fmt.format(writer, "Binop({s})\n", .{@tagName(b.op.payload)});

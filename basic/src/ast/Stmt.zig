@@ -92,6 +92,7 @@ pub const Payload = union(enum) {
                     try std.fmt.format(writer, "{d}: ", .{i});
                     try a.formatAst(indent + 1, writer);
                 }
+                try writer.writeByte('\n');
             },
             .print => |p| {
                 try std.fmt.format(writer, "Print with {d} argument(s):\n", .{p.args.len});
@@ -99,16 +100,18 @@ pub const Payload = union(enum) {
                     try writer.writeBytesNTimes("  ", indent + 1);
                     try std.fmt.format(writer, "{d}: ", .{i});
                     try a.formatAst(indent + 1, writer);
-                    if (i < p.args.len - 1) {
+                    if (i < p.separators.len) {
                         try writer.writeBytesNTimes("  ", indent + 1);
-                        try std.fmt.format(writer, "separated by '{c}'\n", .{p.separators[i].payload});
+                        try std.fmt.format(writer, "separated by '{c}'", .{p.separators[i].payload});
                     }
+                    try writer.writeByte('\n');
                 }
             },
             .let => |l| {
                 try std.fmt.format(writer, "Let <{s}>:\n", .{l.lhs.payload});
                 try writer.writeBytesNTimes("  ", indent + 1);
                 try l.rhs.payload.formatAst(indent + 1, writer);
+                try writer.writeByte('\n');
             },
             else => unreachable,
         }

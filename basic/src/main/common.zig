@@ -165,6 +165,99 @@ pub fn xxd(code: []const u8) !void {
     try stdout.bw.flush();
 }
 
+pub fn disasm(allocator: Allocator, code: []const u8) !void {
+    _ = allocator;
+
+    var i: usize = 0;
+    while (i < code.len) {
+        try std.fmt.format(stdout.wr, "{x:0>4}: ", .{i});
+
+        const ix: isa.InsnX = @bitCast(code[i]);
+        const it: isa.InsnT = @bitCast(code[i]);
+        const itc: isa.InsnTC = @bitCast(code[i]);
+        i += 1;
+        const op = ix.op;
+
+        try stdout.tc.setColor(stdout.wr, .bright_green);
+        try stdout.wr.writeAll(@tagName(op));
+        try stdout.tc.setColor(stdout.wr, .reset);
+
+        switch (op) {
+            .PUSH => if (ix.rest == 0b1000) {
+                const slot = code[i];
+                i += 1;
+                try std.fmt.format(stdout.wr, " slot {d}", .{slot});
+            } else switch (it.t) {
+                .INTEGER => {
+                    const n = std.mem.readInt(i16, code[i..][0..2], .little);
+                    i += 2;
+                    try reportType(it.t);
+                    try std.fmt.format(stdout.wr, " {} (0x{x})", .{ n, n });
+                },
+                .LONG => {
+                    const n = std.mem.readInt(i32, code[i..][0..4], .little);
+                    i += 4;
+                    try reportType(it.t);
+                    try std.fmt.format(stdout.wr, " {} (0x{x})", .{ n, n });
+                },
+                .SINGLE => {
+                    var r: [1]f32 = undefined;
+                    @memcpy(std.mem.sliceAsBytes(r[0..]), code[i..][0..4]);
+                    i += 4;
+                    try reportType(it.t);
+                    try std.fmt.format(stdout.wr, " {}", .{r[0]});
+                },
+                .DOUBLE => {
+                    var r: [1]f64 = undefined;
+                    @memcpy(std.mem.sliceAsBytes(r[0..]), code[i..][0..8]);
+                    i += 8;
+                    try reportType(it.t);
+                    try std.fmt.format(stdout.wr, " {}", .{r[0]});
+                },
+                .STRING => {
+                    const len = std.mem.readInt(u16, code[i..][0..2], .little);
+                    i += 2;
+                    const str = code[i..][0..len];
+                    i += len;
+                    try reportType(it.t);
+                    try std.fmt.format(stdout.wr, " \"{s}\" (len {d})", .{ str, len });
+                },
+            },
+            .CAST => {
+                try reportType(itc.tf);
+                try reportType(itc.tt);
+            },
+            .LET => {
+                const slot = code[i];
+                i += 1;
+                try std.fmt.format(stdout.wr, " slot {d}", .{slot});
+            },
+            .PRINT => {
+                try reportType(it.t);
+            },
+            .PRINT_COMMA, .PRINT_LINEFEED => {},
+            .ALU => {
+                const ia: isa.InsnAlu = @bitCast(code[i - 1 ..][0..2].*);
+                i += 1;
+                try reportType(ia.t);
+                try std.fmt.format(stdout.wr, " {s}", .{@tagName(ia.alu)});
+            },
+            .PRAGMA => unreachable,
+        }
+
+        try stdout.wr.writeByte('\n');
+        try stdout.bw.flush();
+    }
+}
+
+fn reportType(t: anytype) !void {
+    try stdout.tc.setColor(stdout.wr, .cyan);
+    try stdout.wr.writeByte(' ');
+    for (@tagName(t)) |c|
+        try stdout.wr.writeByte(std.ascii.toLower(c));
+    try stdout.tc.setColor(stdout.wr, .reset);
+}
+
 pub const RunEffects = struct {
     const Self = @This();
     pub const Error = std.fs.File.WriteError;
