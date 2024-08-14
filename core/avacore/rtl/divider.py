@@ -24,6 +24,7 @@
 
 from amaranth import *
 from amaranth.lib import data, stream
+from amaranth.lib.fifo import SyncFIFO
 from amaranth.lib.wiring import Component, In, Out
 from amaranth.utils import ceil_log2
 
@@ -61,6 +62,13 @@ class StreamingDivider(Component):
             "z": 1,
         })
 
+    @staticmethod
+    def reqstate_layout(dbits):
+        return data.StructLayout({
+            "an": 1,
+            "d": signed(dbits),
+        })
+
     def __init__(self, *, abits, dbits, sign, rapow=1, pipelined=False):
         super().__init__({
             "w_stream": In(stream.Signature(self.request_layout(abits, dbits, sign))),
@@ -72,76 +80,88 @@ class StreamingDivider(Component):
         self.rapow = rapow
         self.pipelined = pipelined
 
+        self.divider = Divider(abits=abits, dbits=dbits, rapow=rapow, pipelined=pipelined)
+
     def elaborate(self, platform):
         m = Module()
 
-        m.submodules.divider = divider = Divider(abits=self.abits, dbits=self.dbits,
-                                                 rapow=self.rapow, pipelined=self.pipelined)
+        m.submodules.divider = divider = self.divider
+        depth = divider.steps if self.pipelined else 1
 
-        # XXX: These can't work in a pipeline; we lose the context.
-        an = Signal()
-        dn = Signal()
-        d = Signal(self.dbits)
+        # TODO: Can probably use *Buffered in both here?
+        if self.sign:
+            reqstate = self.reqstate_layout(self.dbits)
+        else:
+            reqstate = data.StructLayout({})
+        m.submodules.reqs = reqs = SyncFIFO(width=reqstate.size, depth=depth)
 
-        with m.FSM():
-            with m.State('idle'):
-                m.d.comb += self.w_stream.ready.eq(1)
-                with m.If(self.w_stream.valid):
-                    m.d.comb += [
-                        divider.a.eq(self.w_stream.p.a),
-                        divider.d.eq(self.w_stream.p.d),
-                        divider.start.eq(1),
-                    ]
-                    if self.sign:
-                        m.d.sync += [
-                            an.eq(self.w_stream.p.a[-1]),
-                            dn.eq(self.w_stream.p.d[-1]),
-                            d.eq(self.w_stream.p.d),
-                        ]
-                        m.d.comb += [
-                            divider.a.eq(Mux(
-                                self.w_stream.p.a[-1],
-                                -self.w_stream.p.a,
-                                self.w_stream.p.a,
-                            )),
-                            divider.d.eq(Mux(
-                                self.w_stream.p.d[-1],
-                                -self.w_stream.p.d,
-                                self.w_stream.p.d,
-                            )),
-                        ]
-                    m.next = 'busy'
+        response = self.response_layout(self.abits, self.dbits, self.sign)
+        m.submodules.resps = resps = SyncFIFO(width=response.size, depth=depth)
 
-            with m.State('busy'):
-                with m.If(~divider.start & divider.ready):
-                    m.d.sync += [
-                        self.r_stream.p.q.eq(divider.q),
-                        self.r_stream.p.r.eq(divider.r),
-                        self.r_stream.p.z.eq(divider.z),
-                        self.r_stream.valid.eq(1),
-                    ]
+        can_accept = (reqs.level + resps.level) < depth
+        m.d.comb += self.w_stream.ready.eq(can_accept)
 
-                    if self.sign:
-                        with m.If(an & dn):
-                            m.d.sync += self.r_stream.p.q.eq(divider.q + (divider.r != 0))
-                        with m.Elif(an):
-                            m.d.sync += self.r_stream.p.q.eq(-(divider.q + (divider.r != 0)))
-                        with m.Elif(dn):
-                            m.d.sync += self.r_stream.p.q.eq(-divider.q)
+        with m.If(can_accept & self.w_stream.valid):
+            m.d.comb += [
+                divider.a.eq(self.w_stream.p.a),
+                divider.d.eq(self.w_stream.p.d),
+                divider.start.eq(1),
+            ]
 
-                        with m.If(an):
-                            m.d.sync += self.r_stream.p.r.eq(Mux(
-                                divider.r == 0,
-                                0,
-                                d - divider.r,
-                            ))
+            m.d.comb += reqs.w_en.eq(1)
 
-                    m.next = 'done'
+            if self.sign:
+                req = Signal(reqstate)
+                m.d.comb += [
+                    req.an.eq(self.w_stream.p.a[-1]),
+                    req.d.eq(self.w_stream.p.d),
+                    reqs.w_data.eq(req),
+                    divider.a.eq(Mux(
+                        self.w_stream.p.a[-1],
+                        -self.w_stream.p.a,
+                        self.w_stream.p.a,
+                    )),
+                    divider.d.eq(Mux(
+                        self.w_stream.p.d[-1],
+                        -self.w_stream.p.d,
+                        self.w_stream.p.d,
+                    )),
+                ]
 
-            with m.State('done'):
-                with m.If(self.r_stream.ready):
-                    m.d.sync += self.r_stream.valid.eq(0)
-                    m.next = 'idle'
+        with m.If(reqs.r_rdy & divider.ready):
+            m.d.sync += Assert(resps.w_rdy)
+            resp = Signal(response)
+            m.d.comb += [
+                resp.q.eq(divider.q),
+                resp.r.eq(divider.r),
+                resp.z.eq(divider.z),
+                resps.w_data.eq(resp),
+                resps.w_en.eq(1),
+            ]
+
+            m.d.comb += reqs.r_en.eq(1)
+
+            if self.sign:
+                req = reqstate(reqs.r_data)
+                with m.If(req.an & req.d[-1]):
+                    m.d.comb += resp.q.eq(divider.q + (divider.r != 0))
+                with m.Elif(req.an):
+                    m.d.comb += resp.q.eq(-(divider.q + (divider.r != 0)))
+                with m.Elif(req.d[-1]):
+                    m.d.comb += resp.q.eq(-divider.q)
+
+                with m.If(req.an):
+                    m.d.comb += resp.r.eq(Mux(
+                        divider.r == 0,
+                        0,
+                        Mux(req.d[-1], -req.d, req.d) - divider.r,
+                    ))
+
+        m.d.comb += [
+            self.r_stream.p.eq(resps.r_data),
+            self.r_stream.valid.eq(resps.r_rdy),
+            resps.r_en.eq(self.r_stream.ready),
+        ]
 
         return m
 
