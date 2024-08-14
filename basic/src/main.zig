@@ -24,7 +24,7 @@ fn usage(status: u8) noreturn {
         \\
         \\  pp             Pretty-print source
         \\  ast            Print source AST
-        \\  bc             Pretty-print bytecode
+        \\  bc             Disassemble and pretty-print bytecode
         \\
     );
 }

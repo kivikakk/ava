@@ -76,8 +76,7 @@ pub fn Machine(comptime Effects: type) type {
         pub fn run(self: *Self, code: []const u8) (Error || Allocator.Error || Effects.Error)!void {
             var i: usize = 0;
             while (i < code.len) {
-                const b = code[i];
-                const op = @as(isa.Opcode, @enumFromInt(b));
+                const op = @as(isa.Opcode, @enumFromInt(code[i]));
                 i += 1;
                 switch (op) {
                     .PUSH_IMM_INTEGER => {
