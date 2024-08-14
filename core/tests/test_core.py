@@ -36,9 +36,13 @@ def _test_output(filename, basic, expected):
 
 
 def test_248():
-    _test_output('248.avc', """
+    _test_output('68.avc', """
         a% = 2
         b% = 34
         c% = a% * b%
         PRINT c%
     """, b' 68 \n')
+
+    _test_output('680.avc', """
+        PRINT (2 * 34) * 10
+    """, b' 680 \n')
