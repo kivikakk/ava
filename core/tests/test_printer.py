@@ -42,6 +42,7 @@ def test_printer():
     _test_prints(9, b' 9 ')
     _test_prints(-7, b'-7 ')
     _test_prints(10, b' 10 ')
+    _test_prints(68, b' 68 ')
     _test_prints(10009, b' 10009 ')
     _test_prints(32767, b' 32767 ')
     _test_prints(-32768, b'-32768 ')

@@ -88,7 +88,7 @@ class Printer(Component):
                     with m.If(self.r_stream.ready):
                         m.d.comb += sdivider.r_stream.ready.eq(1)
                         m.d.sync += [
-                            n.eq(n - sdivider.r_stream.p.q * divisors[digits-2]),
+                            n.eq(sdivider.r_stream.p.r),
                             digits.eq(digits - 1),
                         ]
                         m.next = 'each'

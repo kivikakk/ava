@@ -11,14 +11,11 @@ def _test_output(filename, basic, expected):
     printed = bytearray()
 
     async def uart(ctx):
-        while True:
-            async for wr_valid, wr_p in ctx.changed(dut.uart.wr.valid, dut.uart.wr.p):
-                if wr_valid:
-                    ctx.set(dut.uart.wr.ready, 1)
-                    printed.append(wr_p)
-                    break
-            await ctx.tick()
-            ctx.set(dut.uart.wr.ready, 0)
+        ctx.set(dut.uart.wr.ready, 1)
+        async for clk_edge, rst_value, wr_valid, wr_p in \
+                ctx.tick().sample(dut.uart.wr.valid, dut.uart.wr.p):
+            if wr_valid:
+                printed.append(wr_p)
 
     finished = False
     async def testbench(ctx):

@@ -227,6 +227,7 @@ def test_streaming_divider_signed(rapow):
 def test_streaming_divider_unsigned(rapow):
     cases = [
         {"a": 7, "d": 3, "q": 2, "r": 1},
+        {"a": 68, "d": 10, "q": 6, "r": 8},
         {"a": 100, "d": 4, "q": 25, "r": 0},
         {"a": 779, "d": 8, "q": 97, "r": 3},
         {"a": 779, "d": 0, "z": 1},
