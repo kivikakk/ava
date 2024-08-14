@@ -44,6 +44,8 @@ class Core(Elaboratable):
         imem_rd = imem.read_port()
 
         m.submodules.stack = self.stack = stack = Stack(width=self.ITEM_SHAPE, depth=self.STACK_N)
+        m.d.sync += stack.w_stream.valid.eq(0)
+        m.d.sync += stack.r_stream.ready.eq(0)
 
         m.submodules.slots = self.slots = slots = Memory(shape=self.ITEM_SHAPE, depth=self.SLOT_N, init=[])
         slots_rd = slots.read_port()
@@ -161,7 +163,7 @@ class Core(Elaboratable):
                     pc.eq(pc + 1),
                     stack.w_stream.p.eq(d),
                 ]
-                m.d.comb += stack.w_stream.valid.eq(1)
+                m.d.sync += stack.w_stream.valid.eq(1)
                 m.next = 'decode'
 
             with m.State('push.variable'):
@@ -181,7 +183,7 @@ class Core(Elaboratable):
                     pc.eq(pc + 1),
                     stack.w_stream.p.eq(slots_rd.data),
                 ]
-                m.d.comb += stack.w_stream.valid.eq(1)
+                m.d.sync += stack.w_stream.valid.eq(1)
                 m.next = 'decode'
 
             with m.State('let'):
@@ -191,14 +193,14 @@ class Core(Elaboratable):
                 with m.If(stack.r_stream.valid):
                     slot = Mux(dslot == self.SLOT_N, imem_rd.data, dslot)
                     m.d.sync += Assert(slot < self.SLOT_N)
-                    m.d.sync += Print(Format("{:>14s} |> s{:02x} <- v{:04x}", "let", dslot, stack.r_stream.p))
+                    m.d.sync += Print(Format("{:>14s} |> s{:02x} <- v{:04x}", "let", slot, stack.r_stream.p))
                     m.d.sync += [
                         pc.eq(pc + 1),
                         slots_wr.addr.eq(slot),
                         slots_wr.data.eq(stack.r_stream.p),
                         slots_wr.en.eq(1),
+                        stack.r_stream.ready.eq(1),
                     ]
-                    m.d.comb += stack.r_stream.ready.eq(1)
                     m.next = 'decode'
                 with m.Else():
                     m.d.sync += Print(Format("{:>14s} |> stall", "let"))
@@ -211,7 +213,7 @@ class Core(Elaboratable):
                     ]
                     with m.If(printer.w_stream.ready):
                         m.d.sync += Print(Format("{:>14s} |> v{:04x}", "print", stack.r_stream.p))
-                        m.d.comb += stack.r_stream.ready.eq(1)
+                        m.d.sync += stack.r_stream.ready.eq(1)
                         m.next = 'print.wait'
                     with m.Else():
                         m.d.sync += Print(Format("{:>14s} |> stall printer", "print"))
@@ -229,7 +231,7 @@ class Core(Elaboratable):
                 with m.If(stack.r_stream.valid):
                     m.d.sync += Print(Format("{:>14s} |> opb <- v{:04x}", "alu", stack.r_stream.p))
                     m.d.sync += opb.eq(stack.r_stream.p)
-                    m.d.comb += stack.r_stream.ready.eq(1)
+                    m.d.sync += stack.r_stream.ready.eq(1)
                     m.next = 'alu2'
                 with m.Else():
                     m.d.sync += Print(Format("{:>14s} |> stall", "alu"))
@@ -242,7 +244,7 @@ class Core(Elaboratable):
                 with m.If(stack.r_stream.valid):
                     m.d.sync += Print(Format("{:>14s} |> opa <- v{:04x}", "alu3", stack.r_stream.p))
                     m.d.sync += opa.eq(stack.r_stream.p)
-                    m.d.comb += stack.r_stream.ready.eq(1)
+                    m.d.sync += stack.r_stream.ready.eq(1)
                     m.next = 'alu4'
                 with m.Else():
                     m.d.sync += Print(Format("{:>14s} |> stall", "alu3"))
@@ -250,7 +252,7 @@ class Core(Elaboratable):
             with m.State('alu4'):
                 m.d.sync += Print(Format("{:>14s} |> v{:04x} v{:04x} ({})", "alu4", opa, opb, op))
                 m.d.sync += pc.eq(pc + 1)
-                m.d.comb += stack.w_stream.valid.eq(1)
+                m.d.sync += stack.w_stream.valid.eq(1)
 
                 m.d.sync += Assert(typ == Type.INTEGER) # XXX
 
@@ -262,6 +264,7 @@ class Core(Elaboratable):
                     with m.Case(Op.ADD):
                         m.d.sync += stack.w_stream.p.eq(lhs + rhs)
                     with m.Case(Op.MULTIPLY):
+                        m.d.sync += Print(Format("setting w_stream to lhs*rhs={}", lhs*rhs))
                         m.d.sync += stack.w_stream.p.eq(lhs * rhs)
                     with m.Case(Op.FDIVIDE):
                         m.d.sync += Assert(0) # XXX
@@ -270,6 +273,5 @@ class Core(Elaboratable):
                         m.d.sync += stack.w_stream.p.eq(lhs // rhs)
                     with m.Case(Op.SUBTRACT):
                         m.d.sync += stack.w_stream.p.eq(lhs - rhs)
-
 
         return m
