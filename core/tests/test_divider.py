@@ -2,7 +2,7 @@ import random
 from functools import partial
 
 import pytest
-from amaranth.hdl import Fragment
+from amaranth import *
 from amaranth.sim import Simulator
 from amaranth.utils import bits_for
 

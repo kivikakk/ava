@@ -1,4 +1,4 @@
-from amaranth.hdl import Fragment
+from amaranth import *
 from amaranth.sim import Simulator
 
 from avacore.rtl.stack import Stack

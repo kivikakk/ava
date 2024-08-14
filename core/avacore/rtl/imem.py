@@ -31,8 +31,8 @@ class ImemMemory(ImemInterface):
     memory: Memory
 
     def __init__(self, *, memory):
-        self.memory = memory
         super().__init__(depth=memory.depth)
+        self.memory = memory
 
     def elaborate(self, platform):
         m = Module()

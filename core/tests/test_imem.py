@@ -1,4 +1,4 @@
-from amaranth.hdl import Fragment
+from amaranth import *
 from amaranth.lib.memory import Memory
 from amaranth.sim import Simulator
 
