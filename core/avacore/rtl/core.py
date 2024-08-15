@@ -6,27 +6,10 @@ from .imem import ImemMemory
 from .printer import Printer
 from .stack import Stack
 from .uart import UART
+from .isa import Type, TypeCast, Op, InsnX, InsnT, InsnTC, InsnAlu, AluOp
 
 
 __all__ = ["Core"]
-
-
-class Op(Enum, shape=3):
-    ADD = 0
-    MULTIPLY = 1
-    FDIVIDE = 2
-    IDIVIDE = 3
-    SUBTRACT = 4
-    NEGATE = 5
-    # ...
-
-
-class Type(Enum, shape=3):
-    INTEGER = 0
-    LONG = 1
-    SINGLE = 2
-    DOUBLE = 3
-    STRING = 4
 
 
 class Core(Elaboratable):
@@ -66,77 +49,77 @@ class Core(Elaboratable):
             with m.If(uart.wr.ready):
                 m.d.comb += printer.r_stream.ready.eq(1)
 
+        last_insn = Signal(8)
+        alu_op = Signal(AluOp)
+        alu_opa = Signal(self.ITEM_SHAPE)
+        alu_opb = Signal(self.ITEM_SHAPE)
         self.done = done = Signal()
-
-        op = Signal(Op)
-        opa = Signal(self.ITEM_SHAPE)
-        opb = Signal(self.ITEM_SHAPE)
-        typ = Signal(Type)
 
         with m.If(~done & imem.insn_stream.valid):
             m.d.sync += Print(Format("pc={:02x} i$={:02x}", imem.pc, imem.insn_stream.p))
 
         with m.FSM() as fsm:
             with m.State('stall'):
-                m.d.sync += Print(Format("{:>14s} |> stall", "stall"))
                 with m.If(imem.insn_stream.valid):
                     m.next = 'decode'
 
             with m.State('decode'):
                 m.d.sync += Assert(imem.insn_stream.valid)
+                m.d.sync += last_insn.eq(imem.insn_stream.p)
                 m.d.comb += imem.insn_stream.ready.eq(1)
 
-                with m.Switch(imem.insn_stream.p):
-                    with m.Case(0x01): # PUSH_IMM_INTEGER
-                        m.d.sync += Print(Format("{:>14s} |> PUSH_IMM_INTEGER", "decode"))
-                        m.next = 'push.imm.integer'
-                    with m.Case(0x0a): # PUSH_VARIABLE
-                        m.d.sync += Print(Format("{:>14s} |> PUSH_VARIABLE", "decode"))
-                        m.next = 'push.variable'
-                    with m.Case(0x20): # LET
+                ix = InsnX(imem.insn_stream.p)
+                it = InsnT(imem.insn_stream.p)
+
+                with m.Switch(ix.op):
+                    with m.Case(Op.PUSH):
+                        with m.If(ix.rest == 0b1000):
+                            m.d.sync += Print(Format("{:>14s} |> PUSH variable", "decode"))
+                            m.next = 'push.variable'
+                        with m.Else():
+                            m.d.sync += Print(Format("{:>14s} |> PUSH {}", "decode", it.t))
+                            m.d.sync += Assert(it.t == Type.INTEGER)
+                            m.next = 'push.imm'
+                    with m.Case(Op.CAST):
+                        m.d.sync += Print(Format("{:>14s} |> CAST", "decode"))
+                        # TODO
+                        m.next = 'done'
+                    with m.Case(Op.LET):
                         m.d.sync += Print(Format("{:>14s} |> LET", "decode"))
                         m.next = 'let'
-                    with m.Case(0x80): # BUILTIN_PRINT
-                        m.d.sync += Print(Format("{:>14s} |> BUILTIN_PRINT", "decode"))
+                    with m.Case(Op.PRINT):
+                        m.d.sync += Print(Format("{:>14s} |> PRINT", "decode"))
                         m.next = 'print'
-                    with m.Case(0x82): # BUILTIN_PRINT_LINEFEED
-                        m.d.sync += Print(Format("{:>14s} |> BUILTIN_PRINT_LINEFEED", "decode"))
+                    with m.Case(Op.PRINT_COMMA):
+                        m.d.sync += Print(Format("{:>14s} |> PRINT_COMMA", "decode"))
+                        # TODO
+                        m.next = 'done'
+                    with m.Case(Op.PRINT_LINEFEED):
+                        m.d.sync += Print(Format("{:>14s} |> PRINT_LINEFEED", "decode"))
                         m.d.comb += uart_wr_p.eq(ord(b'\n'))
                         m.d.comb += uart_wr_valid.eq(1)
                         m.next = 'stall'
-                    with m.Case(0xa0): # OPERATOR_ADD_INTEGER
-                        m.d.sync += Print(Format("{:>14s} |> OPERATOR_ADD_INTEGER", "decode"))
-                        m.d.sync += op.eq(Op.ADD)
-                        m.d.sync += typ.eq(Type.INTEGER)
-                        m.next = 'alu'
-                    with m.Case(0xa5): # OPERATOR_MULTIPLY_INTEGER
-                        m.d.sync += Print(Format("{:>14s} |> OPERATOR_MULTIPLY_INTEGER", "decode"))
-                        m.d.sync += op.eq(Op.MULTIPLY)
-                        m.d.sync += typ.eq(Type.INTEGER)
+                    with m.Case(Op.ALU):
+                        m.d.sync += Print(Format("{:>14s} |> ALU", "decode"))
                         m.next = 'alu'
                     with m.Default():
                         m.d.sync += Print(Format("{:>14s} |> ?", "decode"))
                         m.next = 'done'
 
-            with m.State('push.imm.integer'):
+            with m.State('push.imm'):
                 with m.If(imem.insn_stream.valid):
-                    m.d.sync += Print(Format("{:>14s} |> acc", "p.i.i"))
                     m.d.sync += stack.w_stream.p.eq(imem.insn_stream.p)
                     m.d.comb += imem.insn_stream.ready.eq(1)
-                    m.next = 'push.imm.integer.2'
-                with m.Else():
-                    m.d.sync += Print(Format("{:>14s} |> stall", "p.i.i"))
+                    m.next = 'push.imm.2'
 
-            with m.State('push.imm.integer.2'):
+            with m.State('push.imm.2'):
                 with m.If(imem.insn_stream.valid):
                     d = (imem.insn_stream.p << 8) | stack.w_stream.p[:8]
-                    m.d.sync += Print(Format("{:>14s} |> store v{:04x}", "p.i.i2", d))
+                    m.d.sync += Print(Format("{:>14s} |> store v{:04x}", "p.i2", d))
                     m.d.sync += stack.w_stream.p.eq(d)
                     m.d.sync += stack.w_stream.valid.eq(1)
                     m.d.comb += imem.insn_stream.ready.eq(1)
                     m.next = 'stall'
-                with m.Else():
-                    m.d.sync += Print(Format("{:>14s} |> stall", "p.i.i2"))
 
             with m.State('push.variable'):
                 with m.If(imem.insn_stream.valid):
@@ -144,11 +127,8 @@ class Core(Elaboratable):
                     m.d.sync += slots_rd.addr.eq(imem.insn_stream.p)
                     m.d.comb += imem.insn_stream.ready.eq(1)
                     m.next = 'push.variable.2'
-                with m.Else():
-                    m.d.sync += Print(Format("{:>14s} |> stall", "p.v"))
 
             with m.State('push.variable.2'):
-                m.d.sync += Print(Format("{:>14s} |> wait", "p.v2"))
                 m.next = 'push.variable.3'
 
             with m.State('push.variable.3'):
@@ -169,8 +149,6 @@ class Core(Elaboratable):
                     ]
                     m.d.comb += imem.insn_stream.ready.eq(1)
                     m.next = 'stall'
-                with m.Else():
-                    m.d.sync += Print(Format("{:>14s} |> stall", "let"))
 
             with m.State('print'):
                 with m.If(stack.r_stream.valid):
@@ -180,60 +158,54 @@ class Core(Elaboratable):
                         m.d.sync += Print(Format("{:>14s} |> v{:04x}", "print", stack.r_stream.p))
                         m.d.sync += stack.r_stream.ready.eq(1)
                         m.next = 'print.wait'
-                    with m.Else():
-                        m.d.sync += Print(Format("{:>14s} |> stall printer", "print"))
-                with m.Else():
-                    m.d.sync += Print(Format("{:>14s} |> stall stack", "print"))
 
             with m.State('print.wait'):
                 with m.If(printer.w_stream.ready):
                     m.next = 'decode'
-                with m.Else():
-                    m.d.sync += Print(Format("{:>14s} |> stall printer", "print.w"))
 
             with m.State('alu'):
-                with m.If(stack.r_stream.valid):
+                ia = InsnAlu(Cat(last_insn, imem.insn_stream.p))
+                with m.If(imem.insn_stream.valid & stack.r_stream.valid):
                     m.d.sync += Print(Format("{:>14s} |> opb <- v{:04x}", "alu", stack.r_stream.p))
-                    m.d.sync += opb.eq(stack.r_stream.p)
-                    m.d.sync += stack.r_stream.ready.eq(1)
+                    m.d.sync += Assert(ia.t == Type.INTEGER)
+                    m.d.comb += imem.insn_stream.ready.eq(1)
+                    m.d.sync += [
+                        alu_op.eq(ia.alu),
+                        alu_opb.eq(stack.r_stream.p),
+                        stack.r_stream.ready.eq(1),
+                    ]
                     m.next = 'alu2'
-                with m.Else():
-                    m.d.sync += Print(Format("{:>14s} |> stall", "alu"))
 
             with m.State('alu2'):
-                m.d.sync += Print(Format("{:>14s} |> stall", "alu2"))
                 m.next = 'alu3'
 
             with m.State('alu3'):
                 with m.If(stack.r_stream.valid):
                     m.d.sync += Print(Format("{:>14s} |> opa <- v{:04x}", "alu3", stack.r_stream.p))
-                    m.d.sync += opa.eq(stack.r_stream.p)
+                    m.d.sync += alu_opa.eq(stack.r_stream.p)
                     m.d.sync += stack.r_stream.ready.eq(1)
                     m.next = 'alu4'
-                with m.Else():
-                    m.d.sync += Print(Format("{:>14s} |> stall", "alu3"))
 
             with m.State('alu4'):
-                m.d.sync += Print(Format("{:>14s} |> v{:04x} v{:04x} ({})", "alu4", opa, opb, op))
+                m.d.sync += Print(Format("{:>14s} |> v{:04x} v{:04x} ({})", "alu4",
+                                         alu_opa, alu_opb, alu_op))
                 m.d.sync += stack.w_stream.valid.eq(1)
 
-                m.d.sync += Assert(typ == Type.INTEGER) # XXX
-
-                lhs = opa[:16].as_signed()
-                rhs = opb[:16].as_signed()
+                lhs = alu_opa[:16].as_signed()
+                rhs = alu_opb[:16].as_signed()
 
                 m.next = 'decode'
-                with m.Switch(op):
-                    with m.Case(Op.ADD):
+                with m.Switch(alu_op):
+                    with m.Case(AluOp.ADD):
                         m.d.sync += stack.w_stream.p.eq(lhs + rhs)
-                    with m.Case(Op.MULTIPLY):
+                    with m.Case(AluOp.MUL):
                         m.d.sync += stack.w_stream.p.eq(lhs * rhs)
-                    with m.Case(Op.FDIVIDE):
+                    with m.Case(AluOp.FDIV):
                         m.d.sync += Assert(0) # XXX
                         m.next = 'done'
-                    with m.Case(Op.IDIVIDE):
+                    with m.Case(AluOp.IDIV):
                         m.d.sync += stack.w_stream.p.eq(lhs // rhs)
-                    with m.Case(Op.SUBTRACT):
+                    with m.Case(AluOp.SUB):
                         m.d.sync += stack.w_stream.p.eq(lhs - rhs)
 
             with m.State('done'):
