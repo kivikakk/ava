@@ -904,6 +904,18 @@ test "print zones" {
     , null);
 }
 
+test "print zones II" {
+    try expectRunOutput(
+        \\print "a", "b"
+        \\print "abcdef", "b"
+    ,
+    //    123456789012345678901234567890
+        \\a             b
+        \\abcdef        b
+        \\
+    , null);
+}
+
 test "string concat" {
     try expectRunOutput(
         \\print "a"+"b"
