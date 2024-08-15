@@ -894,10 +894,13 @@ test "print zones" {
     try expectRunOutput(
         \\print "a", "b", "c"
         \\print 1;-2;3;
+        \\print "z"
+        \\print "a",
     ,
     //    123456789012345678901234567890
         \\a             b             c
-        \\ 1 -2  3 
+        \\ 1 -2  3 z
+        \\a             
     , null);
 }
 

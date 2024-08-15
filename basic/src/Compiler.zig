@@ -81,10 +81,10 @@ fn compileStmt(self: *Compiler, s: Stmt) !void {
         },
         .print => |p| {
             // Each argument gets PRINTed.
-            // Between arguments, PRINT_COMMA advances to the next print zone.
-            // At the end, if there's a trailing comma, another PRINT_COMMA is used.
-            // If there's a trailing semicolon, we do nothing.
-            // Otherwise, we PRINT_LINEFEED.
+            // After each argument, a comma separator uses PRINT_COMMA to
+            // advance the next print zone.
+            // At the end, a PRINT_LINEFEED is issued if there was no separator after the last
+            // argument.
             for (p.args, 0..) |a, i| {
                 const t = try self.compileExpr(a.payload);
                 try isa.assembleInto(self.writer, .{isa.Opcode{ .op = .PRINT, .t = isa.Type.fromTy(t) }});
@@ -96,13 +96,7 @@ fn compileStmt(self: *Compiler, s: Stmt) !void {
                     }
                 }
             }
-            if (p.separators.len == p.args.len and p.separators.len > 0) {
-                switch (p.separators[p.args.len - 1].payload) {
-                    ';' => {},
-                    ',' => try isa.assembleInto(self.writer, .{isa.Opcode{ .op = .PRINT_COMMA }}),
-                    else => unreachable,
-                }
-            } else {
+            if (p.separators.len < p.args.len) {
                 try isa.assembleInto(self.writer, .{isa.Opcode{ .op = .PRINT_LINEFEED }});
             }
         },
