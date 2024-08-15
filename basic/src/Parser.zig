@@ -218,57 +218,65 @@ fn acceptFactor(self: *Parser) !?Expr {
 
 // TODO: comptime wonk to define accept(Term,Expr,Cond) in common?
 fn acceptTerm(self: *Parser) !?Expr {
-    const f = try self.acceptFactor() orelse return null;
+    var f = try self.acceptFactor() orelse return null;
     errdefer f.deinit(self.allocator);
-    const op = op: {
-        if (self.accept(.asterisk)) |o|
-            break :op WithRange(Expr.Op).init(.mul, o.range)
-        else if (self.accept(.fslash)) |o|
-            break :op WithRange(Expr.Op).init(.fdiv, o.range)
-        else if (self.accept(.bslash)) |o|
-            break :op WithRange(Expr.Op).init(.idiv, o.range);
-        return f;
-    };
-    const f2 = try self.acceptFactor() orelse return Error.UnexpectedToken;
-    errdefer f2.deinit(self.allocator);
 
-    const lhs = try self.allocator.create(Expr);
-    errdefer self.allocator.destroy(lhs);
-    lhs.* = f;
-    const rhs = try self.allocator.create(Expr);
-    rhs.* = f2;
+    while (true) {
+        const op = op: {
+            if (self.accept(.asterisk)) |o|
+                break :op WithRange(Expr.Op).init(.mul, o.range)
+            else if (self.accept(.fslash)) |o|
+                break :op WithRange(Expr.Op).init(.fdiv, o.range)
+            else if (self.accept(.bslash)) |o|
+                break :op WithRange(Expr.Op).init(.idiv, o.range);
+            return f;
+        };
 
-    return Expr.init(.{ .binop = .{
-        .lhs = lhs,
-        .op = op,
-        .rhs = rhs,
-    } }, Range.initEnds(f.range, f2.range));
+        const f2 = try self.acceptFactor() orelse return Error.UnexpectedToken;
+        errdefer f2.deinit(self.allocator);
+
+        const lhs = try self.allocator.create(Expr);
+        errdefer self.allocator.destroy(lhs);
+        lhs.* = f;
+
+        const rhs = try self.allocator.create(Expr);
+        rhs.* = f2;
+
+        f = Expr.init(.{ .binop = .{
+            .lhs = lhs,
+            .op = op,
+            .rhs = rhs,
+        } }, Range.initEnds(f.range, f2.range));
+    }
 }
 
 fn acceptExpr(self: *Parser) (Allocator.Error || Error)!?Expr {
-    const t = try self.acceptTerm() orelse return null;
+    var t = try self.acceptTerm() orelse return null;
     errdefer t.deinit(self.allocator);
-    const op = op: {
-        if (self.accept(.plus)) |o|
-            break :op WithRange(Expr.Op).init(.add, o.range)
-        else if (self.accept(.minus)) |o|
-            break :op WithRange(Expr.Op).init(.sub, o.range);
-        return t;
-    };
-    const t2 = try self.acceptTerm() orelse return Error.UnexpectedToken;
-    errdefer t2.deinit(self.allocator);
 
-    const lhs = try self.allocator.create(Expr);
-    errdefer self.allocator.destroy(lhs);
-    lhs.* = t;
-    const rhs = try self.allocator.create(Expr);
-    rhs.* = t2;
+    while (true) {
+        const op = op: {
+            if (self.accept(.plus)) |o|
+                break :op WithRange(Expr.Op).init(.add, o.range)
+            else if (self.accept(.minus)) |o|
+                break :op WithRange(Expr.Op).init(.sub, o.range);
+            return t;
+        };
+        const t2 = try self.acceptTerm() orelse return Error.UnexpectedToken;
+        errdefer t2.deinit(self.allocator);
 
-    return Expr.init(.{ .binop = .{
-        .lhs = lhs,
-        .op = op,
-        .rhs = rhs,
-    } }, Range.initEnds(t.range, t2.range));
+        const lhs = try self.allocator.create(Expr);
+        errdefer self.allocator.destroy(lhs);
+        lhs.* = t;
+        const rhs = try self.allocator.create(Expr);
+        rhs.* = t2;
+
+        t = Expr.init(.{ .binop = .{
+            .lhs = lhs,
+            .op = op,
+            .rhs = rhs,
+        } }, Range.initEnds(t.range, t2.range));
+    }
 }
 
 fn acceptCond(self: *Parser) !?Expr {
@@ -547,11 +555,15 @@ fn acceptStmtPragma(self: *Parser) !?Stmt {
     }
 }
 
-fn expectParse(input: []const u8, expected: []const Stmt) !void {
-    const sx = try parse(testing.allocator, input, null);
-    defer free(testing.allocator, sx);
+fn expectParseInner(allocator: Allocator, input: []const u8, expected: []const Stmt) !void {
+    const sx = try parse(allocator, input, null);
+    defer free(allocator, sx);
 
     try testing.expectEqualDeep(expected, sx);
+}
+
+fn expectParse(input: []const u8, expected: []const Stmt) !void {
+    try testing.checkAllAllocationFailures(testing.allocator, expectParseInner, .{ input, expected });
 }
 
 test "parses a nullary call" {
@@ -640,5 +652,69 @@ test "negate precedence and subsumption" {
             },
             .separators = &.{},
         } }, Range.init(.{ 1, 1 }, .{ 1, 12 })),
+    });
+}
+
+test "x*y*z - a+b+c" {
+    try expectParse("PRINT x*y*z - a+b+c\n", &.{
+        // (((((x*y)*z) - a) + b) + c)
+        Stmt.init(.{ .print = .{
+            .args = &.{
+                Expr.init(.{ .binop = .{
+                    .lhs = &Expr.init(.{ .binop = .{
+                        .lhs = &Expr.init(.{ .binop = .{
+                            .lhs = &Expr.init(.{ .binop = .{
+                                .lhs = &Expr.init(.{ .binop = .{
+                                    .lhs = &Expr.init(.{ .label = "x" }, Range.init(.{ 1, 7 }, .{ 1, 7 })),
+                                    .op = WithRange(Expr.Op).init(.mul, Range.init(.{ 1, 8 }, .{ 1, 8 })),
+                                    .rhs = &Expr.init(.{ .label = "y" }, Range.init(.{ 1, 9 }, .{ 1, 9 })),
+                                } }, Range.init(.{ 1, 7 }, .{ 1, 9 })),
+                                .op = WithRange(Expr.Op).init(.mul, Range.init(.{ 1, 10 }, .{ 1, 10 })),
+                                .rhs = &Expr.init(.{ .label = "z" }, Range.init(.{ 1, 11 }, .{ 1, 11 })),
+                            } }, Range.init(.{ 1, 7 }, .{ 1, 11 })),
+                            .op = WithRange(Expr.Op).init(.sub, Range.init(.{ 1, 13 }, .{ 1, 13 })),
+                            .rhs = &Expr.init(.{ .label = "a" }, Range.init(.{ 1, 15 }, .{ 1, 15 })),
+                        } }, Range.init(.{ 1, 7 }, .{ 1, 15 })),
+                        .op = WithRange(Expr.Op).init(.add, Range.init(.{ 1, 16 }, .{ 1, 16 })),
+                        .rhs = &Expr.init(.{ .label = "b" }, Range.init(.{ 1, 17 }, .{ 1, 17 })),
+                    } }, Range.init(.{ 1, 7 }, .{ 1, 17 })),
+                    .op = WithRange(Expr.Op).init(.add, Range.init(.{ 1, 18 }, .{ 1, 18 })),
+                    .rhs = &Expr.init(.{ .label = "c" }, Range.init(.{ 1, 19 }, .{ 1, 19 })),
+                } }, Range.init(.{ 1, 7 }, .{ 1, 19 })),
+            },
+            .separators = &.{},
+        } }, Range.init(.{ 1, 1 }, .{ 1, 19 })),
+    });
+}
+
+test "a+b+c - x*y*z" {
+    try expectParse("PRINT a+b+c - x*y*z\n", &.{
+        // (((a+b)+c) - ((x*y)*z))
+        Stmt.init(.{ .print = .{
+            .args = &.{
+                Expr.init(.{ .binop = .{
+                    .lhs = &Expr.init(.{ .binop = .{
+                        .lhs = &Expr.init(.{ .binop = .{
+                            .lhs = &Expr.init(.{ .label = "a" }, Range.init(.{ 1, 7 }, .{ 1, 7 })),
+                            .op = WithRange(Expr.Op).init(.add, Range.init(.{ 1, 8 }, .{ 1, 8 })),
+                            .rhs = &Expr.init(.{ .label = "b" }, Range.init(.{ 1, 9 }, .{ 1, 9 })),
+                        } }, Range.init(.{ 1, 7 }, .{ 1, 9 })),
+                        .op = WithRange(Expr.Op).init(.add, Range.init(.{ 1, 10 }, .{ 1, 10 })),
+                        .rhs = &Expr.init(.{ .label = "c" }, Range.init(.{ 1, 11 }, .{ 1, 11 })),
+                    } }, Range.init(.{ 1, 7 }, .{ 1, 11 })),
+                    .op = WithRange(Expr.Op).init(.sub, Range.init(.{ 1, 13 }, .{ 1, 13 })),
+                    .rhs = &Expr.init(.{ .binop = .{
+                        .lhs = &Expr.init(.{ .binop = .{
+                            .lhs = &Expr.init(.{ .label = "x" }, Range.init(.{ 1, 15 }, .{ 1, 15 })),
+                            .op = WithRange(Expr.Op).init(.mul, Range.init(.{ 1, 16 }, .{ 1, 16 })),
+                            .rhs = &Expr.init(.{ .label = "y" }, Range.init(.{ 1, 17 }, .{ 1, 17 })),
+                        } }, Range.init(.{ 1, 15 }, .{ 1, 17 })),
+                        .op = WithRange(Expr.Op).init(.mul, Range.init(.{ 1, 18 }, .{ 1, 18 })),
+                        .rhs = &Expr.init(.{ .label = "z" }, Range.init(.{ 1, 19 }, .{ 1, 19 })),
+                    } }, Range.init(.{ 1, 15 }, .{ 1, 19 })),
+                } }, Range.init(.{ 1, 7 }, .{ 1, 19 })),
+            },
+            .separators = &.{},
+        } }, Range.init(.{ 1, 1 }, .{ 1, 19 })),
     });
 }
