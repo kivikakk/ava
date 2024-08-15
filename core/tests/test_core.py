@@ -95,3 +95,11 @@ def test_680():
         [680],
         [],
     ])
+
+
+def test_print_various():
+    _test('printv.avc', """
+        PRINT 1; 2
+        print 2, 3;
+        PRINT 3; 4, 5*6*7,
+    """, output='')

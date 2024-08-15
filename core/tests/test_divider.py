@@ -196,6 +196,7 @@ def _test_streaming_divides_pipelined(*, cases, rapow, sign):
 
 
 @pytest.mark.parametrize("rapow", [1, 2, 3])
+@pytest.mark.slow
 def test_streaming_divider_signed(rapow):
     # Enough cases that we'll test the pipeline filling up completely.
     # (for rapow=2,3, anyway. At rapow=1 it has 11 steps with these numbers.)
@@ -224,6 +225,7 @@ def test_streaming_divider_signed(rapow):
 
 
 @pytest.mark.parametrize("rapow", [1, 2, 3])
+@pytest.mark.slow
 def test_streaming_divider_unsigned(rapow):
     cases = [
         {"a": 7, "d": 3, "q": 2, "r": 1},

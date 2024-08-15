@@ -82,7 +82,7 @@ class Core(Elaboratable):
                             m.next = 'push.imm'
                     with m.Case(Op.CAST):
                         m.d.sync += Print(Format("{:>14s} |> CAST", "decode"))
-                        # TODO
+                        m.d.sync += Assert(0) # TODO
                         m.next = 'done'
                     with m.Case(Op.LET):
                         m.d.sync += Print(Format("{:>14s} |> LET", "decode"))
@@ -92,7 +92,7 @@ class Core(Elaboratable):
                         m.next = 'print'
                     with m.Case(Op.PRINT_COMMA):
                         m.d.sync += Print(Format("{:>14s} |> PRINT_COMMA", "decode"))
-                        # TODO
+                        m.d.sync += Assert(0) # TODO
                         m.next = 'done'
                     with m.Case(Op.PRINT_LINEFEED):
                         m.d.sync += Print(Format("{:>14s} |> PRINT_LINEFEED", "decode"))
