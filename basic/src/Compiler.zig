@@ -260,20 +260,15 @@ fn compileBinopOperands(self: *Compiler, lhs: Expr.Payload, op: Expr.Op, rhs: Ex
             .long, .double => .double,
             .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot fdivide a STRING", .{}),
         },
-        .idiv => switch (widenedType) {
-            .integer, .single => .integer,
-            .long, .double => .long,
-            .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot idivide a STRING", .{}),
-        },
         .sub => switch (widenedType) {
             .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot subtract a STRING", .{}),
             else => widenedType,
         },
         .eq, .neq, .lt, .gt, .lte, .gte => .integer,
-        .@"and", .@"or", .xor => switch (widenedType) {
+        .idiv, .@"and", .@"or", .xor, .mod => switch (widenedType) {
             .integer => .integer,
             .long, .single, .double => .long,
-            .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot bitwise operate on a STRING", .{}),
+            .string => return ErrorInfo.ret(self, Error.TypeMismatch, "cannot {s} a STRING", .{@tagName(widenedType)}),
         },
         // else => return ErrorInfo.ret(self, Error.Unimplemented, "unknown result type of op {any}", .{op}),
     };

@@ -314,9 +314,9 @@ pub fn Machine(comptime Effects: type) type {
                                 .SINGLE => {
                                     const vx = try self.takeValues(2, .single);
                                     try self.stack.append(self.allocator, .{
-                                        .integer = @divTrunc(
-                                            @as(i16, @intFromFloat(@round(vx[0]))),
-                                            @as(i16, @intFromFloat(@round(vx[1]))),
+                                        .long = @divTrunc(
+                                            @as(i32, @intFromFloat(@round(vx[0]))),
+                                            @as(i32, @intFromFloat(@round(vx[1]))),
                                         ),
                                     });
                                 },
@@ -685,6 +685,35 @@ pub fn Machine(comptime Effects: type) type {
                                 },
                                 .STRING => unreachable,
                             },
+                            .MOD => switch (ia.t) {
+                                .INTEGER => {
+                                    const vx = try self.takeValues(2, .integer);
+                                    try self.stack.append(self.allocator, .{ .integer = @rem(vx[0], vx[1]) });
+                                },
+                                .LONG => {
+                                    const vx = try self.takeValues(2, .long);
+                                    try self.stack.append(self.allocator, .{ .long = @rem(vx[0], vx[1]) });
+                                },
+                                .SINGLE => {
+                                    const vx = try self.takeValues(2, .single);
+                                    try self.stack.append(self.allocator, .{
+                                        .long = @rem(
+                                            @as(i32, @intFromFloat(@round(vx[0]))),
+                                            @as(i32, @intFromFloat(@round(vx[1]))),
+                                        ),
+                                    });
+                                },
+                                .DOUBLE => {
+                                    const vx = try self.takeValues(2, .double);
+                                    try self.stack.append(self.allocator, .{
+                                        .long = @rem(
+                                            @as(i32, @intFromFloat(@round(vx[0]))),
+                                            @as(i32, @intFromFloat(@round(vx[1]))),
+                                        ),
+                                    });
+                                },
+                                .STRING => unreachable,
+                            },
                         }
                     },
                     // .OPERATOR_NEGATE_INTEGER => {
@@ -975,4 +1004,19 @@ test "variable autovivification" {
         \\a$ = "x" + b$
         \\print a; a$
     , " 0 x\n", null);
+}
+
+test "division and modulo" {
+    try expectRunOutput(
+        \\PRINT  5 \  2;  5 MOD  2
+        \\PRINT -5 \  2; -5 MOD  2
+        \\PRINT  5 \ -2;  5 MOD -2
+        \\PRINT -5 \ -2; -5 MOD -2
+    ,
+        \\ 2  1 
+        \\-2 -1 
+        \\-2  1 
+        \\ 2 -1 
+        \\
+    , null);
 }

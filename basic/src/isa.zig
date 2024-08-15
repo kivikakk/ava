@@ -67,6 +67,7 @@ pub const AluOp = enum(u5) {
     AND = 0b01100,
     OR = 0b01101,
     XOR = 0b01110,
+    MOD = 0b01111,
 
     pub fn fromExprOp(op: Expr.Op) AluOp {
         return switch (op) {
@@ -84,6 +85,7 @@ pub const AluOp = enum(u5) {
             .@"and" => .AND,
             .@"or" => .OR,
             .xor => .XOR,
+            .mod => .MOD,
         };
     }
 };

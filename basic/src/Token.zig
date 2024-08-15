@@ -76,6 +76,7 @@ pub const Payload = union(enum) {
     kw_or,
     kw_xor,
     kw_pragma,
+    kw_mod,
 
     pub fn format(self: Self, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = fmt;
@@ -132,6 +133,7 @@ pub const Payload = union(enum) {
             .kw_or => try std.fmt.format(writer, "OR", .{}),
             .kw_xor => try std.fmt.format(writer, "XOR", .{}),
             .kw_pragma => try std.fmt.format(writer, "PRAGMA", .{}),
+            .kw_mod => try std.fmt.format(writer, "MOD", .{}),
         }
     }
 };

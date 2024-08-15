@@ -552,6 +552,8 @@ fn classifyBareword(bw: []const u8) Token.Payload {
         return .kw_xor;
     } else if (std.ascii.eqlIgnoreCase(bw, "pragma")) {
         return .kw_pragma;
+    } else if (std.ascii.eqlIgnoreCase(bw, "mod")) {
+        return .kw_mod;
     } else {
         return .{ .label = bw };
     }

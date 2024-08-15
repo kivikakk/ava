@@ -45,6 +45,7 @@ pub const Op = enum {
     @"and",
     @"or",
     xor,
+    mod,
 };
 
 pub const Payload = union(enum) {

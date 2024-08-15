@@ -87,6 +87,7 @@ const Printer = struct {
                     .@"and" => try self.writer.writeAll("AND"),
                     .@"or" => try self.writer.writeAll("OR"),
                     .xor => try self.writer.writeAll("XOR"),
+                    .mod => try self.writer.writeAll("MOD"),
                 }
                 try self.printExpr(b.rhs.*);
             },

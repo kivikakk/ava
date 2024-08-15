@@ -161,13 +161,13 @@ fn peek(self: *Parser, comptime tt: Token.Tag) bool {
 }
 
 fn peekTerminator(self: *Parser) !bool {
-    if (self.eoi())
-        return true; // XXX ?
-
     if (self.accept(.remark)) |r| {
         std.debug.assert(self.pending_rem == null);
         self.pending_rem = Stmt.init(.{ .remark = r.payload }, r.range);
     }
+
+    if (self.eoi())
+        return true;
 
     return self.peek(.linefeed) or
         self.peek(.colon) or
@@ -259,7 +259,9 @@ fn acceptExpr(self: *Parser) (Allocator.Error || Error)!?Expr {
             if (self.accept(.plus)) |o|
                 break :op WithRange(Expr.Op).init(.add, o.range)
             else if (self.accept(.minus)) |o|
-                break :op WithRange(Expr.Op).init(.sub, o.range);
+                break :op WithRange(Expr.Op).init(.sub, o.range)
+            else if (self.accept(.kw_mod)) |o| // XXX
+                break :op WithRange(Expr.Op).init(.mod, o.range);
             return t;
         };
         const t2 = try self.acceptTerm() orelse return Error.UnexpectedToken;
