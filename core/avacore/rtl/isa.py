@@ -47,6 +47,7 @@ class AluOp(enum.Enum, shape=5):
     AND   = 0b01100
     OR    = 0b01101
     XOR   = 0b01110
+    MOD   = 0b01111
 
 
 class InsnX(data.Struct):

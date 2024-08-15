@@ -2,7 +2,7 @@ from amaranth import *
 from amaranth.sim import Simulator
 
 from avacore.rtl.printer import PrinterInteger
-from tests import TestPlatform
+from .helpers import TestPlatform
 
 
 def _test_prints(input, expected):

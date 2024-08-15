@@ -39,14 +39,6 @@ class StreamingDivider(Component):
     Additionally allows signed operation.
     """
 
-    # TODO: support actual pipelined use. For now we allow passing the parameter
-    # through to ensure the pipelined Divider can be tested to work in a
-    # drop-in fashion here, too, but ideally the StreamingDivider always uses a
-    # pipelined Divider, and never stalls for input.
-    #
-    # This implies we record an/d(/dn)/q/r/z for as many stages as the pipeline has,
-    # which is steps(+1?? ugh. I need better intuition here).
-
     @staticmethod
     def request_layout(abits, dbits, sign):
         return data.StructLayout({
@@ -58,7 +50,7 @@ class StreamingDivider(Component):
     def response_layout(abits, dbits, sign):
         return data.StructLayout({
             "q": signed(abits) if sign else unsigned(abits),
-            "r": unsigned(dbits),
+            "r": signed(dbits) if sign else unsigned(dbits),
             "z": 1,
         })
 
@@ -143,19 +135,11 @@ class StreamingDivider(Component):
 
             if self.sign:
                 req = reqstate(reqs.r_data)
-                with m.If(req.an & req.d[-1]):
-                    m.d.comb += resp.q.eq(divider.q + (divider.r != 0))
-                with m.Elif(req.an):
-                    m.d.comb += resp.q.eq(-(divider.q + (divider.r != 0)))
-                with m.Elif(req.d[-1]):
+                with m.If(req.an ^ req.d[-1]):
                     m.d.comb += resp.q.eq(-divider.q)
 
                 with m.If(req.an):
-                    m.d.comb += resp.r.eq(Mux(
-                        divider.r == 0,
-                        0,
-                        Mux(req.d[-1], -req.d, req.d) - divider.r,
-                    ))
+                    m.d.comb += resp.r.eq(-divider.r)
 
         m.d.comb += [
             self.r_stream.p.eq(resps.r_data),

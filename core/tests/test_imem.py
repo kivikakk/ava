@@ -3,7 +3,7 @@ from amaranth.lib.memory import Memory
 from amaranth.sim import Simulator
 
 from avacore.rtl.imem import ImemMemory
-from tests import TestPlatform
+from .helpers import TestPlatform
 
 
 def test_imem():

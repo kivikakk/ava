@@ -1,12 +1,12 @@
 from amaranth import *
-from amaranth.lib.enum import Enum
 from amaranth.lib.memory import Memory
 
+from .divider import StreamingDivider
 from .imem import ImemMemory
+from .isa import Type, Op, InsnX, InsnT, InsnAlu, AluOp
 from .printer import PrinterInteger
 from .stack import Stack
 from .uart import UART
-from .isa import Type, TypeCast, Op, InsnX, InsnT, InsnTC, InsnAlu, AluOp
 
 
 __all__ = ["Core"]
@@ -52,6 +52,11 @@ class Core(Elaboratable):
             with m.If(uart.wr.ready):
                 m.d.sync += col.eq(Mux(col == 79, 0, col + 1))
                 m.d.comb += printer_integer.r_stream.ready.eq(1)
+
+        # XXX duplicated with Printer's; we'll never need both at once, dedupe once
+        # getting the settings right for both.
+        m.submodules.sdivider = sdivider = \
+            StreamingDivider(abits=32, dbits=32, sign=True, rapow=2)
 
         last_insn = Signal(8)
         alu_op = Signal(AluOp)
@@ -231,9 +236,42 @@ class Core(Elaboratable):
                         m.d.sync += Assert(0) # XXX
                         m.next = 'done'
                     with m.Case(AluOp.IDIV):
-                        m.d.sync += stack.w_stream.p.eq(lhs // rhs)
+                        m.d.sync += Assert(sdivider.w_stream.ready)
+                        m.d.sync += stack.w_stream.valid.eq(0)
+                        m.d.comb += [
+                            sdivider.w_stream.p.a.eq(lhs),
+                            sdivider.w_stream.p.d.eq(rhs),
+                            sdivider.w_stream.valid.eq(1),
+                        ]
+                        m.next = 'alu.divide'
                     with m.Case(AluOp.SUB):
                         m.d.sync += stack.w_stream.p.eq(lhs - rhs)
+                    with m.Case(AluOp.MOD):
+                        m.d.sync += Assert(sdivider.w_stream.ready)
+                        m.d.sync += stack.w_stream.valid.eq(0)
+                        m.d.comb += [
+                            sdivider.w_stream.p.a.eq(lhs),
+                            sdivider.w_stream.p.d.eq(rhs),
+                            sdivider.w_stream.valid.eq(1),
+                        ]
+                        m.next = 'alu.mod'
+                    with m.Default():
+                        m.d.sync += Assert(0)
+                        m.next = 'done'
+
+            with m.State('alu.divide'):
+                m.d.comb += sdivider.r_stream.ready.eq(1)
+                with m.If(sdivider.r_stream.valid):
+                    m.d.sync += stack.w_stream.p.eq(sdivider.r_stream.p.q)
+                    m.d.sync += stack.w_stream.valid.eq(1)
+                    m.next = 'decode'
+
+            with m.State('alu.mod'):
+                m.d.comb += sdivider.r_stream.ready.eq(1)
+                with m.If(sdivider.r_stream.valid):
+                    m.d.sync += stack.w_stream.p.eq(sdivider.r_stream.p.r)
+                    m.d.sync += stack.w_stream.valid.eq(1)
+                    m.next = 'decode'
 
             with m.State('done'):
                 m.d.comb += done.eq(1)

@@ -2,7 +2,7 @@ from amaranth import *
 from amaranth.sim import Simulator
 
 from avacore.rtl.stack import Stack
-from tests import TestPlatform
+from .helpers import TestPlatform
 
 
 def test_stack():

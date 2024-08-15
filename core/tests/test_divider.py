@@ -7,7 +7,7 @@ from amaranth.sim import Simulator
 from amaranth.utils import bits_for
 
 from avacore.rtl.divider import Divider, StreamingDivider
-from tests import TestPlatform
+from .helpers import TestPlatform
 
 
 def _test_divides(*, a, d, q=None, r=None, z=None, rapow, pipelined):
@@ -201,11 +201,10 @@ def test_streaming_divider_signed(rapow):
     # Enough cases that we'll test the pipeline filling up completely.
     # (for rapow=2,3, anyway. At rapow=1 it has 11 steps with these numbers.)
     cases = [
-        {"a": 779, "d": 8, "q": 97, "r": 3},
-        {"a": 779, "d": -8, "q": -97, "r": 3}, # d<0
-        {"a": -779, "d": 8, "q": -98, "r": 5}, # a<0
-        {"a": -779, "d": -8, "q": 98, "r": 5}, # d<0, a<0
-        # NOTE: I'm unsure if QBASIC's REM and MOD act exactly this way. We'll see.
+        {"a": 779, "d": 8, "q": 97, "r": 3},                 #  .-- Checked against QB
+        {"a": 779, "d": -8, "q": -97, "r": 3},  # d<0        # [x]
+        {"a": -779, "d": 8, "q": -97, "r": -3}, # a<0        # [x]
+        {"a": -779, "d": -8, "q": 97, "r": -3}, # d<0, a<0   # [x]
         {"a": 7, "d": 3, "q": 2, "r": 1},
         {"a": 100, "d": 4, "q": 25, "r": 0},
         {"a": 779, "d": 8, "q": 97, "r": 3},
