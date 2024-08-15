@@ -1,12 +1,12 @@
 from amaranth import *
 from amaranth.sim import Simulator
 
-from avacore.rtl.printer import Printer
+from avacore.rtl.printer import PrinterInteger
 from tests import TestPlatform
 
 
 def _test_prints(input, expected):
-    dut = Printer()
+    dut = PrinterInteger()
 
     finished = False
     async def testbench(ctx):

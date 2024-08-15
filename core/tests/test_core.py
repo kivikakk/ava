@@ -6,8 +6,12 @@ from tests import TestPlatform, compiled, avabasic_run_output
 
 
 def _test(filename, basic, *, output=None, stacks=None):
-    dut = Core(code=compiled(filename, basic))
+    code = compiled(filename, basic)
 
+    if output is not None:
+        assert avabasic_run_output(filename) == output
+
+    dut = Core(code=code)
     printed = bytearray()
 
     async def uart(ctx):
@@ -55,7 +59,6 @@ def _test(filename, basic, *, output=None, stacks=None):
     
     if output is not None:
         assert printed == output
-        assert avabasic_run_output(filename) == output
 
 
 def test_68():
@@ -102,4 +105,13 @@ def test_print_various():
         PRINT 1; 2
         print 2, 3;
         PRINT 3; 4, 5*6*7,
-    """, output='')
+        PRINT "x"
+        PRINT "a", "b", "c", "d", "e", "f", "g"
+    """, output=
+        b' 1  2 \n'
+        # v             v             v             v             v             v
+        # 12345678901234567890123456789012345678901234567890123456789012345678901234567890
+        b' 2             3  3  4       210          x\n'
+        b'a             b             c             d             e             f\n'
+        b'g\n'
+    )

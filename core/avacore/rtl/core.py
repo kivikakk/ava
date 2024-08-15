@@ -3,7 +3,7 @@ from amaranth.lib.enum import Enum
 from amaranth.lib.memory import Memory
 
 from .imem import ImemMemory
-from .printer import Printer
+from .printer import PrinterInteger
 from .stack import Stack
 from .uart import UART
 from .isa import Type, TypeCast, Op, InsnX, InsnT, InsnTC, InsnAlu, AluOp
@@ -42,12 +42,16 @@ class Core(Elaboratable):
         m.d.comb += uart.wr.valid.eq(uart_wr_valid)
         m.d.comb += uart.wr.p.eq(uart_wr_p)
 
-        m.submodules.printer = printer = Printer()
-        with m.If(printer.r_stream.valid):
+        col = Signal(range(80))
+        spaces = Signal(range(80))
+
+        m.submodules.printer_integer = printer_integer = PrinterInteger()
+        with m.If(printer_integer.r_stream.valid):
             m.d.comb += uart.wr.valid.eq(1)
-            m.d.comb += uart.wr.p.eq(printer.r_stream.p)
+            m.d.comb += uart.wr.p.eq(printer_integer.r_stream.p)
             with m.If(uart.wr.ready):
-                m.d.comb += printer.r_stream.ready.eq(1)
+                m.d.sync += col.eq(Mux(col == 79, 0, col + 1))
+                m.d.comb += printer_integer.r_stream.ready.eq(1)
 
         last_insn = Signal(8)
         alu_op = Signal(AluOp)
@@ -92,12 +96,24 @@ class Core(Elaboratable):
                         m.next = 'print'
                     with m.Case(Op.PRINT_COMMA):
                         m.d.sync += Print(Format("{:>14s} |> PRINT_COMMA", "decode"))
-                        m.d.sync += Assert(0) # TODO
-                        m.next = 'done'
+                        with m.If(col < 13):
+                            m.d.sync += spaces.eq(14 - col)
+                        with m.Elif(col < 27):
+                            m.d.sync += spaces.eq(28 - col)
+                        with m.Elif(col < 41):
+                            m.d.sync += spaces.eq(42 - col)
+                        with m.Elif(col < 55):
+                            m.d.sync += spaces.eq(56 - col)
+                        with m.Elif(col < 69):
+                            m.d.sync += spaces.eq(70 - col)
+                        with m.Else():
+                            m.d.sync += spaces.eq(0)
+                        m.next = 'print.comma'
                     with m.Case(Op.PRINT_LINEFEED):
                         m.d.sync += Print(Format("{:>14s} |> PRINT_LINEFEED", "decode"))
                         m.d.comb += uart_wr_p.eq(ord(b'\n'))
                         m.d.comb += uart_wr_valid.eq(1)
+                        m.d.sync += col.eq(0)
                         m.next = 'stall'
                     with m.Case(Op.ALU):
                         m.d.sync += Print(Format("{:>14s} |> ALU", "decode"))
@@ -152,15 +168,26 @@ class Core(Elaboratable):
 
             with m.State('print'):
                 with m.If(stack.r_stream.valid):
-                    m.d.comb += printer.w_stream.p.eq(stack.r_stream.p)
-                    m.d.comb += printer.w_stream.valid.eq(1)
-                    with m.If(printer.w_stream.ready):
+                    m.d.comb += printer_integer.w_stream.p.eq(stack.r_stream.p)
+                    m.d.comb += printer_integer.w_stream.valid.eq(1)
+                    with m.If(printer_integer.w_stream.ready):
                         m.d.sync += Print(Format("{:>14s} |> v{:04x}", "print", stack.r_stream.p))
                         m.d.sync += stack.r_stream.ready.eq(1)
                         m.next = 'print.wait'
 
             with m.State('print.wait'):
-                with m.If(printer.w_stream.ready):
+                with m.If(printer_integer.w_stream.ready):
+                    m.next = 'decode'
+
+            with m.State('print.comma'):
+                with m.If(spaces > 0):
+                    m.d.comb += uart_wr_p.eq(ord(b' '))
+                    m.d.comb += uart_wr_valid.eq(1)
+                    with m.If(uart.wr.valid):
+                        m.d.sync += spaces.eq(spaces - 1)
+                        # TODO: refactor column tracking.
+                        m.d.sync += col.eq(Mux(col == 79, 0, col + 1))
+                with m.Else():
                     m.next = 'decode'
 
             with m.State('alu'):

@@ -7,7 +7,7 @@ from .divider import StreamingDivider
 __all__ = ["Printer"]
 
 
-class Printer(Component):
+class PrinterInteger(Component):
     w_stream: In(stream.Signature(signed(32)))
     r_stream: Out(stream.Signature(8))
 
