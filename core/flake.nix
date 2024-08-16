@@ -66,6 +66,7 @@
         nativeCheckInputs = with python.pkgs; [
           python.pkgs.pytestCheckHook
           python.pkgs.pytest-xdist
+          basic
         ];
 
         postFixup = ''
