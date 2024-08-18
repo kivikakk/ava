@@ -110,7 +110,6 @@
           python-lsp-server
           pyls-isort
           pylsp-rope
-          (packages.default.override {doCheck = false;})
           pytest
           pytest-xdist
           pytest-watcher
@@ -118,6 +117,8 @@
           zls
           avabasic
         ];
+
+        inputsFrom = [packages.default];
       };
 
       devShells.pure-python = pkgs.mkShell {
