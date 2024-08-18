@@ -6,12 +6,14 @@ authors = [
     {name = "Asherah Connor", email = "ashe@kivikakk.ee"},
 ]
 dependencies = [
-    "amaranth @ git+https://github.com/amaranth-lang/amaranth@ba1860553cacfbb5d358f9a9e0699fb7efce0451",
+    "niar @ git+https://git.sr.ht/~kivikakk/niar@bf3738f77760ae6f4e942e2cb1639f5c9461a937",
     "amaranth-stdio @ git+https://github.com/kivikakk/amaranth-stdio@ca4fac262a2290495c82d76aa785bd8707afa781",
-    "niar @ git+https://git.sr.ht/~kivikakk/niar@a478292edabfee100c450a59d0898f3f6bf91c51",
 ]
 requires-python = ">=3.8"
 license = {text = "GPL-3.0-or-later"}
+
+[project.urls]
+Homepage = "https://sr.ht/~kivikakk/ava"
 
 [build-system]
 requires = ["pdm-backend"]

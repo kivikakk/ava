@@ -1,6 +1,6 @@
 {
   "nodes": {
-    "avabasic": {
+    "avabasic-flake": {
       "inputs": {
         "flake-utils": [
           "flake-utils"
@@ -9,12 +9,8 @@
         "nixpkgs": [
           "nixpkgs"
         ],
-        "zig-overlay": [
-          "zig-overlay"
-        ],
-        "zls-flake": [
-          "zls-flake"
-        ]
+        "zig-overlay": "zig-overlay",
+        "zls-flake": "zls-flake"
       },
       "locked": {
         "lastModified": 1,
@@ -64,28 +60,7 @@
     "gitignore": {
       "inputs": {
         "nixpkgs": [
-          "avabasic",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1709087332,
-        "narHash": "sha256-HG2cCnktfHsKV0s4XW83gU3F57gaTljL9KNSuG6bnQs=",
-        "owner": "hercules-ci",
-        "repo": "gitignore.nix",
-        "rev": "637db329424fd7e46cf4185293b9cc8c88c95394",
-        "type": "github"
-      },
-      "original": {
-        "owner": "hercules-ci",
-        "repo": "gitignore.nix",
-        "type": "github"
-      }
-    },
-    "gitignore_2": {
-      "inputs": {
-        "nixpkgs": [
-          "zls-flake",
+          "avabasic-flake",
           "nixpkgs"
         ]
       },
@@ -106,13 +81,36 @@
     "langref": {
       "flake": false,
       "locked": {
-        "narHash": "sha256-O6p2tiKD8ZMhSX+DeA/o5hhAvcPkU2J9lFys/r11peY=",
+        "narHash": "sha256-1I8Eut7rSqCayxqV5npFujw7l++Ul5NCBUa62hGhOlA=",
         "type": "file",
-        "url": "https://raw.githubusercontent.com/ziglang/zig/0fb2015fd3422fc1df364995f9782dfe7255eccd/doc/langref.html.in"
+        "url": "https://raw.githubusercontent.com/ziglang/zig/eb7f318ea897d51082b70c84591242735c8a2c53/doc/langref.html.in"
       },
       "original": {
         "type": "file",
-        "url": "https://raw.githubusercontent.com/ziglang/zig/0fb2015fd3422fc1df364995f9782dfe7255eccd/doc/langref.html.in"
+        "url": "https://raw.githubusercontent.com/ziglang/zig/eb7f318ea897d51082b70c84591242735c8a2c53/doc/langref.html.in"
+      }
+    },
+    "niar-flake": {
+      "inputs": {
+        "flake-utils": [
+          "flake-utils"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1723969647,
+        "narHash": "sha256-6J16RhswizuuMh+z9jOU8gKZnfsqo7Na24ID2JDJ0pw=",
+        "ref": "refs/heads/main",
+        "rev": "bf3738f77760ae6f4e942e2cb1639f5c9461a937",
+        "revCount": 69,
+        "type": "git",
+        "url": "https://git.sr.ht/~kivikakk/niar"
+      },
+      "original": {
+        "type": "git",
+        "url": "https://git.sr.ht/~kivikakk/niar"
       }
     },
     "nixpkgs": {
@@ -133,11 +131,10 @@
     },
     "root": {
       "inputs": {
-        "avabasic": "avabasic",
+        "avabasic-flake": "avabasic-flake",
         "flake-utils": "flake-utils",
-        "nixpkgs": "nixpkgs",
-        "zig-overlay": "zig-overlay",
-        "zls-flake": "zls-flake"
+        "niar-flake": "niar-flake",
+        "nixpkgs": "nixpkgs"
       }
     },
     "systems": {
@@ -159,18 +156,20 @@
       "inputs": {
         "flake-compat": "flake-compat",
         "flake-utils": [
+          "avabasic-flake",
           "flake-utils"
         ],
         "nixpkgs": [
+          "avabasic-flake",
           "nixpkgs"
         ]
       },
       "locked": {
-        "lastModified": 1722946212,
-        "narHash": "sha256-N9keJLRSjjDSyMuFKo+Z6oovBEbnkbLrNAu1Vu89oQk=",
+        "lastModified": 1723940915,
+        "narHash": "sha256-73au9Xg3L1OD5BEvapD0M0ONdbrsS5YDTcSWytBJ8Iw=",
         "owner": "mitchellh",
         "repo": "zig-overlay",
-        "rev": "2df0d6c6d32ba6ee74d889a27a32bd7a95464111",
+        "rev": "8619199983f527e5fa15681497d2f19b7c5aec28",
         "type": "github"
       },
       "original": {
@@ -182,23 +181,29 @@
     "zls-flake": {
       "inputs": {
         "flake-utils": [
+          "avabasic-flake",
           "flake-utils"
         ],
-        "gitignore": "gitignore_2",
+        "gitignore": [
+          "avabasic-flake",
+          "gitignore"
+        ],
         "langref": "langref",
         "nixpkgs": [
+          "avabasic-flake",
           "nixpkgs"
         ],
         "zig-overlay": [
+          "avabasic-flake",
           "zig-overlay"
         ]
       },
       "locked": {
-        "lastModified": 1722987529,
-        "narHash": "sha256-r7tnq70psZQXfLlDj+XzidBj352vfQFrICC7hfKHw7M=",
+        "lastModified": 1723832292,
+        "narHash": "sha256-5hg/tylDkhM6zl8FMV9xsgl/BVJeySNG6GLh4PL/O6o=",
         "owner": "zigtools",
         "repo": "zls",
-        "rev": "d8084a342f40b444addf772fdef36a589299ebe6",
+        "rev": "71bf10b4889ac13694618d131cb8b60cb30db3f6",
         "type": "github"
       },
       "original": {
