@@ -126,7 +126,7 @@
 
         buildInputs = [
           pkgs.python3
-          pkgs.pdm
+          pkgs.uv
           zig
           zls
           avabasic
