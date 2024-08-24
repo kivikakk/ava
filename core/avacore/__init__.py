@@ -11,6 +11,7 @@ class AvaCore(niar.Project):
     top = rtl.Top
     targets = [icebreaker]
     cxxrtl_targets = [cxxrtl]
+    externals = ["avacore/VexRiscv.v"]
 
 
 def main():
