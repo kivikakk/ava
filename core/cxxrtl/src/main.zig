@@ -16,8 +16,11 @@ pub fn main() !void {
     defer sim_controller.joinDeinit();
 
     while (sim_controller.lockIfRunning()) {
-        {
-            defer sim_controller.unlock();
+        defer sim_controller.unlock();
+        if (sim_controller.tickNumber() > 20_000) {
+            sim_controller.halt();
         }
     }
+
+    std.debug.print("finished at tick number {d}\n", .{sim_controller.tickNumber()});
 }

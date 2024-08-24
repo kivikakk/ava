@@ -60,9 +60,11 @@ pub fn run(self: *SimThread) !void {
         switch (self.uart_connector.tick()) {
             .nop => {},
             .data => |b| {
-                std.debug.print("got byte: {x:0>2}\n", .{b});
+                std.debug.print("{c}", .{b});
             },
         }
+
+        self.tick();
     }
 
     try self.writeVcd();

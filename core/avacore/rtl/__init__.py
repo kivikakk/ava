@@ -13,11 +13,12 @@ __all__ = ["Top"]
 
 CODE = [
     0x80000537,  # lui a0, 0x80000
-    0x3e800593,  # li a1, 1000
-    0x00b52023,  # sw a1, 0(a0)
-    0x7d000593,  # li a1, 2000
-    0x00b52023,  # sw a1, 0(a0)
-    0xfedff06f,  # jal x0, -20
+    0x04800593,  # li a1, 0x48
+    0x00b50023,  # sb a1, 0(a0)
+    0x00158593,  # addi a1, a1, 1
+    0x00b50023,  # sb a1, 0(a0)
+    0xff1ff06f,  # jal x0, -16
+    0x0,
 ]
 
 class Top(wiring.Component):
@@ -113,12 +114,10 @@ class Top(wiring.Component):
             with m.State('init'):
                 m.d.comb += i_iBus_cmd_ready.eq(1)
                 with m.If(o_iBus_cmd_valid):
-                    m.d.sync += imem_rp.addr.eq(o_iBus_cmd_payload_pc)
+                    m.d.sync += imem_rp.addr.eq(o_iBus_cmd_payload_pc >> 2)
                     m.next = 'read.wait'
 
             with m.State('read.wait'):
-                m.next = 'read.wait2'
-            with m.State('read.wait2'):
                 m.next = 'read.present'
 
             with m.State('read.present'):
@@ -135,6 +134,8 @@ class Top(wiring.Component):
         with m.FSM():
             with m.State('init'):
                 m.d.comb += i_dBus_cmd_ready.eq(1)
+                # Currently using GenSmallest which sets IBusSimplePlugin.cmdForkPersistence=false,
+                # so we ack at once and save anything we need.
                 with m.If(o_dBus_cmd_valid):
                     m.d.sync += [
                         wr.eq(o_dBus_cmd_payload_wr),
@@ -143,76 +144,14 @@ class Top(wiring.Component):
                         data.eq(o_dBus_cmd_payload_data),
                         size.eq(o_dBus_cmd_payload_size),
                     ]
-                    m.next = 'write.wr'
+                    m.next = 'write.consider'
 
-            with m.State('write.wr'):
-                m.d.comb += uart.wr.p.eq(wr)
-                m.d.comb += uart.wr.valid.eq(1)
-                with m.If(uart.wr.ready):
-                    m.next = 'write.mask'
-
-            with m.State('write.mask'):
-                m.d.comb += uart.wr.p.eq(mask)
-                m.d.comb += uart.wr.valid.eq(1)
-                with m.If(uart.wr.ready):
-                    m.next = 'write.address0'
-
-            with m.State('write.address0'):
-                m.d.comb += uart.wr.p.eq(address[0:8])
-                m.d.comb += uart.wr.valid.eq(1)
-                with m.If(uart.wr.ready):
-                    m.next = 'write.address1'
-
-            with m.State('write.address1'):
-                m.d.comb += uart.wr.p.eq(address[8:16])
-                m.d.comb += uart.wr.valid.eq(1)
-                with m.If(uart.wr.ready):
-                    m.next = 'write.address2'
-
-            with m.State('write.address2'):
-                m.d.comb += uart.wr.p.eq(address[16:24])
-                m.d.comb += uart.wr.valid.eq(1)
-                with m.If(uart.wr.ready):
-                    m.next = 'write.address3'
-
-            with m.State('write.address3'):
-                m.d.comb += uart.wr.p.eq(address[24:32])
-                m.d.comb += uart.wr.valid.eq(1)
-                with m.If(uart.wr.ready):
-                    m.next = 'write.data0'
-
-            with m.State('write.data0'):
-                m.d.comb += uart.wr.p.eq(data[0:8])
-                m.d.comb += uart.wr.valid.eq(1)
-                with m.If(uart.wr.ready):
-                    m.next = 'write.data1'
-
-            with m.State('write.data1'):
-                m.d.comb += uart.wr.p.eq(data[8:16])
-                m.d.comb += uart.wr.valid.eq(1)
-                with m.If(uart.wr.ready):
-                    m.next = 'write.data2'
-
-            with m.State('write.data2'):
-                m.d.comb += uart.wr.p.eq(data[16:24])
-                m.d.comb += uart.wr.valid.eq(1)
-                with m.If(uart.wr.ready):
-                    m.next = 'write.data3'
-
-            with m.State('write.data3'):
-                m.d.comb += uart.wr.p.eq(data[24:32])
-                m.d.comb += uart.wr.valid.eq(1)
-                with m.If(uart.wr.ready):
-                    m.next = 'write.size'
-
-            with m.State('write.size'):
-                m.d.comb += uart.wr.p.eq(size)
-                m.d.comb += uart.wr.valid.eq(1)
-                with m.If(uart.wr.ready):
-                    m.next = 'finish'
-
-            with m.State('finish'):
+            with m.State('write.consider'):
                 m.d.comb += i_dBus_rsp_ready.eq(1)
                 m.next = 'init'
+
+                with m.If(wr & (address == 0x8000_0000) & (size == 0)):
+                    m.d.comb += uart.wr.p.eq(data[:8])
+                    m.d.comb += uart.wr.valid.eq(1)
 
         return m
