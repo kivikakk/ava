@@ -34,10 +34,11 @@ class UART(Component):
             pins=self.plat_uart)
 
         # tx
-        m.submodules.tx_fifo = tx_fifo = SyncFIFOBuffered(width=8, depth=8)
+        m.submodules.tx_fifo = tx_fifo = SyncFIFOBuffered(width=8, depth=16)
         m.d.comb += [
             tx_fifo.w_data.eq(self.wr.payload),
             tx_fifo.w_en.eq(self.wr.valid),
+            self.wr.ready.eq(tx_fifo.w_rdy),
         ]
         with m.FSM() as fsm:
             with m.State("idle"):

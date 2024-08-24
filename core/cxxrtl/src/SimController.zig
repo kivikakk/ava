@@ -57,15 +57,6 @@ pub fn tickNumber(self: *const SimController) usize {
     return self.tick_number;
 }
 
-pub fn maybeUpdateImgData(self: *SimController, img_data: *SimThread.ImgData) bool {
-    if (!self.state.img_data_new)
-        return false;
-
-    img_data.* = self.state.img_data;
-    self.state.img_data_new = false;
-    return true;
-}
-
 pub fn halt(self: *SimController) void {
     self.running = false;
 }
