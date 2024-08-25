@@ -1,4 +1,7 @@
+import struct
 from dataclasses import dataclass
+from itertools import chain
+from pathlib import Path
 
 from amaranth import *
 from amaranth.lib import wiring
@@ -8,18 +11,12 @@ from amaranth.lib.wiring import In, Out
 from ..targets import cxxrtl, icebreaker
 from .uart import UART
 
+
 __all__ = ["Top"]
 
+core = (Path(__file__).parent.parent.parent.parent / "basic" / "zig-out" / "bin" / "avacore.bin").read_bytes()
+CODE = list(chain.from_iterable(struct.iter_unpack('<L', core))) + [0]
 
-CODE = [
-    0x80000537,  # lui a0, 0x80000
-    0x04800593,  # li a1, 0x48
-    0x00b50023,  # sb a1, 0(a0)
-    0x00158593,  # addi a1, a1, 1
-    0x00b50023,  # sb a1, 0(a0)
-    0xff1ff06f,  # jal x0, -16
-    0x0,
-]
 
 class Top(wiring.Component):
     def __init__(self, platform):
