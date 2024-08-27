@@ -46,6 +46,10 @@ pub fn deinit(self: *SimThread) void {
 }
 
 pub fn run(self: *SimThread) !void {
+    var state: enum { init, rf, after } = .init;
+    var buf: [4]u8 = undefined;
+    var i: usize = 0;
+
     self.tick();
     while (self.sim_controller.lockIfRunning()) {
         defer self.sim_controller.unlock();
@@ -53,12 +57,30 @@ pub fn run(self: *SimThread) !void {
 
         switch (self.uart_connector.tick()) {
             .nop => {},
-            .data => |b| {
-                std.debug.print("{c}", .{b});
+            .data => |b| switch (state) {
+                .init => {
+                    std.debug.print("{c}", .{b});
 
-                if (b == ' ') {
-                    try self.uart_connector.tx_buffer.appendSlice("ooh!lala");
-                }
+                    if (b == '%') {
+                        const f = packed struct { a: f32, b: f32 }{ .a = 257782.48852, .b = 1.5379 };
+                        try self.uart_connector.tx_buffer.writer().writeStruct(f);
+                        state = .rf;
+                    }
+                },
+                .rf => {
+                    std.debug.print("[{x:0>2}]", .{b});
+                    buf[i] = b;
+                    i += 1;
+                    if (i == 4) {
+                        var f: [1]f32 = undefined;
+                        @memcpy(std.mem.sliceAsBytes(f[0..]), buf[0..]);
+                        std.debug.print("({d})", .{f});
+                        state = .after;
+                    }
+                },
+                .after => {
+                    std.debug.print("{c}", .{b});
+                },
             },
         }
 
