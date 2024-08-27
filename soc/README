@@ -1,19 +1,15 @@
-Ava BASIC
-=========
+Ava BASIC SoC
+============================
 
-https://sr.ht/~kivikakk/ava
-    git: https://git.sr.ht/~kivikakk/ava
-   todo: https://todo.sr.ht/~kivikakk/ava
-  lists: https://sr.ht/~kivikakk/ava/lists
+`python -m avasoc build -b icebreaker -p` will build for iCEBreaker and program.
 
-basic/
-  Compiler and stack machine interpreter.
+`python -m avasoc cxxrtl` will build and run the CXXRTL/Zig simulation.
 
-basic/core/
-  RISC-V stack machine core.
+`python -m avasoc` for usage.
 
-soc/
-  SoC integrating VexRiscv.
+A `flake.nix` is provided -- you can directly run:
+
+  nix run 'git+https://git.sr.ht/~kivikakk/ava?dir=soc'
 
 
 Legal

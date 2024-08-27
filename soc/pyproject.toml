@@ -1,0 +1,36 @@
+[project]
+name = "avasoc"
+version = "0.0"
+description = ""
+authors = [
+    {name = "Asherah Connor", email = "ashe@kivikakk.ee"},
+]
+dependencies = [
+    "niar @ git+https://git.sr.ht/~kivikakk/niar@bf3738f77760ae6f4e942e2cb1639f5c9461a937",
+    "amaranth-stdio @ git+https://github.com/kivikakk/amaranth-stdio@ca4fac262a2290495c82d76aa785bd8707afa781",
+]
+requires-python = ">=3.8"
+license = {text = "GPL-3.0-or-later"}
+
+[project.urls]
+Homepage = "https://sr.ht/~kivikakk/ava"
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[project.scripts]
+avasoc = "avasoc:main"
+
+[tool.pdm.dev-dependencies]
+test = [
+    "amaranth-boards @ git+https://github.com/amaranth-lang/amaranth-boards@19b97324ecf9111c5d16377af79f82aad761c476",
+    "pytest>=8.2.2",
+    "pytest-xdist>=3.6.1",
+    "pytest-watcher>=0.4.2",
+]
+
+[tool.pytest.ini_options]
+addopts = ["-n", "auto"]
+testpaths = ["tests"]
+markers = ["slow"]
