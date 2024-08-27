@@ -43,6 +43,7 @@ pub fn tick(self: *UartConnector) Tick {
 
     switch (self.tx_state) {
         .idle => {
+            self.tx.next(true);
             if (self.tx_buffer.items.len > 0) {
                 const item = self.tx_buffer.orderedRemove(0);
 

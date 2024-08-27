@@ -14,11 +14,23 @@ from .uart import UART
 
 __all__ = ["Top"]
 
-core = (Path(__file__).parent.parent.parent.parent / "basic" / "zig-out" / "bin" / "avacore.bin").read_bytes()
-CODE = list(chain.from_iterable(struct.iter_unpack('<L', core))) + [0]
 
+def wonk(path):
+    b = path.read_bytes()
+    while len(b) % 4 != 0:
+        b += b'\0'
+    return list(chain.from_iterable(struct.iter_unpack('<L', b)))
+
+
+basic = Path(__file__).parent.parent.parent.parent / "basic"
+IMEM = wonk(basic / "zig-out" / "bin" / "avacore.imem.bin") + [0x0]
+DMEM = wonk(basic / "zig-out" / "bin" / "avacore.dmem.bin")
 
 class Top(wiring.Component):
+    DMEM_DEPTH = 1024 // 32
+    DMEM_BASE = 0x4000_0000
+    UART_BASE = 0x8000_0000
+
     def __init__(self, platform):
         if isinstance(platform, cxxrtl):
             super().__init__({
@@ -104,11 +116,13 @@ class Top(wiring.Component):
 
         m.submodules.uart = uart = UART(plat_uart)
 
-        m.submodules.imem = imem = Memory(shape=32, depth=len(CODE), init=CODE)
+        m.submodules.imem = imem = Memory(shape=32, depth=len(IMEM), init=IMEM)
         imem_rp = imem.read_port()
 
         with m.FSM():
             with m.State('init'):
+                # Currently using GenSmallest which sets IBusSimplePlugin.cmdForkPersistence=false,
+                # so we ack at once and save anything we need.
                 m.d.comb += i_iBus_cmd_ready.eq(1)
                 with m.If(o_iBus_cmd_valid):
                     m.d.sync += imem_rp.addr.eq(o_iBus_cmd_payload_pc >> 2)
@@ -122,17 +136,28 @@ class Top(wiring.Component):
                 m.d.comb += i_iBus_rsp_payload_inst.eq(imem_rp.data)
                 m.next = 'init'
 
+        assert len(DMEM) <= self.DMEM_DEPTH
+        m.submodules.dmem = dmem = Memory(shape=32, depth=self.DMEM_DEPTH, init=DMEM)
+        dmem_wp = dmem.write_port(granularity=8)
+        dmem_rp = dmem.read_port(transparent_for=[dmem_wp])
+
         wr = Signal()
         mask = Signal(4)
         address = Signal(32)
         data = Signal(32)
         size = Signal(2)
 
+        dmem_addr = Signal.like(dmem_wp.addr)
+        m.d.comb += dmem_addr.eq(address >> 2)
+
+        unhandled_dbus = lambda: Print(Format(
+            "unhandled dBus {} at {:08x} mask {:04b} size {} (data {:08x})",
+            wr, address, mask, size, data,
+        ))
+
         with m.FSM():
             with m.State('init'):
                 m.d.comb += i_dBus_cmd_ready.eq(1)
-                # Currently using GenSmallest which sets IBusSimplePlugin.cmdForkPersistence=false,
-                # so we ack at once and save anything we need.
                 with m.If(o_dBus_cmd_valid):
                     m.d.sync += [
                         wr.eq(o_dBus_cmd_payload_wr),
@@ -141,14 +166,48 @@ class Top(wiring.Component):
                         data.eq(o_dBus_cmd_payload_data),
                         size.eq(o_dBus_cmd_payload_size),
                     ]
-                    m.next = 'write.consider'
+                    m.next = 'consider'
 
-            with m.State('write.consider'):
-                m.d.comb += i_dBus_rsp_ready.eq(1)
+            with m.State('consider'):
+                assert (self.DMEM_BASE & 0x00FF_FFFF) == 0
+                with m.If(address[24:] == (self.DMEM_BASE >> 24)):
+                    with m.If(wr):
+                        # m.d.sync += Print(Format(
+                        #     "[d WR @ {:06x} s{} #{:04b} = {:08x}]",
+                        #     dmem_addr, size, mask, data,
+                        # ))
+                        m.d.comb += [
+                            dmem_wp.addr.eq(dmem_addr),
+                            dmem_wp.data.eq(data),
+                            dmem_wp.en.eq(mask),
+                        ]
+                        m.d.comb += i_dBus_rsp_ready.eq(1)
+                        m.next = 'init'
+                    with m.Else():
+                        m.d.comb += dmem_rp.addr.eq(dmem_addr)
+                        m.next = 'read'
+                with m.Elif((address == self.UART_BASE) & (size == 0)):
+                    m.d.comb += i_dBus_rsp_ready.eq(1)
+                    m.next = 'init'
+                    with m.If(wr):
+                        m.d.comb += uart.wr.p.eq(data[:8])
+                        m.d.comb += uart.wr.valid.eq(1)
+                    with m.Else():
+                        m.d.comb += i_dBus_rsp_data.eq(Mux(uart.rd.valid, uart.rd.p, 0))
+                        m.d.comb += uart.rd.ready.eq(1)
+                with m.Else():
+                    m.d.sync += unhandled_dbus()
+                    m.d.comb += i_dBus_rsp_ready.eq(1)
+                    m.d.comb += i_dBus_rsp_error.eq(1)
+                    m.next = 'init'
+
+            with m.State('read'):
+                # m.d.sync += Print(Format(
+                #     "[d RD @ {:06x} s{} #{:04b} = {:08x}]",
+                #     dmem_addr, size, mask, dmem_rp.data,
+                # ))
                 m.next = 'init'
-
-                with m.If(wr & (address == 0x8000_0000) & (size == 0)):
-                    m.d.comb += uart.wr.p.eq(data[:8])
-                    m.d.comb += uart.wr.valid.eq(1)
+                m.d.comb += i_dBus_rsp_ready.eq(1)
+                m.d.comb += i_dBus_rsp_data.eq(dmem_rp.data)
 
         return m

@@ -34,7 +34,7 @@ class UART(Component):
             pins=self.plat_uart)
 
         # tx
-        m.submodules.tx_fifo = tx_fifo = SyncFIFOBuffered(width=8, depth=16)
+        m.submodules.tx_fifo = tx_fifo = SyncFIFOBuffered(width=8, depth=32)
         m.d.comb += [
             tx_fifo.w_data.eq(self.wr.payload),
             tx_fifo.w_en.eq(self.wr.valid),
@@ -55,7 +55,7 @@ class UART(Component):
             ]
 
         # rx
-        m.submodules.rx_fifo = rx_fifo = SyncFIFOBuffered(width=8, depth=8)
+        m.submodules.rx_fifo = rx_fifo = SyncFIFOBuffered(width=8, depth=32)
         m.d.comb += [
             self.rd.valid.eq(rx_fifo.r_rdy),
             self.rd.payload.eq(rx_fifo.r_data),
@@ -68,10 +68,11 @@ class UART(Component):
                     m.next = "read"
 
             with m.State("read"):
-                m.d.sync += [
-                    rx_fifo.w_data.eq(serial.rx.data),
-                    rx_fifo.w_en.eq(1),
-                ]
+                with m.If(serial.rx.err.as_value() == 0):
+                    m.d.sync += [
+                        rx_fifo.w_data.eq(serial.rx.data),
+                        rx_fifo.w_en.eq(1),
+                    ]
                 m.next = "idle"
 
             m.d.comb += serial.rx.ack.eq(fsm.ongoing("idle"))

@@ -46,13 +46,7 @@ pub fn deinit(self: *SimThread) void {
 }
 
 pub fn run(self: *SimThread) !void {
-    self.sim_controller.lock();
-    self.rst.next(true);
     self.tick();
-    self.tick();
-    self.rst.next(false);
-    self.sim_controller.unlock();
-
     while (self.sim_controller.lockIfRunning()) {
         defer self.sim_controller.unlock();
         self.tick();
@@ -61,6 +55,10 @@ pub fn run(self: *SimThread) !void {
             .nop => {},
             .data => |b| {
                 std.debug.print("{c}", .{b});
+
+                if (b == ' ') {
+                    try self.uart_connector.tx_buffer.appendSlice("ooh!lala");
+                }
             },
         }
 

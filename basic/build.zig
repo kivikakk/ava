@@ -47,33 +47,45 @@ pub fn build(b: *std.Build) void {
     });
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 
-    const coreQuery = std.Target.Query{
+    const coreTarget = b.resolveTargetQuery(.{
         .cpu_arch = .riscv32,
         .cpu_model = .{ .explicit = &std.Target.riscv.cpu.generic_rv32 },
         .os_tag = .freestanding,
-    };
-    const core = b.addObject(.{
+    });
+    const core = b.addExecutable(.{
         .name = "avacore",
         .root_source_file = b.path("src/core.zig"),
-        .target = b.resolveTargetQuery(coreQuery),
+        .target = coreTarget,
         .optimize = .ReleaseSmall,
     });
-    core.root_module.code_model = .small; // ?
+    core.root_module.code_model = .medium;
     core.setLinkerScript(b.path("src/core.ld"));
     core.setVerboseLink(true);
+    core.entry = .disabled;
+    core.addAssemblyFile(b.path("src/core-crt0.S"));
     const coreInst = b.addInstallArtifact(core, .{ .dest_dir = .{ .override = .bin } });
 
-    const coreBin = b.addSystemCommand(&.{
+    const coreImemBin = b.addSystemCommand(&.{
         "llvm-objcopy",
+        "--output-target=binary",
         "-j",
         ".text",
-        "--output-target=binary",
-        "zig-out/bin/avacore.o",
-        "zig-out/bin/avacore.bin",
+        "zig-out/bin/avacore",
+        "zig-out/bin/avacore.imem.bin",
     });
-    coreBin.step.dependOn(&coreInst.step);
+    coreImemBin.step.dependOn(&coreInst.step);
+    b.getInstallStep().dependOn(&coreImemBin.step);
 
-    b.getInstallStep().dependOn(&coreBin.step);
+    const coreDmemBin = b.addSystemCommand(&.{
+        "llvm-objcopy",
+        "--output-target=binary",
+        "-j",
+        ".data",
+        "zig-out/bin/avacore",
+        "zig-out/bin/avacore.dmem.bin",
+    });
+    coreDmemBin.step.dependOn(&coreInst.step);
+    b.getInstallStep().dependOn(&coreDmemBin.step);
 
     const core_unit_tests = b.addTest(.{
         .root_source_file = b.path("src/core.zig"),
