@@ -17,6 +17,7 @@ clk: Cxxrtl.Object(bool),
 rst: Cxxrtl.Object(bool),
 
 uart_connector: UartConnector,
+running: Cxxrtl.Object(bool),
 
 pub fn init(alloc: Allocator, sim_controller: *SimController) SimThread {
     const cxxrtl = Cxxrtl.init();
@@ -28,6 +29,7 @@ pub fn init(alloc: Allocator, sim_controller: *SimController) SimThread {
     const rst = cxxrtl.get(bool, "rst");
 
     const uart_connector = UartConnector.init(cxxrtl, alloc);
+    const running = cxxrtl.get(bool, "running");
 
     return .{
         .sim_controller = sim_controller,
@@ -37,10 +39,12 @@ pub fn init(alloc: Allocator, sim_controller: *SimController) SimThread {
         .clk = clk,
         .rst = rst,
         .uart_connector = uart_connector,
+        .running = running,
     };
 }
 
 pub fn deinit(self: *SimThread) void {
+    self.uart_connector.deinit();
     if (self.vcd) |*vcd| vcd.deinit();
     self.cxxrtl.deinit();
 }
@@ -82,6 +86,10 @@ pub fn run(self: *SimThread) !void {
                     std.debug.print("{c}", .{b});
                 },
             },
+        }
+
+        if (!self.running.curr()) {
+            self.sim_controller.halt();
         }
 
         self.tick();

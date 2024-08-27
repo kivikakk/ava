@@ -3,7 +3,7 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const yosys_data_dir = b.option([]const u8, "yosys_data_dir", "yosys data dir (per yosys-config --datdir)") orelse @import("zxxrtl").guessYosysDataDir(b);
     const cxxrtl_o_paths = b.option([][]const u8, "cxxrtl_o_path", "path to .o file to link against") orelse
-        &[_][]const u8{"../build/cxxrtl/avacore.o"};
+        &[_][]const u8{"../build/cxxrtl/avasoc.o"};
     const clock_hz = b.option(usize, "clock_hz", "clock speed the gateware is elaborated at in Hz") orelse 1_000_000;
 
     const target = b.standardTargetOptions(.{});

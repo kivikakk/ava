@@ -83,7 +83,7 @@ const AvaBasicBuild = struct {
         });
         const core = self.b.addExecutable(.{
             .name = "avacore",
-            .root_source_file = self.b.path("src/core/main.zig"),
+            .root_source_file = self.b.path("src/core/root.zig"),
             .target = core_target,
             .optimize = .ReleaseSafe,
             // .optimize = .ReleaseSmall,
@@ -118,7 +118,7 @@ const AvaBasicBuild = struct {
         self.b.getInstallStep().dependOn(&core_dmem_bin.step);
 
         const core_unit_tests = self.b.addTest(.{
-            .root_source_file = self.b.path("src/core.zig"),
+            .root_source_file = self.b.path("src/core/root.zig"),
             .target = self.host_target,
             .optimize = self.host_optimize,
         });

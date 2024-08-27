@@ -1,5 +1,5 @@
 {
-  description = "Ava BASIC core development environment";
+  description = "Ava BASIC SoC development environment";
 
   inputs = {
     nixpkgs.url = github:NixOS/nixpkgs/nixos-unstable;
@@ -73,7 +73,7 @@
       formatter = pkgs.alejandra;
 
       packages.default = python.pkgs.buildPythonApplication {
-        name = "avacore";
+        name = "avasoc";
         src = ./.;
         pyproject = true;
 
@@ -93,18 +93,18 @@
         ];
 
         postFixup = ''
-          wrapProgram $out/bin/avacore \
+          wrapProgram $out/bin/avasoc \
             --run 'export NIAR_WORKING_DIRECTORY="$(pwd)"'
         '';
       };
 
       apps.default = {
         type = "app";
-        program = "${packages.default}/bin/avacore";
+        program = "${packages.default}/bin/avasoc";
       };
 
       devShells.default = pkgs.mkShell {
-        name = "avacore";
+        name = "avasoc";
 
         buildInputs = with python.pkgs; [
           python-lsp-server
@@ -122,7 +122,7 @@
       };
 
       devShells.pure-python = pkgs.mkShell {
-        name = "avacore-pure-python";
+        name = "avasoc-pure-python";
 
         buildInputs = [
           pkgs.python3

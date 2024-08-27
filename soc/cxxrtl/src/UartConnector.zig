@@ -36,6 +36,10 @@ pub fn init(cxxrtl: Cxxrtl, alloc: Allocator) UartConnector {
     };
 }
 
+pub fn deinit(self: *UartConnector) void {
+    self.tx_buffer.deinit();
+}
+
 pub fn tick(self: *UartConnector) Tick {
     const rx = self.rx.tick();
 

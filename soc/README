@@ -1,15 +1,15 @@
-Ava BASIC FPGA stack machine
+Ava BASIC SoC
 ============================
 
-`python -m avacore build -b icebreaker -p` will build for iCEBreaker and program.
+`python -m avasoc build -b icebreaker -p` will build for iCEBreaker and program.
 
-`python -m avacore cxxrtl` will build and run the CXXRTL/Zig simulation.
+`python -m avasoc cxxrtl` will build and run the CXXRTL/Zig simulation.
 
-`python -m avacore` for usage.
+`python -m avasoc` for usage.
 
 A `flake.nix` is provided -- you can directly run:
 
-  nix run 'git+https://git.sr.ht/~kivikakk/ava?dir=core'
+  nix run 'git+https://git.sr.ht/~kivikakk/ava?dir=soc'
 
 
 Legal

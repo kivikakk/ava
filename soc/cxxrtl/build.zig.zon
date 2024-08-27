@@ -1,5 +1,5 @@
 .{
-    .name = "avacore-cxxrtl",
+    .name = "avasoc-cxxrtl",
     .version = "0.0.0",
 
     .dependencies = .{

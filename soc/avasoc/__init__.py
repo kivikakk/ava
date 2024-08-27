@@ -3,16 +3,16 @@ import niar
 from . import rtl
 from .targets import cxxrtl, icebreaker
 
-__all__ = ["AvaCore", "main"]
+__all__ = ["AvaSoc", "main"]
 
 
-class AvaCore(niar.Project):
-    name = "avacore"
+class AvaSoc(niar.Project):
+    name = "avasoc"
     top = rtl.Top
     targets = [icebreaker]
     cxxrtl_targets = [cxxrtl]
-    externals = ["avacore/VexRiscv.v"]
+    externals = ["avasoc/VexRiscv.v"]
 
 
 def main():
-    AvaCore().main()
+    AvaSoc().main()

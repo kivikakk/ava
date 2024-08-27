@@ -1,5 +1,5 @@
 [project]
-name = "avacore"
+name = "avasoc"
 version = "0.0"
 description = ""
 authors = [
@@ -20,7 +20,7 @@ requires = ["pdm-backend"]
 build-backend = "pdm.backend"
 
 [project.scripts]
-avacore = "avacore:main"
+avasoc = "avasoc:main"
 
 [tool.pdm.dev-dependencies]
 test = [

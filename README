@@ -7,10 +7,13 @@ https://sr.ht/~kivikakk/ava
   lists: https://sr.ht/~kivikakk/ava/lists
 
 basic/
-  Compiler and host-side stack machine interpreter.
+  Compiler and stack machine interpreter.
 
-core/
-  FPGA stack machine.
+basic/core/
+  RISC-V stack machine core.
+
+soc/
+  SoC integrating VexRiscv.
 
 
 Legal
