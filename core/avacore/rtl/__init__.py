@@ -15,7 +15,7 @@ from .uart import UART
 __all__ = ["Top"]
 
 
-def wonk(path):
+def wonk32(path):
     b = path.read_bytes()
     while len(b) % 4 != 0:
         b += b'\0'
@@ -23,13 +23,17 @@ def wonk(path):
 
 
 basic = Path(__file__).parent.parent.parent.parent / "basic"
-IMEM = wonk(basic / "zig-out" / "bin" / "avacore.imem.bin") + [0x0]
-DMEM = wonk(basic / "zig-out" / "bin" / "avacore.dmem.bin")
+# vexriscv will always read one past a jump.
+IMEM = wonk32(basic / "zig-out" / "bin" / "avacore.imem.bin") + [0]
+DMEM = wonk32(basic / "zig-out" / "bin" / "avacore.dmem.bin")
 
 class Top(wiring.Component):
-    DMEM_DEPTH = 1024 // 32
+    DMEM_BYTES       = 4096  # Must correspond to what we set our stack pointer to in crt0.S.
+    DMEM_STACK_BYTES = 1024  # XXX: we should be able to determine this with Zig.
+
     DMEM_BASE = 0x4000_0000
     UART_BASE = 0x8000_0000
+    CSR_EXIT  = 0x8000_ffff
 
     def __init__(self, platform):
         if isinstance(platform, cxxrtl):
@@ -136,8 +140,9 @@ class Top(wiring.Component):
                 m.d.comb += i_iBus_rsp_payload_inst.eq(imem_rp.data)
                 m.next = 'init'
 
-        assert len(DMEM) <= self.DMEM_DEPTH
-        m.submodules.dmem = dmem = Memory(shape=32, depth=self.DMEM_DEPTH, init=DMEM)
+        assert self.DMEM_BYTES % 4 == 0
+        assert len(DMEM) * 4 + self.DMEM_STACK_BYTES <= self.DMEM_BYTES
+        m.submodules.dmem = dmem = Memory(shape=32, depth=self.DMEM_BYTES // 4, init=DMEM)
         dmem_wp = dmem.write_port(granularity=8)
         dmem_rp = dmem.read_port(transparent_for=[dmem_wp])
 
@@ -193,8 +198,16 @@ class Top(wiring.Component):
                         m.d.comb += uart.wr.p.eq(data[:8])
                         m.d.comb += uart.wr.valid.eq(1)
                     with m.Else():
-                        m.d.comb += i_dBus_rsp_data.eq(Mux(uart.rd.valid, uart.rd.p, 0))
                         m.d.comb += uart.rd.ready.eq(1)
+                        m.d.comb += i_dBus_rsp_data.eq(Mux(uart.rd.valid, uart.rd.p, 0))
+                with m.Elif((address == self.UART_BASE) & (size == 1) & ~wr):
+                    m.d.comb += uart.rd.ready.eq(1)
+                    m.d.comb += i_dBus_rsp_data.eq(Cat(uart.rd.p, uart.rd.valid))
+                    m.d.comb += i_dBus_rsp_ready.eq(1)
+                    m.next = 'init'
+                with m.Elif((address == self.CSR_EXIT) & (size == 0) & wr & data[0]):
+                    m.d.sync += Print("\nCSR_EXIT signalled -- stopped")
+                    m.next = 'stopped'
                 with m.Else():
                     m.d.sync += unhandled_dbus()
                     m.d.comb += i_dBus_rsp_ready.eq(1)
@@ -209,5 +222,9 @@ class Top(wiring.Component):
                 m.next = 'init'
                 m.d.comb += i_dBus_rsp_ready.eq(1)
                 m.d.comb += i_dBus_rsp_data.eq(dmem_rp.data)
+
+            with m.State('stopped'):
+                # TODO: this is only the dmem controller. signal higher and stop there.
+                pass
 
         return m

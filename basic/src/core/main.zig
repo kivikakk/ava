@@ -1,12 +1,23 @@
 const std = @import("std");
 
 const UART: *volatile u8 = @ptrFromInt(0x8000_0000);
+const UART_STATUS: *volatile u16 = @ptrFromInt(0x8000_0000);
+const CSR_EXIT: *volatile u8 = @ptrFromInt(0x8000_ffff);
 
 pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
-    _ = msg;
     _ = error_return_trace;
     _ = ret_addr;
-    while (true) {}
+
+    writeUart("\n!!! Panic: ");
+    writeUart(msg);
+    writeUart("\n");
+
+    core_exit();
+}
+
+pub export fn core_exit() noreturn {
+    CSR_EXIT.* = 1;
+    unreachable;
 }
 
 pub export fn core_start_zig() void {
@@ -25,11 +36,11 @@ pub export fn core_start_zig() void {
     var f: [2]f32 = undefined;
     @memcpy(std.mem.sliceAsBytes(f[0..]), &buf);
 
-    f[0] = f[0] / f[1];
-
+    f[0] = @floatFromInt(@as(u32, @intFromFloat(f[0])) / @as(u32, @intFromFloat(f[1])));
     @memcpy(buf[0..4], std.mem.sliceAsBytes(f[0..1]));
-
     writeUart(buf[0..4]);
+
+    @panic("test panic");
 }
 
 fn writeUart(m: []const u8) void {
@@ -39,7 +50,7 @@ fn writeUart(m: []const u8) void {
 
 fn readUart() u8 {
     while (true) {
-        const c = UART.*;
-        if (c != 0) return c;
+        const cs: u16 = UART_STATUS.*;
+        if (cs & 0x100 == 0x100) return @truncate(cs);
     }
 }

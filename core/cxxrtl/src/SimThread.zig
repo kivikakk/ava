@@ -62,7 +62,7 @@ pub fn run(self: *SimThread) !void {
                     std.debug.print("{c}", .{b});
 
                     if (b == '%') {
-                        const f = packed struct { a: f32, b: f32 }{ .a = 257782.48852, .b = 1.5379 };
+                        const f = packed struct { a: f32, b: f32 }{ .a = 0, .b = 0 };
                         try self.uart_connector.tx_buffer.writer().writeStruct(f);
                         state = .rf;
                     }
