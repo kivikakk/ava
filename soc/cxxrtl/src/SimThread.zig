@@ -2,13 +2,15 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Cxxrtl = @import("zxxrtl");
 
+const proto = @import("avacore").proto;
+
 const SimController = @import("./SimController.zig");
 const UartConnector = @import("./UartConnector.zig");
 
 const SimThread = @This();
 
 sim_controller: *SimController,
-alloc: std.mem.Allocator,
+allocator: std.mem.Allocator,
 
 cxxrtl: Cxxrtl,
 vcd: ?Cxxrtl.Vcd,
@@ -19,7 +21,7 @@ rst: Cxxrtl.Object(bool),
 uart_connector: UartConnector,
 running: Cxxrtl.Object(bool),
 
-pub fn init(alloc: Allocator, sim_controller: *SimController) SimThread {
+pub fn init(allocator: Allocator, sim_controller: *SimController) SimThread {
     const cxxrtl = Cxxrtl.init();
 
     var vcd: ?Cxxrtl.Vcd = null;
@@ -28,12 +30,12 @@ pub fn init(alloc: Allocator, sim_controller: *SimController) SimThread {
     const clk = cxxrtl.get(bool, "clk");
     const rst = cxxrtl.get(bool, "rst");
 
-    const uart_connector = UartConnector.init(cxxrtl, alloc);
+    const uart_connector = UartConnector.init(cxxrtl, allocator);
     const running = cxxrtl.get(bool, "running");
 
     return .{
         .sim_controller = sim_controller,
-        .alloc = alloc,
+        .allocator = allocator,
         .cxxrtl = cxxrtl,
         .vcd = vcd,
         .clk = clk,
@@ -50,42 +52,43 @@ pub fn deinit(self: *SimThread) void {
 }
 
 pub fn run(self: *SimThread) !void {
-    var state: enum { init, rf, after } = .init;
-    var buf: [4]u8 = undefined;
-    var i: usize = 0;
+    var state: enum { init, recv_hello_sz, recv_hello_b, end } = .init;
+    var hello_sz: usize = undefined;
+    var hello_b: std.ArrayListUnmanaged(u8) = undefined;
 
     self.tick();
     while (self.sim_controller.lockIfRunning()) {
         defer self.sim_controller.unlock();
         self.tick();
 
-        switch (self.uart_connector.tick()) {
-            .nop => {},
-            .data => |b| switch (state) {
-                .init => {
-                    std.debug.print("{c}", .{b});
+        const uart_tick = self.uart_connector.tick();
 
-                    if (b == '%') {
-                        const f = packed struct { a: f32, b: f32 }{ .a = 0, .b = 0 };
-                        try self.uart_connector.tx_buffer.writer().writeStruct(f);
-                        state = .rf;
-                    }
-                },
-                .rf => {
-                    std.debug.print("[{x:0>2}]", .{b});
-                    buf[i] = b;
-                    i += 1;
-                    if (i == 4) {
-                        var f: [1]f32 = undefined;
-                        @memcpy(std.mem.sliceAsBytes(f[0..]), buf[0..]);
-                        std.debug.print("({d})", .{f});
-                        state = .after;
-                    }
-                },
-                .after => {
-                    std.debug.print("{c}", .{b});
+        switch (state) {
+            .init => {
+                std.debug.assert(uart_tick == .nop);
+                try (proto.Request{ .HELLO = {} }).write(self.uart_connector.tx_buffer.writer());
+                state = .recv_hello_sz;
+            },
+            .recv_hello_sz => switch (uart_tick) {
+                .nop => {},
+                .data => |b| {
+                    std.debug.assert(b != 0);
+                    hello_sz = b;
+                    hello_b = try std.ArrayListUnmanaged(u8).initCapacity(self.allocator, hello_sz);
+                    state = .recv_hello_b;
                 },
             },
+            .recv_hello_b => switch (uart_tick) {
+                .nop => {},
+                .data => |b| {
+                    hello_b.appendAssumeCapacity(b);
+                    if (hello_b.items.len == hello_sz) {
+                        std.debug.print("got hello: [{s}]\n", .{hello_b.items});
+                        state = .end;
+                    }
+                },
+            },
+            .end => {},
         }
 
         if (!self.running.curr()) {
@@ -108,8 +111,8 @@ fn tick(self: *SimThread) void {
 
 fn writeVcd(self: *SimThread) !void {
     if (self.vcd) |*vcd| {
-        const buffer = try vcd.read(self.alloc);
-        defer self.alloc.free(buffer);
+        const buffer = try vcd.read(self.allocator);
+        defer self.allocator.free(buffer);
 
         var file = try std.fs.cwd().createFile(self.sim_controller.vcd_out.?, .{});
         defer file.close();

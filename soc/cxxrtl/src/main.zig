@@ -7,12 +7,12 @@ const SimThread = @import("./SimThread.zig");
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
-    const alloc = gpa.allocator();
+    const allocator = gpa.allocator();
 
-    var args = try Args.parse(alloc);
+    var args = try Args.parse(allocator);
     defer args.deinit();
 
-    var sim_controller = try SimController.start(alloc, args.vcd_out);
+    var sim_controller = try SimController.start(allocator, args.vcd_out);
     defer sim_controller.joinDeinit();
 
     while (sim_controller.lockIfRunning()) {

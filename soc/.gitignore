@@ -1,8 +1,6 @@
 __pycache__
 /build
-/result
 *.vcd
 .pdm-python
-.zig-cache
-zig-out
-/tests/.*.avc.bas
+cxxrtl/.zig-cache
+cxxrtl/zig-out

@@ -24,6 +24,12 @@ pub fn build(b: *std.Build) void {
     }).module("zxxrtl");
     exe.root_module.addImport("zxxrtl", zxxrtl_mod);
 
+    const avacore_mod = b.dependency("avacore", .{
+        .target = target,
+        .optimize = optimize,
+    }).module("avacore");
+    exe.root_module.addImport("avacore", avacore_mod);
+
     for (cxxrtl_o_paths) |cxxrtl_o_path| {
         exe.addObjectFile(b.path(cxxrtl_o_path));
     }

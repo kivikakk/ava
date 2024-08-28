@@ -11,13 +11,18 @@ __all__ = ["UART"]
 class UART(Component):
     wr: In(stream.Signature(8))
     rd: Out(stream.Signature(8))
+    rd_overrun: Out(1)
 
-    plat_uart: object
-    baud: int
+    _plat_uart: object
+    _baud: int
+    _tx_fifo_depth: int
+    _rx_fifo_depth: int
 
-    def __init__(self, plat_uart, baud=115_200):
-        self.plat_uart = plat_uart
-        self.baud = baud
+    def __init__(self, plat_uart, *, tx_fifo_depth, rx_fifo_depth, baud):
+        self._plat_uart = plat_uart
+        self._baud = baud
+        self._tx_fifo_depth = tx_fifo_depth
+        self._rx_fifo_depth = rx_fifo_depth
         super().__init__()
 
     def elaborate(self, platform):
@@ -30,11 +35,11 @@ class UART(Component):
         freq = platform.default_clk_frequency
 
         m.submodules.serial = serial = AsyncSerial(
-            divisor=int(freq // self.baud),
-            pins=self.plat_uart)
+            divisor=int(freq // self._baud),
+            pins=self._plat_uart)
 
         # tx
-        m.submodules.tx_fifo = tx_fifo = SyncFIFOBuffered(width=8, depth=32)
+        m.submodules.tx_fifo = tx_fifo = SyncFIFOBuffered(width=8, depth=self._tx_fifo_depth)
         m.d.comb += [
             tx_fifo.w_data.eq(self.wr.payload),
             tx_fifo.w_en.eq(self.wr.valid),
@@ -55,7 +60,7 @@ class UART(Component):
             ]
 
         # rx
-        m.submodules.rx_fifo = rx_fifo = SyncFIFOBuffered(width=8, depth=32)
+        m.submodules.rx_fifo = rx_fifo = SyncFIFOBuffered(width=8, depth=self._rx_fifo_depth)
         m.d.comb += [
             self.rd.valid.eq(rx_fifo.r_rdy),
             self.rd.payload.eq(rx_fifo.r_data),
@@ -73,6 +78,9 @@ class UART(Component):
                         rx_fifo.w_data.eq(serial.rx.data),
                         rx_fifo.w_en.eq(1),
                     ]
+                    with m.If(~rx_fifo.w_rdy):
+                        m.d.sync += Print("\n!! UART rd buffer overrun !!")
+                        m.d.sync += self.rd_overrun.eq(1)
                 m.next = "idle"
 
             m.d.comb += serial.rx.ack.eq(fsm.ongoing("idle"))

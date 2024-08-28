@@ -2,13 +2,13 @@ const std = @import("std");
 
 const Args = @This();
 
-alloc: std.mem.Allocator,
+allocator: std.mem.Allocator,
 vcd_out: ?[]const u8,
 
-pub fn parse(alloc: std.mem.Allocator) !Args {
+pub fn parse(allocator: std.mem.Allocator) !Args {
     var vcd_out: ?[]const u8 = null;
 
-    var argv = try std.process.argsWithAllocator(alloc);
+    var argv = try std.process.argsWithAllocator(allocator);
     defer argv.deinit();
 
     _ = argv.next();
@@ -31,11 +31,11 @@ pub fn parse(alloc: std.mem.Allocator) !Args {
     if (arg_state != .root) std.debug.panic("missing argument for --vcd", .{});
 
     return .{
-        .alloc = alloc,
-        .vcd_out = if (vcd_out) |m| try alloc.dupe(u8, m) else null,
+        .allocator = allocator,
+        .vcd_out = if (vcd_out) |m| try allocator.dupe(u8, m) else null,
     };
 }
 
 pub fn deinit(self: *Args) void {
-    if (self.vcd_out) |m| self.alloc.free(m);
+    if (self.vcd_out) |m| self.allocator.free(m);
 }

@@ -4,7 +4,7 @@ const SimThread = @import("./SimThread.zig");
 
 const SimController = @This();
 
-controller_alloc: std.mem.Allocator,
+controller_allocator: std.mem.Allocator,
 thread: std.Thread,
 vcd_out: ?[]const u8,
 state: SimThread,
@@ -12,10 +12,10 @@ mutex: std.Thread.Mutex = .{},
 running: bool = true,
 tick_number: usize = 0,
 
-pub fn start(alloc: std.mem.Allocator, vcd_out: ?[]const u8) !*SimController {
-    var sim_controller = try alloc.create(SimController);
+pub fn start(allocator: std.mem.Allocator, vcd_out: ?[]const u8) !*SimController {
+    var sim_controller = try allocator.create(SimController);
     sim_controller.* = .{
-        .controller_alloc = alloc,
+        .controller_allocator = allocator,
         .thread = undefined,
         .vcd_out = vcd_out,
         .state = undefined,
@@ -28,9 +28,9 @@ pub fn start(alloc: std.mem.Allocator, vcd_out: ?[]const u8) !*SimController {
 fn simThreadStart(sim_controller: *SimController) void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
-    const alloc = gpa.allocator();
+    const allocator = gpa.allocator();
 
-    sim_controller.state = SimThread.init(alloc, sim_controller);
+    sim_controller.state = SimThread.init(allocator, sim_controller);
     defer sim_controller.state.deinit();
 
     sim_controller.state.run() catch std.debug.panic("SimThread.run threw", .{});
@@ -63,5 +63,5 @@ pub fn halt(self: *SimController) void {
 
 pub fn joinDeinit(self: *SimController) void {
     self.thread.join();
-    self.controller_alloc.destroy(self);
+    self.controller_allocator.destroy(self);
 }

@@ -20,10 +20,10 @@ def wonk32(path):
     return list(chain.from_iterable(struct.iter_unpack('<L', b)))
 
 
-basic = Path(__file__).parent.parent.parent.parent / "basic"
+core_bin = Path(__file__).parent.parent.parent.parent / "core" / "zig-out" / "bin"
 # vexriscv will always read one past a jump; CXXRTL will abort on an out-of-bounds read.
-IMEM = wonk32(basic / "zig-out" / "bin" / "avacore.imem.bin") + [0]
-DMEM = wonk32(basic / "zig-out" / "bin" / "avacore.dmem.bin")
+IMEM = wonk32(core_bin / "avacore.imem.bin") + [0]
+DMEM = wonk32(core_bin / "avacore.dmem.bin")
 
 
 class Top(wiring.Component):

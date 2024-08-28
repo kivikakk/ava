@@ -9,7 +9,7 @@ https://sr.ht/~kivikakk/ava
 basic/
   Compiler and stack machine interpreter.
 
-basic/core/
+core/
   RISC-V stack machine core.
 
 soc/

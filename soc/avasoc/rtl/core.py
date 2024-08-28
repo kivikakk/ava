@@ -74,7 +74,8 @@ class Core(wiring.Component):
             i_reset=ResetSignal(),
         )
 
-        m.submodules.uart = uart = UART(self._uart)
+        m.submodules.uart = uart = UART(
+            self._uart, baud=115_200, tx_fifo_depth=16, rx_fifo_depth=32)
 
         m.submodules.imem = imem = Memory(shape=32, depth=len(self._imem), init=self._imem)
         imem_rp = imem.read_port()
@@ -153,6 +154,9 @@ class Core(wiring.Component):
                     with m.If(wr):
                         m.d.comb += uart.wr.p.eq(data[:8])
                         m.d.comb += uart.wr.valid.eq(1)
+                        with m.If(~uart.wr.ready):
+                            m.d.comb += i_dBus_rsp_ready.eq(0)
+                            m.next = 'uart.write.stall'
                     with m.Else():
                         m.d.comb += uart.rd.ready.eq(1)
                         m.d.comb += i_dBus_rsp_data.eq(Mux(uart.rd.valid, uart.rd.p, 0))
@@ -162,12 +166,19 @@ class Core(wiring.Component):
                     m.d.comb += i_dBus_rsp_ready.eq(1)
                     m.next = 'init'
                 with m.Elif((address == self.CSR_EXIT) & (size == 0) & wr & data[0]):
-                    m.d.sync += Print("\nCSR_EXIT signalled -- stopped")
+                    m.d.sync += Print("\n! CSR_EXIT signalled -- stopped")
                     m.d.sync += running.eq(0)
                 with m.Else():
                     m.d.sync += unhandled_dbus()
                     m.d.comb += i_dBus_rsp_ready.eq(1)
                     m.d.comb += i_dBus_rsp_error.eq(1)
+                    m.next = 'init'
+
+            with m.State('uart.write.stall'):
+                m.d.comb += uart.wr.p.eq(data[:8])
+                m.d.comb += uart.wr.valid.eq(1)
+                with m.If(uart.wr.ready):
+                    m.d.comb += i_dBus_rsp_ready.eq(1)
                     m.next = 'init'
 
             with m.State('read'):

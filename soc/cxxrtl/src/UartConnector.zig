@@ -25,13 +25,13 @@ const Tick = union(enum) {
     data: u8,
 };
 
-pub fn init(cxxrtl: Cxxrtl, alloc: Allocator) UartConnector {
+pub fn init(cxxrtl: Cxxrtl, allocator: Allocator) UartConnector {
     const tx = cxxrtl.get(bool, "uart_rx");
     const rx = Cxxrtl.Sample(bool).init(cxxrtl, "uart_tx", true);
 
     return .{
         .tx = tx,
-        .tx_buffer = std.ArrayList(u8).init(alloc),
+        .tx_buffer = std.ArrayList(u8).init(allocator),
         .rx = rx,
     };
 }
