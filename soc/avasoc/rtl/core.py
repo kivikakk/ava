@@ -9,8 +9,13 @@ from .uart import UART
 __all__ = ["Core"]
 
 class Core(wiring.Component):
-    DMEM_BYTES       = 4096  # Must correspond to what we set our stack pointer to in crt0.S.
-    DMEM_STACK_BYTES = 1024  # XXX: we should be able to determine this with Zig.
+    # We're targetting the iCE40UP SPRAM for DMEM, which gives us 128KiB.
+    # SPRAM is in 4x 32KiB blocks (16 bits wide, 16,384 deep).
+    # Importantly, it is *not* initialisable; we initialise SPRAM from BRAM. (If
+    # it grows too large, we can initialise from flash or something.)
+    # BSS and minimum stack size availability are asserted in the linker script.
+    DMEM_BYTES = 128 * 1024
+    # assert DMEM_BYTES % 4 == 0
 
     DMEM_BASE = 0x4000_0000
     UART_BASE = 0x8000_0000
@@ -97,11 +102,10 @@ class Core(wiring.Component):
                 m.d.comb += i_iBus_rsp_payload_inst.eq(imem_rp.data)
                 m.next = 'init'
 
-        assert self.DMEM_BYTES % 4 == 0
-        assert len(self._dmem) * 4 + self.DMEM_STACK_BYTES <= self.DMEM_BYTES, (
-            f"_dmem is {len(self._dmem) * 4} bytes, stack is {self.DMEM_STACK_BYTES} bytes, "
-            f"total greater than DMEM {self.DMEM_BYTES} bytes")
-        m.submodules.dmem = dmem = Memory(shape=32, depth=self.DMEM_BYTES // 4, init=self._dmem)
+        m.submodules.dmem_init = dmem_init = Memory(shape=32, depth=len(self._dmem), init=self._dmem)
+        dmem_init_rp = dmem_init.read_port()
+
+        m.submodules.dmem = dmem = Memory(shape=32, depth=self.DMEM_BYTES // 4, init=None)
         dmem_wp = dmem.write_port(granularity=8)
         dmem_rp = dmem.read_port(transparent_for=[dmem_wp])
 
@@ -112,7 +116,11 @@ class Core(wiring.Component):
         size = Signal(2)
 
         dmem_addr = Signal.like(dmem_wp.addr)
-        m.d.comb += dmem_addr.eq(address >> 2)
+        m.d.comb += [
+            dmem_addr.eq(address >> 2),
+            dmem_wp.addr.eq(dmem_addr),
+            dmem_rp.addr.eq(dmem_addr),
+        ]
 
         unhandled_dbus = lambda: Print(Format(
             "unhandled dBus {} at {:08x} mask {:04b} size {} (data {:08x})",
@@ -120,7 +128,23 @@ class Core(wiring.Component):
         ))
 
         with m.FSM():
-            with m.State('init'):
+            with m.State('init.wait'):
+                m.next = 'init.write'
+
+            with m.State('init.write'):
+                m.d.comb += [
+                    dmem_addr.eq(dmem_init_rp.addr),
+                    dmem_wp.data.eq(dmem_init_rp.data),
+                    dmem_wp.en.eq(0b1111),
+                    dmem_rp.en.eq(0),
+                ]
+                with m.If(dmem_init_rp.addr == len(self._dmem) - 1):
+                    m.next = 'ready'
+                with m.Else():
+                    m.d.sync += dmem_init_rp.addr.eq(dmem_init_rp.addr + 1)
+                    m.next = 'init.wait'
+
+            with m.State('ready'):
                 m.d.comb += i_dBus_cmd_ready.eq(1)
                 with m.If(o_dBus_cmd_valid):
                     m.d.sync += [
@@ -141,18 +165,17 @@ class Core(wiring.Component):
                         #     dmem_addr, size, mask, data,
                         # ))
                         m.d.comb += [
-                            dmem_wp.addr.eq(dmem_addr),
                             dmem_wp.data.eq(data),
                             dmem_wp.en.eq(mask),
+                            dmem_rp.en.eq(0),
                         ]
                         m.d.comb += i_dBus_rsp_ready.eq(1)
-                        m.next = 'init'
+                        m.next = 'ready'
                     with m.Else():
-                        m.d.comb += dmem_rp.addr.eq(dmem_addr)
                         m.next = 'read'
                 with m.Elif((address == self.UART_BASE) & (size == 0)):
                     m.d.comb += i_dBus_rsp_ready.eq(1)
-                    m.next = 'init'
+                    m.next = 'ready'
                     with m.If(wr):
                         m.d.comb += uart.wr.p.eq(data[:8])
                         m.d.comb += uart.wr.valid.eq(1)
@@ -166,7 +189,7 @@ class Core(wiring.Component):
                     m.d.comb += uart.rd.ready.eq(1)
                     m.d.comb += i_dBus_rsp_data.eq(Cat(uart.rd.p, uart.rd.valid))
                     m.d.comb += i_dBus_rsp_ready.eq(1)
-                    m.next = 'init'
+                    m.next = 'ready'
                 with m.Elif((address == self.CSR_EXIT) & (size == 0) & wr & data[0]):
                     m.d.sync += Print("\n! CSR_EXIT signalled -- stopped")
                     m.d.sync += running.eq(0)
@@ -174,21 +197,21 @@ class Core(wiring.Component):
                     m.d.sync += unhandled_dbus()
                     m.d.comb += i_dBus_rsp_ready.eq(1)
                     m.d.comb += i_dBus_rsp_error.eq(1)
-                    m.next = 'init'
+                    m.next = 'ready'
 
             with m.State('uart.write.stall'):
                 m.d.comb += uart.wr.p.eq(data[:8])
                 m.d.comb += uart.wr.valid.eq(1)
                 with m.If(uart.wr.ready):
                     m.d.comb += i_dBus_rsp_ready.eq(1)
-                    m.next = 'init'
+                    m.next = 'ready'
 
             with m.State('read'):
                 # m.d.sync += Print(Format(
                 #     "[d RD @ {:06x} s{} #{:04b} = {:08x}]",
                 #     dmem_addr, size, mask, dmem_rp.data,
                 # ))
-                m.next = 'init'
+                m.next = 'ready'
                 m.d.comb += i_dBus_rsp_ready.eq(1)
                 m.d.comb += i_dBus_rsp_data.eq(dmem_rp.data)
 

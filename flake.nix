@@ -156,12 +156,15 @@
 
         buildInputs =
           python-de
-          ++ (with python.pkgs; [
+          ++ [
             pkgs.python3
             pkgs.pdm
+            pkgs.yosys
+            pkgs.icestorm
+            pkgs.nextpnr
             zig
             zls
-          ]);
+          ];
       };
     });
 }

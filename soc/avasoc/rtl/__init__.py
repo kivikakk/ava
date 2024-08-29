@@ -21,7 +21,7 @@ def wonk32(path):
 
 
 core_bin = Path(__file__).parent.parent.parent.parent / "core" / "zig-out" / "bin"
-# vexriscv will always read one past a jump; CXXRTL will abort on an out-of-bounds read.
+# Our vexriscv will always read one past a jump; CXXRTL will abort on an out-of-bounds read.
 IMEM = wonk32(core_bin / "avacore.imem.bin") + [0]
 DMEM = wonk32(core_bin / "avacore.dmem.bin")
 

@@ -4,16 +4,19 @@
 [metadata]
 groups = ["default", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
-lock_version = "4.4.1"
-content_hash = "sha256:80ccf0b988fdc450f20ab5cca1ebbc8eaf523ce6b2716794be100026d1dddd9c"
+lock_version = "4.5.0"
+content_hash = "sha256:e5a1a05b2dc7bff87625d1c2c4147fe9ae1b638944b4159f01f5bec522e2f899"
+
+[[metadata.targets]]
+requires_python = ">=3.8"
 
 [[package]]
 name = "amaranth"
-version = "0.6.0.dev45"
+version = "0.6.0.dev52"
 requires_python = "~=3.8"
-git = "https://github.com/amaranth-lang/amaranth"
-ref = "bc2e90913311e326d8f396e33d7a1c7f6eef6e4e"
-revision = "bc2e90913311e326d8f396e33d7a1c7f6eef6e4e"
+git = "https://github.com/kivikakk/amaranth"
+ref = "f8ea807a9108a99ec801d1f1e4b8e63019ec82ec"
+revision = "f8ea807a9108a99ec801d1f1e4b8e63019ec82ec"
 summary = "Amaranth hardware definition language"
 groups = ["default", "test"]
 dependencies = [
@@ -51,31 +54,28 @@ dependencies = [
 
 [[package]]
 name = "amaranth-yosys"
-version = "0.40.0.0.post98"
+version = "0.40.0.0.post99"
 requires_python = "~=3.8"
 summary = "Specialized WebAssembly build of Yosys used by Amaranth HDL"
 groups = ["default"]
 dependencies = [
     "importlib-resources>=1.4; python_version < \"3.9\"",
-    "wasmtime<24,>=1",
+    "wasmtime<25,>=1",
 ]
 files = [
-    {file = "amaranth_yosys-0.40.0.0.post98-py3-none-any.whl", hash = "sha256:c8ec7c38e57e09aa88a0f4108df803bbca8753e7774e85abab950cdeefaa449d"},
+    {file = "amaranth_yosys-0.40.0.0.post99-py3-none-any.whl", hash = "sha256:d7a88a3327c98d3ff04182be623ceb32c8938464c9d1a7c12c3e8a0a1d6e4f11"},
 ]
 
 [[package]]
 name = "amaranth"
-version = "0.6.0.dev45"
+version = "0.6.0.dev52"
 extras = ["builtin-yosys"]
 requires_python = "~=3.8"
-git = "https://github.com/amaranth-lang/amaranth"
-ref = "bc2e90913311e326d8f396e33d7a1c7f6eef6e4e"
-revision = "bc2e90913311e326d8f396e33d7a1c7f6eef6e4e"
 summary = "Amaranth hardware definition language"
 groups = ["default"]
 dependencies = [
-    "amaranth @ git+https://github.com/amaranth-lang/amaranth@bc2e90913311e326d8f396e33d7a1c7f6eef6e4e",
     "amaranth-yosys>=0.40",
+    "amaranth==0.6.0.dev52",
 ]
 
 [[package]]
@@ -115,7 +115,7 @@ files = [
 
 [[package]]
 name = "importlib-resources"
-version = "6.4.3"
+version = "6.4.4"
 requires_python = ">=3.8"
 summary = "Read resources from Python packages"
 groups = ["default", "test"]
@@ -123,8 +123,8 @@ dependencies = [
     "zipp>=3.1.0; python_version < \"3.10\"",
 ]
 files = [
-    {file = "importlib_resources-6.4.3-py3-none-any.whl", hash = "sha256:2d6dfe3b9e055f72495c2085890837fc8c758984e209115c8792bddcb762cd93"},
-    {file = "importlib_resources-6.4.3.tar.gz", hash = "sha256:4a202b9b9d38563b46da59221d77bb73862ab5d79d461307bcb826d725448b98"},
+    {file = "importlib_resources-6.4.4-py3-none-any.whl", hash = "sha256:dda242603d1c9cd836c3368b1174ed74cb4049ecd209e7a1a0104620c18c5c11"},
+    {file = "importlib_resources-6.4.4.tar.gz", hash = "sha256:20600c8b7361938dc0bb2d5ec0297802e575df486f5a544fa414da65e13721f7"},
 ]
 
 [[package]]
@@ -231,12 +231,12 @@ name = "niar"
 version = "0.1.3"
 requires_python = ">=3.8"
 git = "https://git.sr.ht/~kivikakk/niar"
-ref = "bf3738f77760ae6f4e942e2cb1639f5c9461a937"
-revision = "bf3738f77760ae6f4e942e2cb1639f5c9461a937"
+ref = "4cb42dfedf7c9f238bfdd4c3ea22e43acc1b2677"
+revision = "4cb42dfedf7c9f238bfdd4c3ea22e43acc1b2677"
 summary = "A small framework for building projects with Amaranth"
 groups = ["default"]
 dependencies = [
-    "amaranth[builtin-yosys] @ git+https://github.com/amaranth-lang/amaranth@bc2e90913311e326d8f396e33d7a1c7f6eef6e4e",
+    "amaranth[builtin-yosys]>=0.5",
 ]
 
 [[package]]
@@ -282,7 +282,7 @@ files = [
 
 [[package]]
 name = "pytest-watcher"
-version = "0.4.2"
+version = "0.4.3"
 requires_python = "<4.0.0,>=3.7.0"
 summary = "Automatically rerun your tests on file modifications"
 groups = ["test"]
@@ -291,8 +291,8 @@ dependencies = [
     "watchdog>=2.0.0",
 ]
 files = [
-    {file = "pytest_watcher-0.4.2-py3-none-any.whl", hash = "sha256:a43949ba67dd8d7e1fd0de5eea44a999081f0aec9f93b4e744264b4c6a3d9bbe"},
-    {file = "pytest_watcher-0.4.2.tar.gz", hash = "sha256:7b292f025ca19617cd7567c228c6187b5087f2da9e4d2cf6e144e5764a0471b0"},
+    {file = "pytest_watcher-0.4.3-py3-none-any.whl", hash = "sha256:d59b1e1396f33a65ea4949b713d6884637755d641646960056a90b267c3460f9"},
+    {file = "pytest_watcher-0.4.3.tar.gz", hash = "sha256:0cb0e4661648c8c0ff2b2d25efa5a8e421784b9e4c60fcecbf9b7c30b2d731b3"},
 ]
 
 [[package]]
@@ -346,7 +346,7 @@ files = [
 
 [[package]]
 name = "wasmtime"
-version = "23.0.0"
+version = "24.0.0"
 requires_python = ">=3.8"
 summary = "A WebAssembly runtime powered by Wasmtime"
 groups = ["default"]
@@ -354,13 +354,13 @@ dependencies = [
     "importlib-resources>=5.10",
 ]
 files = [
-    {file = "wasmtime-23.0.0-py3-none-any.whl", hash = "sha256:f496a3fb4e3a7c666aca6aedb2acd56402f300e2a1136fc768ed8d81e6aff7f4"},
-    {file = "wasmtime-23.0.0-py3-none-macosx_10_13_x86_64.whl", hash = "sha256:7bbba2a4a6f2d7273021db3ac7f5a7a6cd806c3086b59490dee990ebf130a707"},
-    {file = "wasmtime-23.0.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:1267df7b9c83898de0884dc0a9bfa1fa6219dad9242708aee70db501a2d71108"},
-    {file = "wasmtime-23.0.0-py3-none-manylinux1_x86_64.whl", hash = "sha256:4144847d89a133a25783e9ee11126dd3e1accea52ee20ed91e2d0315fda3abf2"},
-    {file = "wasmtime-23.0.0-py3-none-manylinux2014_aarch64.whl", hash = "sha256:ba664d1298f5e37cafefc97a870e832862f1e60284c82dd3da8aba54457db372"},
-    {file = "wasmtime-23.0.0-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:d9e2e16272f0d00ff224f9014eba4f031e01966a97599e15f3c66840f52520c7"},
-    {file = "wasmtime-23.0.0-py3-none-win_amd64.whl", hash = "sha256:bedd46766ab44b7910869eaac09ede904eb8fbe80ec7f9b8a13222c6df198549"},
+    {file = "wasmtime-24.0.0-py3-none-any.whl", hash = "sha256:94799597e5067fb5d3c0d14fe2b06aff735a12eb4ed4389df5d2d449fa72a227"},
+    {file = "wasmtime-24.0.0-py3-none-macosx_10_13_x86_64.whl", hash = "sha256:2e54cac6cbf286506dd5fd2436edbc48542771a38cf31f22c771ea8ba28b4510"},
+    {file = "wasmtime-24.0.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:49532ecfc618b62a6e4a8f5722f8c1608fbc5895370fd463a1e42a30dd1ffee8"},
+    {file = "wasmtime-24.0.0-py3-none-manylinux1_x86_64.whl", hash = "sha256:f30a3bfa87118133582654fcce1d3967efd2b4cb1b2d4a818ca8f74666627c47"},
+    {file = "wasmtime-24.0.0-py3-none-manylinux2014_aarch64.whl", hash = "sha256:02a66bb5907f3d88e1d9b3c6c840992a34ced961e519fad40db35f38448b3b19"},
+    {file = "wasmtime-24.0.0-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:fd75f520ca988b4a63aab6e93d0844c7dfaaf2361605cb27907fd3e641eb5d03"},
+    {file = "wasmtime-24.0.0-py3-none-win_amd64.whl", hash = "sha256:478657ddeb2bafccced5d4799ac393e65a7e6e5222ed3ea840da0e9dc3817fb0"},
 ]
 
 [[package]]
@@ -409,12 +409,12 @@ files = [
 
 [[package]]
 name = "zipp"
-version = "3.20.0"
+version = "3.20.1"
 requires_python = ">=3.8"
 summary = "Backport of pathlib-compatible object wrapper for zip files"
 groups = ["default", "test"]
 marker = "python_version < \"3.10\""
 files = [
-    {file = "zipp-3.20.0-py3-none-any.whl", hash = "sha256:58da6168be89f0be59beb194da1250516fdaa062ccebd30127ac65d30045e10d"},
-    {file = "zipp-3.20.0.tar.gz", hash = "sha256:0145e43d89664cfe1a2e533adc75adafed82fe2da404b4bbb6b026c0157bdb31"},
+    {file = "zipp-3.20.1-py3-none-any.whl", hash = "sha256:9960cd8967c8f85a56f920d5d507274e74f9ff813a0ab8889a5b5be2daf44064"},
+    {file = "zipp-3.20.1.tar.gz", hash = "sha256:c22b14cc4763c5a5b04134207736c107db42e9d3ef2d9779d465f5f1bcba572b"},
 ]

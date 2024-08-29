@@ -2,6 +2,9 @@ const std = @import("std");
 
 const uart = @import("uart.zig");
 const proto = @import("proto.zig");
+const stack = @import("avabasic").stack;
+
+const VERSION: usize = 0;
 
 var heap: [0x900]u8 = undefined;
 
@@ -29,13 +32,17 @@ pub fn main() !void {
     var fba = std.heap.FixedBufferAllocator.init(&heap);
     const allocator = fba.allocator();
 
+    // var machine = stack.Machine(Effects).init(, , )
+
     while (true) : (fba.reset()) {
         const req = try uart.readRequest(allocator);
         defer req.deinit(allocator);
         switch (req) {
             .HELLO => {
-                const s = std.fmt.allocPrint(allocator, "heap start {*}\n", .{&heap}) catch unreachable;
-                try uart.writeResponse(.{ .HELLO = s });
+                // Include an alloc to force BSS to exist for now.
+                const m = try std.fmt.allocPrint(allocator, "AvaCore {d}", .{VERSION});
+                defer allocator.free(m);
+                try uart.writeResponse(.{ .HELLO = m });
             },
             .TERVIST => {
                 try uart.writeResponse(.{ .TERVIST = 0xabcd1234_ef077123 });

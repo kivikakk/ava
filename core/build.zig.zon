@@ -1,7 +1,12 @@
 .{
     .name = "avacore",
     .version = "0.0.0",
-    .dependencies = .{},
+    .dependencies = .{
+        .avabasic = .{
+            .url = "../basic/",
+            .hash = "1220283136e67114ac63dd46d1272492bf6f1c45912afc267eefc893ffbe43763434",
+        },
+    },
     .paths = .{
         "build.zig",
         "build.zig.zon",

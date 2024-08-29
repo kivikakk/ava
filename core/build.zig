@@ -4,7 +4,11 @@ pub fn build(b: *std.Build) void {
     const host_target = b.standardTargetOptions(.{});
     const host_optimize = b.standardOptimizeOption(.{});
 
-    const target_optimize = b.option(bool, "target-debug", "Include safety checks on target") orelse true;
+    const optimize: std.builtin.OptimizeMode =
+        if (b.option(bool, "target-debug", "Include safety checks on target") orelse true)
+        .ReleaseSafe
+    else
+        .ReleaseSmall;
 
     const test_step = b.step("test", "Run unit tests");
 
@@ -29,14 +33,20 @@ pub fn build(b: *std.Build) void {
         .name = "avacore",
         .root_source_file = b.path("src/root.zig"),
         .target = target,
-        .optimize = if (target_optimize) .ReleaseSafe else .ReleaseSmall,
+        .optimize = optimize,
     });
+    core.addAssemblyFile(b.path("src/crt0.S"));
+    core.setLinkerScript(b.path("src/core.ld"));
     core.root_module.code_model = .medium;
     core.root_module.single_threaded = true;
-    core.setLinkerScript(b.path("src/core.ld"));
     core.entry = .disabled;
-    core.addAssemblyFile(b.path("src/crt0.S"));
-    const inst = b.addInstallArtifact(core, .{ .dest_dir = .{ .override = .bin } });
+    const core_inst = b.addInstallArtifact(core, .{ .dest_dir = .{ .override = .bin } });
+
+    const avabasic_mod = b.dependency("avabasic", .{
+        .target = target,
+        .optimize = optimize,
+    }).module("avabasic");
+    core.root_module.addImport("avabasic", avabasic_mod);
 
     const imem_bin = b.addSystemCommand(&.{
         "llvm-objcopy",
@@ -46,9 +56,10 @@ pub fn build(b: *std.Build) void {
         b.fmt("{s}/bin/avacore", .{b.install_prefix}),
         b.fmt("{s}/bin/avacore.imem.bin", .{b.install_prefix}),
     });
-    imem_bin.step.dependOn(&inst.step);
+    imem_bin.step.dependOn(&core_inst.step);
     b.getInstallStep().dependOn(&imem_bin.step);
 
+    // TODO: look into b.addObjCopy.
     const dmem_bin = b.addSystemCommand(&.{
         "llvm-objcopy",
         "--output-target=binary",
@@ -57,6 +68,6 @@ pub fn build(b: *std.Build) void {
         b.fmt("{s}/bin/avacore", .{b.install_prefix}),
         b.fmt("{s}/bin/avacore.dmem.bin", .{b.install_prefix}),
     });
-    dmem_bin.step.dependOn(&inst.step);
+    dmem_bin.step.dependOn(&core_inst.step);
     b.getInstallStep().dependOn(&dmem_bin.step);
 }
