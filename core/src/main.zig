@@ -2,11 +2,10 @@ const std = @import("std");
 
 const uart = @import("uart.zig");
 const proto = @import("proto.zig");
+const heap = @import("heap.zig");
 const stack = @import("avabasic").stack;
 
 const VERSION: usize = 0;
-
-var heap: [0x900]u8 = undefined;
 
 // Step 1: create a protocol to communicate over UART.
 //
@@ -29,12 +28,11 @@ var heap: [0x900]u8 = undefined;
 // easiest; later hopefully a Real Interface™ can let us do both.
 
 pub fn main() !void {
-    var fba = std.heap.FixedBufferAllocator.init(&heap);
-    const allocator = fba.allocator();
+    const allocator = heap.allocator;
 
     // var machine = stack.Machine(Effects).init(, , )
 
-    while (true) : (fba.reset()) {
+    while (true) {
         const req = try uart.readRequest(allocator);
         defer req.deinit(allocator);
         switch (req) {

@@ -5,7 +5,7 @@ pub fn build(b: *std.Build) void {
     const host_optimize = b.standardOptimizeOption(.{});
 
     const optimize: std.builtin.OptimizeMode =
-        if (b.option(bool, "target-debug", "Include safety checks on target") orelse true)
+        if (b.option(bool, "target-debug", "Include safety checks on target") orelse false)
         .ReleaseSafe
     else
         .ReleaseSmall;
