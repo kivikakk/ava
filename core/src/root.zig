@@ -4,7 +4,8 @@ const main = @import("main.zig");
 const uart = @import("uart.zig");
 
 pub export fn core_start_zig() noreturn {
-    main.main();
+    main.main() catch |err|
+        std.debug.panic("err in main: {}", .{err});
     core_exit();
 }
 

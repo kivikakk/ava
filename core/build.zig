@@ -31,6 +31,7 @@ pub fn build(b: *std.Build) void {
         // .optimize = .ReleaseSmall,
     });
     core.root_module.code_model = .medium;
+    core.root_module.single_threaded = true;
     core.setLinkerScript(b.path("src/core.ld"));
     core.entry = .disabled;
     core.addAssemblyFile(b.path("src/crt0.S"));

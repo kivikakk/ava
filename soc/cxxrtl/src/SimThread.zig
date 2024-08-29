@@ -18,7 +18,7 @@ vcd: ?Cxxrtl.Vcd,
 clk: Cxxrtl.Object(bool),
 rst: Cxxrtl.Object(bool),
 
-uart_connector: UartConnector,
+uart_proto_connector: UartProtoConnector,
 running: Cxxrtl.Object(bool),
 
 pub fn init(allocator: Allocator, sim_controller: *SimController) SimThread {
@@ -31,6 +31,7 @@ pub fn init(allocator: Allocator, sim_controller: *SimController) SimThread {
     const rst = cxxrtl.get(bool, "rst");
 
     const uart_connector = UartConnector.init(cxxrtl, allocator);
+    const uart_proto_connector = UartProtoConnector.init(allocator, uart_connector);
     const running = cxxrtl.get(bool, "running");
 
     return .{
@@ -40,53 +41,91 @@ pub fn init(allocator: Allocator, sim_controller: *SimController) SimThread {
         .vcd = vcd,
         .clk = clk,
         .rst = rst,
-        .uart_connector = uart_connector,
+        .uart_proto_connector = uart_proto_connector,
         .running = running,
     };
 }
 
 pub fn deinit(self: *SimThread) void {
-    self.uart_connector.deinit();
+    self.uart_proto_connector.deinit();
     if (self.vcd) |*vcd| vcd.deinit();
     self.cxxrtl.deinit();
 }
 
+const UartProtoConnector = struct {
+    const Self = @This();
+
+    allocator: Allocator,
+    uart_connector: UartConnector,
+    recv_buffer: std.ArrayList(u8),
+
+    fn init(allocator: Allocator, uart_connector: UartConnector) Self {
+        return .{
+            .allocator = allocator,
+            .uart_connector = uart_connector,
+            .recv_buffer = std.ArrayList(u8).init(allocator),
+        };
+    }
+
+    fn deinit(self: Self) void {
+        self.uart_connector.deinit();
+        self.recv_buffer.deinit();
+    }
+
+    fn tick(self: *Self) !void {
+        const b = switch (self.uart_connector.tick()) {
+            .nop => return,
+            .data => |b| b,
+        };
+
+        std.debug.print("{{{x:0>2}}}", .{b});
+        try self.recv_buffer.append(b);
+    }
+
+    fn send(self: *Self, req: proto.Request) !void {
+        try req.write(self.uart_connector.tx_buffer.writer());
+    }
+
+    fn recv(self: *Self, comptime kind: proto.RequestKind) !?std.meta.TagPayload(proto.Response, kind) {
+        var fbs = std.io.fixedBufferStream(self.recv_buffer.items);
+        if (proto.Response.read(self.allocator, fbs.reader(), kind)) |resp| {
+            self.recv_buffer.replaceRange(0, fbs.pos, &.{}) catch unreachable;
+            return resp;
+        } else |err| switch (err) {
+            error.EndOfStream => return null,
+            else => return err,
+        }
+    }
+};
+
+// Need to connect UartConnector to a generic reader/writer interface so this
+// can use the same thing as the actual tool that'll connect to the live FPGA.
+
 pub fn run(self: *SimThread) !void {
-    var state: enum { init, recv_hello_sz, recv_hello_b, end } = .init;
-    var hello_sz: usize = undefined;
-    var hello_b: std.ArrayListUnmanaged(u8) = undefined;
+    var state: enum { init, wait_hello, wait_tervist, end } = .init;
 
     self.tick();
     while (self.sim_controller.lockIfRunning()) {
         defer self.sim_controller.unlock();
         self.tick();
 
-        const uart_tick = self.uart_connector.tick();
+        try self.uart_proto_connector.tick();
 
         switch (state) {
             .init => {
-                std.debug.assert(uart_tick == .nop);
-                try (proto.Request{ .HELLO = {} }).write(self.uart_connector.tx_buffer.writer());
-                state = .recv_hello_sz;
+                try self.uart_proto_connector.send(.HELLO);
+                state = .wait_hello;
             },
-            .recv_hello_sz => switch (uart_tick) {
-                .nop => {},
-                .data => |b| {
-                    std.debug.assert(b != 0);
-                    hello_sz = b;
-                    hello_b = try std.ArrayListUnmanaged(u8).initCapacity(self.allocator, hello_sz);
-                    state = .recv_hello_b;
-                },
+            .wait_hello => if (try self.uart_proto_connector.recv(.HELLO)) |id| {
+                defer proto.Response.deinit(self.allocator, .HELLO, id);
+                std.debug.print("got hello: [{s}]\n", .{id});
+                try self.uart_proto_connector.send(.TERVIST);
+                state = .wait_tervist;
             },
-            .recv_hello_b => switch (uart_tick) {
-                .nop => {},
-                .data => |b| {
-                    hello_b.appendAssumeCapacity(b);
-                    if (hello_b.items.len == hello_sz) {
-                        std.debug.print("got hello: [{s}]\n", .{hello_b.items});
-                        state = .end;
-                    }
-                },
+            .wait_tervist => if (try self.uart_proto_connector.recv(.TERVIST)) |n| {
+                defer proto.Response.deinit(self.allocator, .TERVIST, n);
+                std.debug.print("got tervist: 0x{x:0>16}\n", .{n});
+                state = .end;
             },
             .end => {},
         }

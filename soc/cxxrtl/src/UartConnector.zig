@@ -36,7 +36,7 @@ pub fn init(cxxrtl: Cxxrtl, allocator: Allocator) UartConnector {
     };
 }
 
-pub fn deinit(self: *UartConnector) void {
+pub fn deinit(self: UartConnector) void {
     self.tx_buffer.deinit();
 }
 

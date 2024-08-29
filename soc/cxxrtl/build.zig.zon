@@ -9,7 +9,7 @@
         },
         .avacore = .{
             .url = "../../core",
-            .hash = "122019950d9554943c6f055be4887f38583352c967c740b57a68b10906808ec9c6af",
+            .hash = "1220c3e2ea85a51df7eb5dc5c8a936a466c70ed06ae79074db68b7d074e41ba942b7",
         },
     },
     .paths = .{
