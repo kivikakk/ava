@@ -1,5 +1,8 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const uart = @This();
+
+const proto = @import("proto.zig");
 
 const UART: *volatile u8 = @ptrFromInt(0x8000_0000);
 const UART_STATUS: *volatile u16 = @ptrFromInt(0x8000_0000);
@@ -33,4 +36,12 @@ fn readFn(context: void, buffer: []u8) ReadError!usize {
     }
 
     return i;
+}
+
+pub fn readRequest(allocator: Allocator) !proto.Request {
+    return try proto.Request.read(allocator, reader);
+}
+
+pub fn writeResponse(response: proto.Response) !void {
+    try response.write(writer);
 }

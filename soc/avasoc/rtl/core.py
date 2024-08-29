@@ -98,7 +98,9 @@ class Core(wiring.Component):
                 m.next = 'init'
 
         assert self.DMEM_BYTES % 4 == 0
-        assert len(self._dmem) * 4 + self.DMEM_STACK_BYTES <= self.DMEM_BYTES
+        assert len(self._dmem) * 4 + self.DMEM_STACK_BYTES <= self.DMEM_BYTES, (
+            f"_dmem is {len(self._dmem) * 4} bytes, stack is {self.DMEM_STACK_BYTES} bytes, "
+            f"total greater than DMEM {self.DMEM_BYTES} bytes")
         m.submodules.dmem = dmem = Memory(shape=32, depth=self.DMEM_BYTES // 4, init=self._dmem)
         dmem_wp = dmem.write_port(granularity=8)
         dmem_rp = dmem.read_port(transparent_for=[dmem_wp])

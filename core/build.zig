@@ -4,6 +4,8 @@ pub fn build(b: *std.Build) void {
     const host_target = b.standardTargetOptions(.{});
     const host_optimize = b.standardOptimizeOption(.{});
 
+    const target_optimize = b.option(bool, "target-debug", "Include safety checks on target") orelse true;
+
     const test_step = b.step("test", "Run unit tests");
 
     _ = b.addModule("avacore", .{
@@ -27,8 +29,7 @@ pub fn build(b: *std.Build) void {
         .name = "avacore",
         .root_source_file = b.path("src/root.zig"),
         .target = target,
-        .optimize = .ReleaseSafe,
-        // .optimize = .ReleaseSmall,
+        .optimize = if (target_optimize) .ReleaseSafe else .ReleaseSmall,
     });
     core.root_module.code_model = .medium;
     core.root_module.single_threaded = true;

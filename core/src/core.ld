@@ -16,5 +16,6 @@ SECTIONS {
         *(.data*)
         *(.sdata*)
         *(.sbss*)
+        *(.bss*)
     }
 }
