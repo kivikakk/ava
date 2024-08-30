@@ -15,7 +15,6 @@ class Core(wiring.Component):
     # it grows too large, we can initialise from flash or something.)
     # BSS and minimum stack size availability are asserted in the linker script.
     DMEM_BYTES = 128 * 1024
-    # assert DMEM_BYTES % 4 == 0
 
     DMEM_BASE = 0x4000_0000
     UART_BASE = 0x8000_0000

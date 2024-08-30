@@ -144,8 +144,7 @@ fn free(
 
 fn expectHeap(comptime layout: anytype) !void {
     const Expectation = struct {
-        // Specify "occupied" and optionally "before" and/or "after",
-        // or "free".
+        // Specify "occupied" and optionally "before" and/or "after", or "free".
         occupied: ?[]const u8 = null,
         before: ?usize = null,
         after: ?usize = null,
@@ -305,4 +304,69 @@ test "alloc aligned" {
         .{ .occupied = "\xdd\xcc\xbb\xaa", .before = 3 },
         .{ .free = 65517 },
     });
+}
+
+test "alloc fuzz" {
+    reinitialize_heap();
+
+    const Allo = union(enum) {
+        one: []u8,
+        two: []u16,
+        four: []u32,
+        eight: []u64,
+    };
+
+    var allocations = std.ArrayList(Allo).init(testing.allocator);
+    defer allocations.deinit();
+
+    var r = std.Random.DefaultPrng.init(@intCast(std.time.microTimestamp()));
+    var random = r.random();
+
+    for (0..1000) |_| {
+        switch (random.enumValue(enum { one, two, four, eight, free })) {
+            .one => {
+                const v = allocator.alloc(u8, random.uintLessThan(usize, 100)) catch continue;
+                std.debug.print("alloced: {*}\n", .{v});
+                try allocations.append(.{ .one = v });
+            },
+            .two => {
+                const v = allocator.alloc(u16, random.uintLessThan(usize, 80)) catch continue;
+                std.debug.print("alloced: {*}\n", .{v});
+                try allocations.append(.{ .two = v });
+            },
+            .four => {
+                const v = allocator.alloc(u32, random.uintLessThan(usize, 70)) catch continue;
+                std.debug.print("alloced: {*}\n", .{v});
+                try allocations.append(.{ .four = v });
+            },
+            .eight => {
+                const v = allocator.alloc(u64, random.uintLessThan(usize, 200)) catch continue;
+                std.debug.print("alloced: {*}\n", .{v});
+                try allocations.append(.{ .eight = v });
+            },
+            .free => if (allocations.items.len > 0) {
+                const ix = random.uintLessThan(usize, allocations.items.len);
+                const val = allocations.orderedRemove(ix);
+                switch (val) {
+                    inline else => |p| {
+                        std.debug.print("freeing: {*}\n", .{p});
+                        allocator.free(p);
+                    },
+                }
+            },
+        }
+    }
+
+    std.debug.print("{d} allocations:\n", .{allocations.items.len});
+
+    var eptr: ?*align(1) AllocationHeader = @ptrCast(heap[0..]);
+    while (eptr) |ptr| {
+        if (ptr.occupied) {
+            std.debug.print("[[{d}]] ", .{ptr.size});
+        } else {
+            std.debug.print("{d} ", .{ptr.size});
+        }
+        eptr = ptr.next();
+    }
+    std.debug.print("\n", .{});
 }
