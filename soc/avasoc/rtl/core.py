@@ -20,9 +20,9 @@ class Core(wiring.Component):
     #
     # BSS and minimum stack size availability are asserted in the linker script.
     #
-    # [1]: requiring an Amaranth hack to let us use the existing Memory stuff; if we want
-    #      to unhack it slightly, we can replace it with Instances that produce the right
-    #      $memrd_v2/$memwr_v2s, and wire up the ports.
+    # [^1]: requiring an Amaranth hack to let us use the existing Memory stuff;
+    #      if we want to unhack it slightly, we can replace it with Instances
+    #      that produce the right $memrd_v2/$memwr_v2s, and wire up the ports.
     DMEM_BYTES = 128 * 1024
 
     DMEM_BASE = 0x4000_0000
@@ -164,10 +164,22 @@ class Core(wiring.Component):
                     dmem_rp.en.eq(0),
                 ]
                 with m.If(dmem_init_rp.addr == len(self._dmem) - 1):
-                    m.next = 'ready'
+                    m.d.sync += address.eq((dmem_init_rp.addr << 2) + 4)
+                    m.next = 'zero'
                 with m.Else():
                     m.d.sync += dmem_init_rp.addr.eq(dmem_init_rp.addr + 1)
                     m.next = 'init.wait'
+
+            with m.State('zero'):
+                m.d.comb += [
+                    dmem_wp.data.eq(0),
+                    dmem_wp.en.eq(0b1111),
+                    dmem_rp.en.eq(0),
+                ]
+                with m.If(address == self.DMEM_BYTES - 4):
+                    m.next = 'ready'
+                with m.Else():
+                    m.d.sync += address.eq(address + 4)
 
             with m.State('ready'):
                 m.d.comb += i_dBus_cmd_ready.eq(1)
