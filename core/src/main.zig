@@ -8,7 +8,7 @@ const stack = @import("avabasic").stack;
 const isa = @import("avabasic").isa;
 const PrintLoc = @import("avabasic").PrintLoc;
 
-const VERSION: usize = 0;
+const VERSION: usize = 1;
 
 // Step 1: create a protocol to communicate over UART.
 //
@@ -32,12 +32,18 @@ const VERSION: usize = 0;
 
 pub fn main() !void {
     const allocator = heap.allocator;
+    // heap.reinitialize_heap();
 
     var machine: ?stack.Machine(Effects) = null;
     var code: ?[]const u8 = null;
 
     while (true) {
-        const req = try uart.readRequest(allocator);
+        try uart.writeResponse(.MACHINE_INIT);
+
+        const req = uart.readRequest(allocator) catch |err| {
+            try uart.writer.print("<<err in readRequest: {any}>>", .{err});
+            continue;
+        };
         defer req.deinit(allocator);
         switch (req) {
             .HELLO => {

@@ -58,9 +58,10 @@ class Top(wiring.Component):
                 core._uart = platform.request("uart")
 
                 btn = platform.request("button")
-                m.d.sync += rst.eq(btn.i)
+                with m.If(btn.i):
+                    m.d.sync += rst.eq(1)
 
-                m.submodules.spifr = spifr = SPIFlashReader()
+                m.submodules.spifr = spifr = ResetInserter(rst)(SPIFlashReader())
                 wiring.connect(m, wiring.flipped(spifr), core.spifr_bus)
 
             case cxxrtl():

@@ -52,7 +52,7 @@ const AllocationHeader = packed struct(u24) {
 
 const AllocationHeaderSize = 3;
 
-fn reinitialize_heap() void {
+pub fn reinitialize_heap() void {
     const ptr: *align(1) AllocationHeader = @ptrCast(heap[0..]);
     ptr.* = .{
         .size = HeapSize - AllocationHeaderSize,

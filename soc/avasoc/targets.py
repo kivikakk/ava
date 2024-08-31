@@ -9,7 +9,7 @@ __all__ = ["icebreaker", "cxxrtl"]
 
 
 class icebreaker(ICEBreakerPlatform):
-    prepare_kwargs = {"synth_opts": "-spram"}
+    prepare_kwargs = {"synth_opts": "-dsp -spram"}
 
 
 class cxxrtl(niar.CxxrtlPlatform):

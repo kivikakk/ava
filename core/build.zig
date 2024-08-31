@@ -28,6 +28,11 @@ pub fn build(b: *std.Build) void {
         .cpu_arch = .riscv32,
         .cpu_model = .{ .explicit = &std.Target.riscv.cpu.generic_rv32 },
         .os_tag = .freestanding,
+        .cpu_features_add = std.Target.riscv.featureSet(&.{
+            .c,
+            .m,
+            .zicsr,
+        }),
     });
     const core = b.addExecutable(.{
         .name = "avacore",

@@ -90,7 +90,7 @@ class Core(wiring.Component):
         )
 
         m.submodules.uart = uart = UART(
-            self._uart, baud=115_200, tx_fifo_depth=16, rx_fifo_depth=32)
+            self._uart, baud=115_200, tx_fifo_depth=32, rx_fifo_depth=32)
 
         # TODO: use Wishbone for IMEM, DMEM.
         imem_ix = Signal(range(32))
@@ -100,7 +100,7 @@ class Core(wiring.Component):
         with m.FSM():
             with m.State('init'):
                 m.d.comb += i_iBus_cmd_ready.eq(self.spifr_bus.req.ready)
-                with m.If(o_iBus_cmd_valid):
+                with m.If(i_iBus_cmd_ready & o_iBus_cmd_valid):
                     m.d.sync += Assert(o_iBus_cmd_payload_size == 5)  # i.e. 2**5 == 32 bytes
                     m.d.sync += [
                         imem_ix.eq(0),
