@@ -34,15 +34,16 @@ class Core(wiring.Component):
         running = Signal(init=1)
         m.d.comb += self.running.eq(running)
 
-        o_iBus_cmd_valid = Signal()
-        i_iBus_cmd_ready = Signal()
-        o_iBus_cmd_payload_pc = Signal(32)
-        i_iBus_rsp_valid = Signal()
-        i_iBus_rsp_payload_error = Signal()
-        i_iBus_rsp_payload_inst = Signal(32)
         i_timerInterrupt = Signal()
         i_externalInterrupt = Signal()
         i_softwareInterrupt = Signal()
+        o_iBus_cmd_valid = Signal()
+        i_iBus_cmd_ready = Signal()
+        o_iBus_cmd_payload_address = Signal(32)
+        o_iBus_cmd_payload_size = Signal(3)
+        i_iBus_rsp_valid = Signal()
+        i_iBus_rsp_payload_data = Signal(32)
+        i_iBus_rsp_payload_error = Signal()
         o_dBus_cmd_valid = Signal()
         i_dBus_cmd_ready = Signal()
         o_dBus_cmd_payload_wr = Signal()
@@ -55,15 +56,16 @@ class Core(wiring.Component):
         i_dBus_rsp_data = Signal(32)
 
         m.submodules.vexriscv = Instance("VexRiscv",
-            o_iBus_cmd_valid=o_iBus_cmd_valid,
-            i_iBus_cmd_ready=i_iBus_cmd_ready,
-            o_iBus_cmd_payload_pc=o_iBus_cmd_payload_pc,
-            i_iBus_rsp_valid=i_iBus_rsp_valid,
-            i_iBus_rsp_payload_error=i_iBus_rsp_payload_error,
-            i_iBus_rsp_payload_inst=i_iBus_rsp_payload_inst,
             i_timerInterrupt=i_timerInterrupt,
             i_externalInterrupt=i_externalInterrupt,
             i_softwareInterrupt=i_softwareInterrupt,
+            o_iBus_cmd_valid=o_iBus_cmd_valid,
+            i_iBus_cmd_ready=i_iBus_cmd_ready,
+            o_iBus_cmd_payload_address=o_iBus_cmd_payload_address,
+            o_iBus_cmd_payload_size=o_iBus_cmd_payload_size, # XXX
+            i_iBus_rsp_valid=i_iBus_rsp_valid,
+            i_iBus_rsp_payload_data=i_iBus_rsp_payload_data,
+            i_iBus_rsp_payload_error=i_iBus_rsp_payload_error,
             o_dBus_cmd_valid=o_dBus_cmd_valid,
             i_dBus_cmd_ready=i_dBus_cmd_ready,
             o_dBus_cmd_payload_wr=o_dBus_cmd_payload_wr,
@@ -84,22 +86,28 @@ class Core(wiring.Component):
         m.submodules.imem = imem = Memory(shape=32, depth=len(self._imem), init=self._imem)
         imem_rp = imem.read_port()
 
+        imem_fetch_rem = Signal(range(8))
+
         with m.FSM():
             with m.State('init'):
-                # Currently using GenSmallest which sets IBusSimplePlugin.cmdForkPersistence=false,
-                # so we ack at once and save anything we need.
                 m.d.comb += i_iBus_cmd_ready.eq(1)
                 with m.If(o_iBus_cmd_valid):
-                    m.d.sync += imem_rp.addr.eq(o_iBus_cmd_payload_pc >> 2)
-                    m.next = 'read.wait'
+                    m.d.sync += Assert(o_iBus_cmd_payload_size == 5)  # i.e. 2**5 == 32 bytes
+                    m.d.sync += imem_rp.addr.eq(o_iBus_cmd_payload_address >> 2)
+                    m.d.sync += imem_fetch_rem.eq(7)
+                    m.next = 'read.stall'
 
-            with m.State('read.wait'):
+            with m.State('read.stall'):
+                m.d.sync += imem_rp.addr.eq(imem_rp.addr + 1)
                 m.next = 'read.present'
 
             with m.State('read.present'):
+                m.d.sync += imem_rp.addr.eq(imem_rp.addr + 1)
+                m.d.sync += imem_fetch_rem.eq(imem_fetch_rem - 1)
                 m.d.comb += i_iBus_rsp_valid.eq(1)
-                m.d.comb += i_iBus_rsp_payload_inst.eq(imem_rp.data)
-                m.next = 'init'
+                m.d.comb += i_iBus_rsp_payload_data.eq(imem_rp.data)
+                with m.If(imem_fetch_rem == 0):
+                    m.next = 'init'
 
         m.submodules.dmem_init = dmem_init = Memory(shape=32, depth=len(self._dmem), init=self._dmem)
         dmem_init_rp = dmem_init.read_port()
