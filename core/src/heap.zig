@@ -13,9 +13,11 @@ const allocator_vtable = Allocator.VTable{
     .free = free,
 };
 
-const HeapSize = 64 * 1024;
+pub const HeapSize = 64 * 1024;
 var heap: [HeapSize]u8 align(4) = undefined;
 var heap_initialized = false;
+
+pub var heap_free: usize = HeapSize - AllocationHeaderSize;
 
 const AllocationHeader = packed struct(u24) {
     const Self = @This();
@@ -104,12 +106,16 @@ fn alloc(
         const old_size = ptr.size;
         ptr.size = @intCast(needed);
 
+        heap_free -= ptr.size + AllocationHeaderSize;
+
         const nextPtr = ptr.next().?;
         nextPtr.* = .{
             .size = @intCast(old_size - ptr.size - AllocationHeaderSize),
             .log2_align = 0,
             .occupied = false,
         };
+    } else {
+        heap_free -= ptr.size;
     }
 
     return result;
@@ -154,9 +160,12 @@ fn free(
     ptr.occupied = false;
     ptr.log2_align = 0;
 
+    heap_free += ptr.size;
+
     ptr = @ptrCast(heap[0..]);
     while (ptr.next()) |nextPtr| {
         if (!ptr.occupied and !nextPtr.occupied) {
+            heap_free += AllocationHeaderSize;
             ptr.size += AllocationHeaderSize + nextPtr.size;
         } else {
             ptr = nextPtr;
