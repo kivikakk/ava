@@ -14,17 +14,28 @@ const allocator_vtable = Allocator.VTable{
 };
 
 const HeapSize = 64 * 1024;
-var heap: [HeapSize]u8 align(4) = undefined; // [_]u8{undefined} ** HeapSize;
+var heap: [HeapSize]u8 align(4) = undefined;
 var heap_initialized = false;
 
 const AllocationHeader = packed struct(u24) {
     const Self = @This();
 
-    size: u23,
+    size: u21,
+    log2_align: u2,
     occupied: bool,
 
     fn bufPtr(self: *align(1) const Self) [*]u8 {
-        return @ptrFromInt(@intFromPtr(self) + AllocationHeaderSize);
+        var p: usize = @intFromPtr(self) + AllocationHeaderSize;
+
+        const MASK: u3 = switch (self.log2_align) {
+            0 => 0b000,
+            1 => 0b001,
+            2 => 0b011,
+            3 => 0b111,
+        };
+        while (p & MASK != 0) : (p += 1) {}
+
+        return @ptrFromInt(p);
     }
 
     fn next(self: *align(1) const Self) ?*align(1) Self {
@@ -43,6 +54,7 @@ fn reinitialize_heap() void {
     const ptr: *align(1) AllocationHeader = @ptrCast(heap[0..]);
     ptr.* = .{
         .size = HeapSize - AllocationHeaderSize,
+        .log2_align = 0,
         .occupied = false,
     };
     heap_initialized = true;
@@ -80,23 +92,24 @@ fn alloc(
                 needed += 1;
             }
             if (ptr.size >= needed) {
-                result = @ptrFromInt(p);
+                ptr.occupied = true;
+                ptr.log2_align = @intCast(log2_ptr_align);
+                result = ptr.bufPtr();
                 break;
             }
         }
     }
-    ptr.occupied = true;
 
     if (ptr.size - needed > AllocationHeaderSize) {
         const old_size = ptr.size;
         ptr.size = @intCast(needed);
 
-        if (ptr.next()) |nextPtr| {
-            nextPtr.* = .{
-                .size = @intCast(old_size - ptr.size - AllocationHeaderSize),
-                .occupied = false,
-            };
-        }
+        const nextPtr = ptr.next().?;
+        nextPtr.* = .{
+            .size = @intCast(old_size - ptr.size - AllocationHeaderSize),
+            .log2_align = 0,
+            .occupied = false,
+        };
     }
 
     return result;
@@ -124,13 +137,22 @@ fn free(
     log2_old_align: u8,
     ret_addr: usize,
 ) void {
-    _ = log2_old_align;
     _ = ret_addr;
 
-    // // TODO: assert buf in heap?
-    var ptr: *align(1) AllocationHeader = @ptrFromInt(@intFromPtr(buf.ptr) - 3);
+    // XXX: this is very slow. If we don't want to do this, we need to change
+    // how we handle aligned allocations entirely, since right now any induced
+    // alignment causes the header to not be at (&buf-3).
+    var ptr: *align(1) AllocationHeader = @ptrCast(heap[0..]);
+    while (true) : (ptr = ptr.next() orelse @panic("invalid free")) {
+        if (@as([*]u8, @ptrCast(buf)) == ptr.bufPtr()) {
+            break;
+        }
+    }
+
     std.debug.assert(ptr.occupied);
+    std.debug.assert(ptr.log2_align == log2_old_align);
     ptr.occupied = false;
+    ptr.log2_align = 0;
 
     ptr = @ptrCast(heap[0..]);
     while (ptr.next()) |nextPtr| {
@@ -144,10 +166,12 @@ fn free(
 
 fn expectHeap(comptime layout: anytype) !void {
     const Expectation = struct {
-        // Specify "occupied" and optionally "before" and/or "after", or "free".
+        // Specify "occupied" and any of {"log2_align", "before", "after"}, or "free".
         occupied: ?[]const u8 = null,
+        log2_align: ?u2 = null,
         before: ?usize = null,
         after: ?usize = null,
+
         free: ?usize = null,
     };
 
@@ -159,13 +183,16 @@ fn expectHeap(comptime layout: anytype) !void {
             std.debug.assert(e.free == null);
             try testing.expect(ptr.occupied);
             const size = (e.before orelse 0) + bs.len + (e.after orelse 0);
+            try testing.expectEqual(e.log2_align orelse 0, ptr.log2_align);
             try testing.expectEqual(size, ptr.size);
-            try testing.expectEqualSlices(u8, bs, ptr.bufPtr()[e.before orelse 0 ..][0..bs.len]);
+            try testing.expectEqualSlices(u8, bs, ptr.bufPtr()[0..bs.len]);
         } else {
             std.debug.assert(e.before == null);
             std.debug.assert(e.after == null);
+            std.debug.assert(e.log2_align == null);
             const size = e.free.?;
             try testing.expect(!ptr.occupied);
+            try testing.expect(ptr.log2_align == 0);
             try testing.expectEqual(size, ptr.size);
         }
 
@@ -301,7 +328,7 @@ test "alloc aligned" {
 
     try expectHeap(.{
         .{ .occupied = "<!>" },
-        .{ .occupied = "\xdd\xcc\xbb\xaa", .before = 3 },
+        .{ .occupied = "\xdd\xcc\xbb\xaa", .log2_align = 2, .before = 3 },
         .{ .free = 65517 },
     });
 }
@@ -326,47 +353,26 @@ test "alloc fuzz" {
         switch (random.enumValue(enum { one, two, four, eight, free })) {
             .one => {
                 const v = allocator.alloc(u8, random.uintLessThan(usize, 100)) catch continue;
-                std.debug.print("alloced: {*}\n", .{v});
                 try allocations.append(.{ .one = v });
             },
             .two => {
                 const v = allocator.alloc(u16, random.uintLessThan(usize, 80)) catch continue;
-                std.debug.print("alloced: {*}\n", .{v});
                 try allocations.append(.{ .two = v });
             },
             .four => {
                 const v = allocator.alloc(u32, random.uintLessThan(usize, 70)) catch continue;
-                std.debug.print("alloced: {*}\n", .{v});
                 try allocations.append(.{ .four = v });
             },
             .eight => {
                 const v = allocator.alloc(u64, random.uintLessThan(usize, 200)) catch continue;
-                std.debug.print("alloced: {*}\n", .{v});
                 try allocations.append(.{ .eight = v });
             },
             .free => if (allocations.items.len > 0) {
                 const ix = random.uintLessThan(usize, allocations.items.len);
-                const val = allocations.orderedRemove(ix);
-                switch (val) {
-                    inline else => |p| {
-                        std.debug.print("freeing: {*}\n", .{p});
-                        allocator.free(p);
-                    },
+                switch (allocations.orderedRemove(ix)) {
+                    inline else => |p| allocator.free(p),
                 }
             },
         }
     }
-
-    std.debug.print("{d} allocations:\n", .{allocations.items.len});
-
-    var eptr: ?*align(1) AllocationHeader = @ptrCast(heap[0..]);
-    while (eptr) |ptr| {
-        if (ptr.occupied) {
-            std.debug.print("[[{d}]] ", .{ptr.size});
-        } else {
-            std.debug.print("{d} ", .{ptr.size});
-        }
-        eptr = ptr.next();
-    }
-    std.debug.print("\n", .{});
 }
