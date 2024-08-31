@@ -4,7 +4,7 @@
     .dependencies = .{
         .avabasic = .{
             .url = "../basic/",
-            .hash = "1220283136e67114ac63dd46d1272492bf6f1c45912afc267eefc893ffbe43763434",
+            .hash = "122028b4c98ea31ff6f5f21f6efc59aa6d30101f7e8eb9ffde0868badb22b33870f3",
         },
     },
     .paths = .{

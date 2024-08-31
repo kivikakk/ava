@@ -3,7 +3,10 @@ const std = @import("std");
 const uart = @import("uart.zig");
 const proto = @import("proto.zig");
 const heap = @import("heap.zig");
+
 const stack = @import("avabasic").stack;
+const isa = @import("avabasic").isa;
+const PrintLoc = @import("avabasic").PrintLoc;
 
 const VERSION: usize = 0;
 
@@ -30,21 +33,61 @@ const VERSION: usize = 0;
 pub fn main() !void {
     const allocator = heap.allocator;
 
-    // var machine = stack.Machine(Effects).init(, , )
+    var machine: ?stack.Machine(Effects) = null;
+    var code: ?[]const u8 = null;
 
     while (true) {
         const req = try uart.readRequest(allocator);
         defer req.deinit(allocator);
         switch (req) {
             .HELLO => {
-                // Include an alloc to force BSS to exist for now.
-                const m = try std.fmt.allocPrint(allocator, "AvaCore {d}", .{VERSION});
-                defer allocator.free(m);
-                try uart.writeResponse(.{ .HELLO = m });
+                try uart.writeResponse(.{ .HELLO = std.fmt.comptimePrint("AvaCore {d}", .{VERSION}) });
             },
-            .TERVIST => {
-                try uart.writeResponse(.{ .TERVIST = 0xabcd1234_ef077123 });
+            .MACHINE_INIT => |new_code| {
+                try uart.writeResponse(.MACHINE_INIT);
+
+                if (machine) |*m|
+                    m.deinit();
+                if (code) |c|
+                    allocator.free(c);
+
+                effects = .{};
+                machine = stack.Machine(Effects).init(allocator, &effects, null);
+                code = new_code;
+
+                try machine.?.run(code.?);
             },
         }
     }
 }
+
+var effects: Effects = .{};
+
+const Effects = struct {
+    const Self = @This();
+
+    pub const Error = error{};
+
+    printloc: PrintLoc = .{},
+
+    pub fn deinit(_: *Self) void {}
+
+    pub fn print(_: *Self, v: isa.Value) !void {
+        try isa.printFormat(heap.allocator, uart.writer, v);
+    }
+
+    pub fn printComma(self: *Self) !void {
+        switch (self.printloc.comma()) {
+            .newline => try uart.writer.writeByte('\n'),
+            .spaces => |s| try uart.writer.writeByteNTimes(' ', s),
+        }
+    }
+
+    pub fn printLinefeed(_: *Self) !void {
+        try uart.writer.writeByte('\n');
+    }
+
+    pub fn pragmaPrinted(_: *Self, _: []const u8) !void {
+        unreachable;
+    }
+};

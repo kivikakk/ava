@@ -4,31 +4,44 @@ const testing = std.testing;
 
 pub const RequestKind = enum(u8) {
     HELLO = 0x01,
-    TERVIST = 0x02,
+    MACHINE_INIT = 0x02,
 };
 
 pub const Request = union(RequestKind) {
     const Self = @This();
 
     HELLO: void,
-    TERVIST: void,
+    MACHINE_INIT: []const u8,
 
     pub fn deinit(self: Self, allocator: Allocator) void {
-        _ = self;
-        _ = allocator;
+        switch (self) {
+            .HELLO => {},
+            .MACHINE_INIT => |c| allocator.free(c),
+        }
     }
 
     pub fn write(self: Self, writer: anytype) @TypeOf(writer).Error!void {
         try writer.writeByte(@intFromEnum(self));
+        switch (self) {
+            .HELLO => {},
+            .MACHINE_INIT => |c| {
+                try writer.writeInt(u32, @intCast(c.len), .little);
+                try writer.writeAll(c);
+            },
+        }
     }
 
     pub fn read(allocator: Allocator, reader: anytype) (Allocator.Error || @TypeOf(reader).NoEofError)!Self {
-        _ = allocator;
         const c = try reader.readByte();
 
         switch (@as(RequestKind, @enumFromInt(c))) {
             .HELLO => return .HELLO,
-            .TERVIST => return .TERVIST,
+            .MACHINE_INIT => {
+                const n = try reader.readInt(u32, .little);
+                const buf = try allocator.alloc(u8, n);
+                try reader.readNoEof(buf);
+                return .{ .MACHINE_INIT = buf };
+            },
         }
     }
 };
@@ -37,12 +50,12 @@ pub const Response = union(RequestKind) {
     const Self = @This();
 
     HELLO: []const u8,
-    TERVIST: u64,
+    MACHINE_INIT: void,
 
     pub fn deinit(allocator: Allocator, comptime kind: RequestKind, payload: std.meta.TagPayload(Response, kind)) void {
         switch (kind) {
             .HELLO => allocator.free(payload),
-            .TERVIST => {},
+            .MACHINE_INIT => {},
         }
     }
 
@@ -52,8 +65,8 @@ pub const Response = union(RequestKind) {
                 try writer.writeByte(@intCast(id.len));
                 try writer.writeAll(id);
             },
-            .TERVIST => |n| {
-                try writer.writeInt(u64, n, .little);
+            .MACHINE_INIT => {
+                try writer.writeByte(1);
             },
         }
     }
@@ -69,8 +82,8 @@ pub const Response = union(RequestKind) {
                 try reader.readNoEof(buf);
                 return buf;
             },
-            .TERVIST => {
-                return try reader.readInt(u64, .little);
+            .MACHINE_INIT => {
+                std.debug.assert(try reader.readByte() == 1);
             },
         }
     }
@@ -102,7 +115,8 @@ fn expectRoundtripResponse(comptime inp: Response) !void {
 }
 
 test "request roundtrips" {
-    try expectRoundtripRequest(.{ .HELLO = {} });
+    try expectRoundtripRequest(.HELLO);
+    try expectRoundtripRequest(.{ .MACHINE_INIT = "\xaa\xbb\xcc" });
     try expectRoundtripResponse(.{ .HELLO = "xyzzy 123!" });
-    try expectRoundtripResponse(.{ .TERVIST = 0x74747474_afafeb19 });
+    try expectRoundtripResponse(.MACHINE_INIT);
 }

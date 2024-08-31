@@ -78,7 +78,6 @@ const UartProtoConnector = struct {
             .data => |b| b,
         };
 
-        std.debug.print("{{{x:0>2}}}", .{b});
         try self.recv_buffer.append(b);
     }
 
@@ -102,7 +101,7 @@ const UartProtoConnector = struct {
 // can use the same thing as the actual tool that'll connect to the live FPGA.
 
 pub fn run(self: *SimThread) !void {
-    var state: enum { init, wait_hello, wait_tervist, end } = .init;
+    var state: enum { init, wait_hello, wait_machine_init, end } = .init;
 
     self.tick();
     while (self.sim_controller.lockIfRunning()) {
@@ -119,15 +118,19 @@ pub fn run(self: *SimThread) !void {
             .wait_hello => if (try self.uart_proto_connector.recv(.HELLO)) |id| {
                 defer proto.Response.deinit(self.allocator, .HELLO, id);
                 std.debug.print("got hello: [{s}]\n", .{id});
-                try self.uart_proto_connector.send(.TERVIST);
-                state = .wait_tervist;
+
+                const code = "\x01\x01\x00\x01\x02\x00\x07\x00\x04\x06";
+                try self.uart_proto_connector.send(.{ .MACHINE_INIT = code });
+                state = .wait_machine_init;
             },
-            .wait_tervist => if (try self.uart_proto_connector.recv(.TERVIST)) |n| {
-                defer proto.Response.deinit(self.allocator, .TERVIST, n);
-                std.debug.print("got tervist: 0x{x:0>16}\n", .{n});
+            .wait_machine_init => if (try self.uart_proto_connector.recv(.MACHINE_INIT)) |_| {
                 state = .end;
             },
-            .end => {},
+            .end => {
+                if (self.uart_proto_connector.recv_buffer.popOrNull()) |c| {
+                    std.debug.print("{c}", .{c});
+                }
+            },
         }
 
         if (!self.running.curr()) {

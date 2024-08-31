@@ -1,7 +1,9 @@
 const std = @import("std");
 const testing = std.testing;
 
+pub const isa = @import("isa.zig");
 pub const stack = @import("stack.zig");
+pub const PrintLoc = @import("PrintLoc.zig");
 
 comptime {
     testing.refAllDeclsRecursive(@import("Token.zig"));
@@ -10,10 +12,10 @@ comptime {
     testing.refAllDeclsRecursive(@import("ast/Expr.zig"));
     testing.refAllDeclsRecursive(@import("Parser.zig"));
     testing.refAllDeclsRecursive(@import("print.zig"));
-    testing.refAllDeclsRecursive(@import("isa.zig"));
+    testing.refAllDeclsRecursive(isa);
     testing.refAllDeclsRecursive(@import("Compiler.zig"));
     testing.refAllDeclsRecursive(stack);
-    testing.refAllDeclsRecursive(@import("PrintLoc.zig"));
+    testing.refAllDeclsRecursive(PrintLoc);
     testing.refAllDeclsRecursive(@import("test.zig"));
     testing.refAllDeclsRecursive(@import("ty.zig"));
     testing.refAllDeclsRecursive(@import("LocHandler.zig"));
