@@ -1,14 +1,14 @@
 from amaranth import *
-from amaranth.lib import stream
+from amaranth.lib import stream, wiring
 from amaranth.lib.fifo import SyncFIFOBuffered
-from amaranth.lib.wiring import Component, In, Out
+from amaranth.lib.wiring import In, Out
 from amaranth_stdio.serial import AsyncSerial
 
 
 __all__ = ["UART"]
 
 
-class UART(Component):
+class UART(wiring.Component):
     wr: In(stream.Signature(8))
     rd: Out(stream.Signature(8))
     rd_overrun: Out(1)

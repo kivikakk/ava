@@ -5,7 +5,8 @@ const Cxxrtl = @import("zxxrtl");
 const proto = @import("avacore").proto;
 
 const SimController = @import("./SimController.zig");
-const UartConnector = @import("./UartConnector.zig");
+const UartProtoConnector = @import("./UartProtoConnector.zig");
+const SpiFlashConnector = @import("./SpiFlashConnector.zig");
 
 const SimThread = @This();
 
@@ -17,9 +18,10 @@ vcd: ?Cxxrtl.Vcd,
 
 clk: Cxxrtl.Object(bool),
 rst: Cxxrtl.Object(bool),
+running: Cxxrtl.Object(bool),
 
 uart_proto_connector: UartProtoConnector,
-running: Cxxrtl.Object(bool),
+spi_flash_connector: SpiFlashConnector,
 
 pub fn init(allocator: Allocator, sim_controller: *SimController) SimThread {
     const cxxrtl = Cxxrtl.init();
@@ -29,10 +31,10 @@ pub fn init(allocator: Allocator, sim_controller: *SimController) SimThread {
 
     const clk = cxxrtl.get(bool, "clk");
     const rst = cxxrtl.get(bool, "rst");
-
-    const uart_connector = UartConnector.init(cxxrtl, allocator);
-    const uart_proto_connector = UartProtoConnector.init(allocator, uart_connector);
     const running = cxxrtl.get(bool, "running");
+
+    const uart_proto_connector = UartProtoConnector.init(allocator, cxxrtl);
+    const spi_flash_connector = SpiFlashConnector.init(cxxrtl);
 
     return .{
         .sim_controller = sim_controller,
@@ -42,6 +44,7 @@ pub fn init(allocator: Allocator, sim_controller: *SimController) SimThread {
         .clk = clk,
         .rst = rst,
         .uart_proto_connector = uart_proto_connector,
+        .spi_flash_connector = spi_flash_connector,
         .running = running,
     };
 }
@@ -52,54 +55,6 @@ pub fn deinit(self: *SimThread) void {
     self.cxxrtl.deinit();
 }
 
-const UartProtoConnector = struct {
-    const Self = @This();
-
-    allocator: Allocator,
-    uart_connector: UartConnector,
-    recv_buffer: std.ArrayList(u8),
-
-    fn init(allocator: Allocator, uart_connector: UartConnector) Self {
-        return .{
-            .allocator = allocator,
-            .uart_connector = uart_connector,
-            .recv_buffer = std.ArrayList(u8).init(allocator),
-        };
-    }
-
-    fn deinit(self: Self) void {
-        self.uart_connector.deinit();
-        self.recv_buffer.deinit();
-    }
-
-    fn tick(self: *Self) !void {
-        const b = switch (self.uart_connector.tick()) {
-            .nop => return,
-            .data => |b| b,
-        };
-
-        try self.recv_buffer.append(b);
-    }
-
-    fn send(self: *Self, req: proto.Request) !void {
-        try req.write(self.uart_connector.tx_buffer.writer());
-    }
-
-    fn recv(self: *Self, comptime kind: proto.RequestKind) !?std.meta.TagPayload(proto.Response, kind) {
-        var fbs = std.io.fixedBufferStream(self.recv_buffer.items);
-        if (proto.Response.read(self.allocator, fbs.reader(), kind)) |resp| {
-            self.recv_buffer.replaceRange(0, fbs.pos, &.{}) catch unreachable;
-            return resp;
-        } else |err| switch (err) {
-            error.EndOfStream => return null,
-            else => return err,
-        }
-    }
-};
-
-// Need to connect UartConnector to a generic reader/writer interface so this
-// can use the same thing as the actual tool that'll connect to the live FPGA.
-
 pub fn run(self: *SimThread) !void {
     var state: enum { init, wait_hello, wait_machine_init, end } = .init;
 
@@ -108,6 +63,7 @@ pub fn run(self: *SimThread) !void {
         defer self.sim_controller.unlock();
         self.tick();
 
+        self.spi_flash_connector.tick();
         try self.uart_proto_connector.tick();
 
         switch (state) {

@@ -3,9 +3,9 @@ const Allocator = std.mem.Allocator;
 const options = @import("options");
 const Cxxrtl = @import("zxxrtl");
 
-const DIVISOR = options.clock_hz / 115200;
-
 const UartConnector = @This();
+
+const DIVISOR = options.clock_hz / 115200;
 
 tx: Cxxrtl.Object(bool),
 tx_state: enum { idle, bit } = .idle,
@@ -25,7 +25,7 @@ const Tick = union(enum) {
     data: u8,
 };
 
-pub fn init(cxxrtl: Cxxrtl, allocator: Allocator) UartConnector {
+pub fn init(allocator: Allocator, cxxrtl: Cxxrtl) UartConnector {
     const tx = cxxrtl.get(bool, "uart_rx");
     const rx = Cxxrtl.Sample(bool).init(cxxrtl, "uart_tx", true);
 
