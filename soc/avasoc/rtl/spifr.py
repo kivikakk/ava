@@ -1,39 +1,25 @@
 import math
 
 from amaranth import *
-from amaranth.lib import wiring
+from amaranth.lib import data, stream, wiring
 from amaranth.lib.wiring import In, Out
 
 from ..targets import icebreaker
 
 
-__all__ = ["SPIFlashReader", "SPIFlashReaderBus"]
+__all__ = ["SPIFlashReader"]
 
-
-SPIHardwareBus = wiring.Signature({
-    "copi": Out(1),
-    "cipo": In(1),
-    "cs": Out(1),
-    "clk": Out(1),
-})
-
-
-SPIFlashReaderBus = wiring.Signature({
-    "addr": Out(24),
-    "len": Out(16),
-    "stb": Out(1),
-    "busy": In(1),
-    "data": In(8),
-    "valid": In(1),
-})
-
+# TODO: do 32 bits at a time. (Do this when we have it tested on hardware so we
+#       can verify while we go.)
 
 class SPIFlashReader(wiring.Component):
-    spi: Out(SPIHardwareBus)
-    bus: In(SPIFlashReaderBus)
+    Signature = wiring.Signature({
+        "req": Out(stream.Signature(data.StructLayout({ "addr": 24, "len": 16 }))),
+        "res": In(stream.Signature(8, always_ready=True)),
+    })
 
     def __init__(self):
-        super().__init__()
+        super().__init__(SPIFlashReader.Signature)
 
     def elaborate(self, platform):
         m = Module()
@@ -42,14 +28,19 @@ class SPIFlashReader(wiring.Component):
             # Blackboxed in tests.
             return m
 
+        copi = Signal()
+        cipo = Signal()
+        cs = Signal()
+        clk = Signal()
+
         match platform:
             case icebreaker():
                 spi = platform.request("spi_flash_1x")
                 m.d.comb += [
-                    spi.copi.o.eq(self.spi.copi),
-                    self.spi.cipo.eq(spi.cipo.i),
-                    spi.cs.o.eq(self.spi.cs),
-                    spi.clk.o.eq(self.spi.clk),
+                    spi.copi.o.eq(copi),
+                    cipo.eq(spi.cipo.i),
+                    spi.cs.o.eq(cs),
+                    spi.clk.o.eq(clk),
                 ]
 
             case _:
@@ -64,23 +55,24 @@ class SPIFlashReader(wiring.Component):
         snd_bitcount = Signal(range(max(32, TRES1_TDP_CYCLES)))
 
         rcv_bitcount = Signal(range(8))
-        rcv_bytecount = Signal.like(self.bus.len)
+        rcv_bytecount = Signal.like(self.req.p.len)
 
         m.d.comb += [
-            self.spi.copi.eq(sr[-1]),
-            self.spi.clk.eq(self.spi.cs & ~ClockSignal()),
-            self.bus.data.eq(sr[:8]),
+            copi.eq(sr[-1]),
+            clk.eq(cs & ~ClockSignal()),
+            self.res.p.eq(sr[:8]),
         ]
 
-        m.d.sync += self.bus.valid.eq(0)
+        m.d.sync += self.res.valid.eq(0)
 
         with m.FSM() as fsm:
-            m.d.comb += self.bus.busy.eq(~fsm.ongoing('idle'))
+            m.d.comb += self.req.ready.eq(fsm.ongoing('idle'))
 
             with m.State('idle'):
-                with m.If(self.bus.stb):
+                with m.If(self.req.valid):
+                    m.d.sync += Assert(self.req.p.len % 4 == 0)
                     m.d.sync += [
-                        self.spi.cs.eq(1),
+                        cs.eq(1),
                         sr.eq(0xAB000000),
                         snd_bitcount.eq(31),
                     ]
@@ -93,7 +85,7 @@ class SPIFlashReader(wiring.Component):
                 ]
                 with m.If(snd_bitcount == 0):
                     m.d.sync += [
-                        self.spi.cs.eq(0),
+                        cs.eq(0),
                         snd_bitcount.eq(TRES1_TDP_CYCLES - 1),
                     ]
                     m.next = 'wait'
@@ -103,11 +95,11 @@ class SPIFlashReader(wiring.Component):
                     m.d.sync += snd_bitcount.eq(snd_bitcount - 1)
                 with m.Else():
                     m.d.sync += [
-                        self.spi.cs.eq(1),
-                        sr.eq(Cat(self.bus.addr, C(0x03, 8))),
+                        cs.eq(1),
+                        sr.eq(Cat(self.req.p.addr, C(0x03, 8))),
                         snd_bitcount.eq(31),
                         rcv_bitcount.eq(7),
-                        rcv_bytecount.eq(self.bus.len - 1),
+                        rcv_bytecount.eq(self.req.p.len - 1),
                     ]
                     m.next = 'cmd'
 
@@ -122,17 +114,17 @@ class SPIFlashReader(wiring.Component):
             with m.State('recv'):
                 m.d.sync += [
                     rcv_bitcount.eq(rcv_bitcount - 1),
-                    sr.eq(Cat(self.spi.cipo, sr[:-1])),
+                    sr.eq(Cat(cipo, sr[:-1])),
                 ]
                 with m.If(rcv_bitcount == 0):
                     m.d.sync += [
                         rcv_bytecount.eq(rcv_bytecount - 1),
                         rcv_bitcount.eq(7),
-                        self.bus.valid.eq(1),
+                        self.res.valid.eq(1),
                     ]
                     with m.If(rcv_bytecount == 0):
                         m.d.sync += [
-                            self.spi.cs.eq(0),
+                            cs.eq(0),
                             snd_bitcount.eq(TRES1_TDP_CYCLES - 1),
                         ]
                         m.next = 'powerdown'

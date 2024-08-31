@@ -4,7 +4,7 @@ from amaranth.lib.wiring import In, Out
 from amaranth.lib.memory import Memory
 
 from .uart import UART
-from .spifr import SPIFlashReaderBus
+from .spifr import SPIFlashReader
 
 
 __all__ = ["Core"]
@@ -31,7 +31,7 @@ class Core(wiring.Component):
 
     running: Out(1)
 
-    spifr_bus: Out(SPIFlashReaderBus)
+    spifr_bus: Out(SPIFlashReader.Signature)
 
     def __init__(self, *, dmem):
         super().__init__()
@@ -94,33 +94,33 @@ class Core(wiring.Component):
 
         # TODO: use Wishbone for IMEM, DMEM.
         imem_ix = Signal(range(32))
-        m.d.sync += self.spifr_bus.stb.eq(0)
+        m.d.sync += self.spifr_bus.req.valid.eq(0)
         m.d.sync += i_iBus_rsp_valid.eq(0)
 
         with m.FSM():
             with m.State('init'):
-                m.d.comb += i_iBus_cmd_ready.eq(~self.spifr_bus.busy)
+                m.d.comb += i_iBus_cmd_ready.eq(self.spifr_bus.req.ready)
                 with m.If(o_iBus_cmd_valid):
                     m.d.sync += Assert(o_iBus_cmd_payload_size == 5)  # i.e. 2**5 == 32 bytes
                     m.d.sync += [
                         imem_ix.eq(0),
-                        self.spifr_bus.addr.eq(self.SPI_IMEM_BASE + o_iBus_cmd_payload_address),
-                        self.spifr_bus.len.eq(32),
-                        self.spifr_bus.stb.eq(1),
+                        self.spifr_bus.req.p.addr.eq(self.SPI_IMEM_BASE + o_iBus_cmd_payload_address),
+                        self.spifr_bus.req.p.len.eq(32),
+                        self.spifr_bus.req.valid.eq(1),
                     ]
                     m.next = 'read.wait'
 
             with m.State('read.wait'):
-                with m.If(self.spifr_bus.valid):
+                with m.If(self.spifr_bus.res.valid):
                     with m.Switch(imem_ix[:2]):
                         with m.Case(0):
-                            m.d.sync += i_iBus_rsp_payload_data[:8].eq(self.spifr_bus.data)
+                            m.d.sync += i_iBus_rsp_payload_data[:8].eq(self.spifr_bus.res.p)
                         with m.Case(1):
-                            m.d.sync += i_iBus_rsp_payload_data[8:16].eq(self.spifr_bus.data)
+                            m.d.sync += i_iBus_rsp_payload_data[8:16].eq(self.spifr_bus.res.p)
                         with m.Case(2):
-                            m.d.sync += i_iBus_rsp_payload_data[16:24].eq(self.spifr_bus.data)
+                            m.d.sync += i_iBus_rsp_payload_data[16:24].eq(self.spifr_bus.res.p)
                         with m.Case(3):
-                            m.d.sync += i_iBus_rsp_payload_data[24:].eq(self.spifr_bus.data)
+                            m.d.sync += i_iBus_rsp_payload_data[24:].eq(self.spifr_bus.res.p)
                             m.d.sync += i_iBus_rsp_valid.eq(1)
                     with m.If(imem_ix == 31):
                         m.next = 'init'

@@ -34,11 +34,12 @@ class Top(wiring.Component):
 
                 "running": Out(1),
 
-                "spifr_req_addr": Out(24),
-                "spifr_req_len": Out(16),
-                "spifr_req_stb": Out(1),
-                "spifr_res_busy": In(1),
-                "spifr_res_data": In(8),
+                "spifr_req_p_addr": Out(24),
+                "spifr_req_p_len": Out(16),
+                "spifr_req_valid": Out(1),
+                "spifr_req_ready": In(1),
+
+                "spifr_res_p": In(8),
                 "spifr_res_valid": In(1),
             })
         else:
@@ -60,7 +61,7 @@ class Top(wiring.Component):
                 m.d.sync += rst.eq(btn.i)
 
                 m.submodules.spifr = spifr = SPIFlashReader()
-                wiring.connect(m, core.spifr_bus, spifr.bus)
+                wiring.connect(m, wiring.flipped(spifr), core.spifr_bus)
 
             case cxxrtl():
                 core._uart = cxxrtl.Uart(
@@ -70,12 +71,12 @@ class Top(wiring.Component):
                 m.d.comb += self.running.eq(core.running)
 
                 m.d.comb += [
-                    self.spifr_req_addr.eq(core.spifr_bus.addr),
-                    self.spifr_req_len.eq(core.spifr_bus.len),
-                    self.spifr_req_stb.eq(core.spifr_bus.stb),
-                    core.spifr_bus.busy.eq(self.spifr_res_busy),
-                    core.spifr_bus.data.eq(self.spifr_res_data),
-                    core.spifr_bus.valid.eq(self.spifr_res_valid),
+                    self.spifr_req_p_addr.eq(core.spifr_bus.req.p.addr),
+                    self.spifr_req_p_len.eq(core.spifr_bus.req.p.len),
+                    self.spifr_req_valid.eq(core.spifr_bus.req.valid),
+                    core.spifr_bus.req.ready.eq(self.spifr_req_ready),
+                    core.spifr_bus.res.p.eq(self.spifr_res_p),
+                    core.spifr_bus.res.valid.eq(self.spifr_res_valid),
                 ]
 
         m.submodules.core = ResetInserter(rst)(EnableInserter(core.running)(core))

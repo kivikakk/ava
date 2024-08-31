@@ -9,8 +9,8 @@ __all__ = ["UART"]
 
 
 class UART(wiring.Component):
-    wr: In(stream.Signature(8))
-    rd: Out(stream.Signature(8))
+    wr: Out(stream.Signature(8))
+    rd: In(stream.Signature(8))
     rd_overrun: Out(1)
 
     _plat_uart: object
