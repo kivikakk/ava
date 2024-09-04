@@ -47,13 +47,6 @@ class Core(wiring.Component):
         i_timerInterrupt = Signal()
         i_externalInterrupt = Signal()
         i_softwareInterrupt = Signal()
-        o_iBus_cmd_valid = Signal()
-        i_iBus_cmd_ready = Signal()
-        o_iBus_cmd_payload_address = Signal(32)
-        o_iBus_cmd_payload_size = Signal(3)
-        i_iBus_rsp_valid = Signal()
-        i_iBus_rsp_payload_data = Signal(32)
-        i_iBus_rsp_payload_error = Signal()
         o_dBus_cmd_valid = Signal()
         i_dBus_cmd_ready = Signal()
         o_dBus_cmd_payload_wr = Signal()
@@ -68,47 +61,11 @@ class Core(wiring.Component):
 
         m.d.sync += i_reset.eq(0)
 
-        m.submodules.vexriscv = Instance("VexRiscv",
-            i_timerInterrupt=i_timerInterrupt,
-            i_externalInterrupt=i_externalInterrupt,
-            i_softwareInterrupt=i_softwareInterrupt,
-            o_iBus_cmd_valid=o_iBus_cmd_valid,
-            i_iBus_cmd_ready=i_iBus_cmd_ready,
-            o_iBus_cmd_payload_address=o_iBus_cmd_payload_address,
-            o_iBus_cmd_payload_size=o_iBus_cmd_payload_size,
-            i_iBus_rsp_valid=i_iBus_rsp_valid,
-            i_iBus_rsp_payload_data=i_iBus_rsp_payload_data,
-            i_iBus_rsp_payload_error=i_iBus_rsp_payload_error,
-            o_dBus_cmd_valid=o_dBus_cmd_valid,
-            i_dBus_cmd_ready=i_dBus_cmd_ready,
-            o_dBus_cmd_payload_wr=o_dBus_cmd_payload_wr,
-            o_dBus_cmd_payload_mask=o_dBus_cmd_payload_mask,
-            o_dBus_cmd_payload_address=o_dBus_cmd_payload_address,
-            o_dBus_cmd_payload_data=o_dBus_cmd_payload_data,
-            o_dBus_cmd_payload_size=o_dBus_cmd_payload_size,
-            i_dBus_rsp_ready=i_dBus_rsp_ready,
-            i_dBus_rsp_error=i_dBus_rsp_error,
-            i_dBus_rsp_data=i_dBus_rsp_data,
-            i_clk=ClockSignal(),
-            i_reset=i_reset,
-        )
-
         m.submodules.uart = uart = UART(
             self._uart, baud=115_200, tx_fifo_depth=32, rx_fifo_depth=32)
 
-        # TODO: use Wishbone for IMEM, DMEM.
-
         m.submodules.imem = imem = IMem(base=self.SPI_IMEM_BASE)
         wiring.connect(m, wiring.flipped(self.spifr_bus), imem.spifr_bus)
-        m.d.comb += [
-            imem.cmd.valid.eq(o_iBus_cmd_valid),
-            i_iBus_cmd_ready.eq(imem.cmd.ready),
-            imem.cmd.p.address.eq(o_iBus_cmd_payload_address),
-            imem.cmd.p.size.eq(o_iBus_cmd_payload_size),
-            i_iBus_rsp_valid.eq(imem.rsp.valid),
-            i_iBus_rsp_payload_data.eq(imem.rsp.p.data),
-            i_iBus_rsp_payload_error.eq(imem.rsp.p.error),
-        ]
 
         m.submodules.dmem_init = dmem_init = Memory(shape=32, depth=len(self._dmem), init=self._dmem)
         dmem_init_rp = dmem_init.read_port()
@@ -234,5 +191,30 @@ class Core(wiring.Component):
                 m.next = 'ready'
                 m.d.comb += i_dBus_rsp_ready.eq(1)
                 m.d.comb += i_dBus_rsp_data.eq(dmem_rp.data)
+
+        m.submodules.vexriscv = Instance("VexRiscv",
+            i_timerInterrupt=i_timerInterrupt,
+            i_externalInterrupt=i_externalInterrupt,
+            i_softwareInterrupt=i_softwareInterrupt,
+            o_iBus_cmd_valid=imem.cmd.valid,
+            i_iBus_cmd_ready=imem.cmd.ready,
+            o_iBus_cmd_payload_address=imem.cmd.p.address,
+            o_iBus_cmd_payload_size=imem.cmd.p.size,
+            i_iBus_rsp_valid=imem.rsp.valid,
+            i_iBus_rsp_payload_data=imem.rsp.p.data,
+            i_iBus_rsp_payload_error=imem.rsp.p.error,
+            o_dBus_cmd_valid=o_dBus_cmd_valid,
+            i_dBus_cmd_ready=i_dBus_cmd_ready,
+            o_dBus_cmd_payload_wr=o_dBus_cmd_payload_wr,
+            o_dBus_cmd_payload_mask=o_dBus_cmd_payload_mask,
+            o_dBus_cmd_payload_address=o_dBus_cmd_payload_address,
+            o_dBus_cmd_payload_data=o_dBus_cmd_payload_data,
+            o_dBus_cmd_payload_size=o_dBus_cmd_payload_size,
+            i_dBus_rsp_ready=i_dBus_rsp_ready,
+            i_dBus_rsp_error=i_dBus_rsp_error,
+            i_dBus_rsp_data=i_dBus_rsp_data,
+            i_clk=ClockSignal(),
+            i_reset=i_reset,
+        )
 
         return m
