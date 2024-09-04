@@ -67,7 +67,7 @@ pub fn run(self: *SimThread) !void {
         try self.uart_proto_connector.tick();
 
         switch (state) {
-            .init => {
+            .init => if (try self.uart_proto_connector.recv(.MACHINE_INIT)) |_| {
                 try self.uart_proto_connector.send(.HELLO);
                 state = .wait_hello;
             },
