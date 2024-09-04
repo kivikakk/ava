@@ -22,7 +22,7 @@
 
 // Generator : SpinalHDL v1.10.1    git head : 2527c7c6b0fb0f95e5e1a5722a0be732b364ce43
 // Component : VexRiscv
-// Git hash  : 207304727225c608c017130e244a8d8f479fa2f7
+// Git hash  : f06675e9d0e303c353c6a8b35f2cead28f9199f7
 
 `timescale 1ns/1ps
 
@@ -37,16 +37,17 @@ module VexRiscv (
   input  wire          iBus_rsp_valid,
   input  wire [31:0]   iBus_rsp_payload_data,
   input  wire          iBus_rsp_payload_error,
-  output wire          dBus_cmd_valid,
-  input  wire          dBus_cmd_ready,
-  output wire          dBus_cmd_payload_wr,
-  output wire [3:0]    dBus_cmd_payload_mask,
-  output wire [31:0]   dBus_cmd_payload_address,
-  output wire [31:0]   dBus_cmd_payload_data,
-  output wire [1:0]    dBus_cmd_payload_size,
-  input  wire          dBus_rsp_ready,
-  input  wire          dBus_rsp_error,
-  input  wire [31:0]   dBus_rsp_data,
+  output wire          dBusWishbone_CYC,
+  output wire          dBusWishbone_STB,
+  input  wire          dBusWishbone_ACK,
+  output wire          dBusWishbone_WE,
+  output wire [29:0]   dBusWishbone_ADR,
+  input  wire [31:0]   dBusWishbone_DAT_MISO,
+  output wire [31:0]   dBusWishbone_DAT_MOSI,
+  output wire [3:0]    dBusWishbone_SEL,
+  input  wire          dBusWishbone_ERR,
+  output wire [2:0]    dBusWishbone_CTI,
+  output wire [1:0]    dBusWishbone_BTE,
   input  wire          clk,
   input  wire          reset
 );
@@ -685,13 +686,23 @@ module VexRiscv (
   wire                when_IBusCachedPlugin_l245;
   wire                when_IBusCachedPlugin_l256;
   wire                when_IBusCachedPlugin_l273;
+  wire                dBus_cmd_valid;
+  wire                dBus_cmd_ready;
+  wire                dBus_cmd_payload_wr;
+  wire       [3:0]    dBus_cmd_payload_mask;
+  wire       [31:0]   dBus_cmd_payload_address;
+  wire       [31:0]   dBus_cmd_payload_data;
+  wire       [1:0]    dBus_cmd_payload_size;
+  wire                dBus_rsp_ready;
+  wire                dBus_rsp_error;
+  wire       [31:0]   dBus_rsp_data;
   wire                _zz_dBus_cmd_valid;
   reg                 execute_DBusSimplePlugin_skipCmd;
   reg        [31:0]   _zz_dBus_cmd_payload_data;
-  wire                when_DBusSimplePlugin_l437;
+  wire                when_DBusSimplePlugin_l434;
   reg        [3:0]    _zz_execute_DBusSimplePlugin_formalMask;
   wire       [3:0]    execute_DBusSimplePlugin_formalMask;
-  wire                when_DBusSimplePlugin_l492;
+  wire                when_DBusSimplePlugin_l489;
   reg        [31:0]   writeBack_DBusSimplePlugin_rspShifted;
   wire       [1:0]    switch_Misc_l241_2;
   wire                _zz_writeBack_DBusSimplePlugin_rspFormated;
@@ -699,7 +710,7 @@ module VexRiscv (
   wire                _zz_writeBack_DBusSimplePlugin_rspFormated_2;
   reg        [31:0]   _zz_writeBack_DBusSimplePlugin_rspFormated_3;
   reg        [31:0]   writeBack_DBusSimplePlugin_rspFormated;
-  wire                when_DBusSimplePlugin_l568;
+  wire                when_DBusSimplePlugin_l565;
   wire       [1:0]    CsrPlugin_misa_base;
   wire       [25:0]   CsrPlugin_misa_extensions;
   wire       [1:0]    CsrPlugin_mtvec_mode;
@@ -1040,6 +1051,21 @@ module VexRiscv (
   reg                 when_CsrPlugin_l1719;
   wire                when_CsrPlugin_l1717;
   wire                when_CsrPlugin_l1725;
+  wire                dBus_cmd_halfPipe_valid;
+  wire                dBus_cmd_halfPipe_ready;
+  wire                dBus_cmd_halfPipe_payload_wr;
+  wire       [3:0]    dBus_cmd_halfPipe_payload_mask;
+  wire       [31:0]   dBus_cmd_halfPipe_payload_address;
+  wire       [31:0]   dBus_cmd_halfPipe_payload_data;
+  wire       [1:0]    dBus_cmd_halfPipe_payload_size;
+  reg                 dBus_cmd_rValid;
+  wire                dBus_cmd_halfPipe_fire;
+  reg                 dBus_cmd_rData_wr;
+  reg        [3:0]    dBus_cmd_rData_mask;
+  reg        [31:0]   dBus_cmd_rData_address;
+  reg        [31:0]   dBus_cmd_rData_data;
+  reg        [1:0]    dBus_cmd_rData_size;
+  reg        [3:0]    _zz_dBusWishbone_SEL;
   `ifndef SYNTHESIS
   reg [31:0] decode_BRANCH_CTRL_string;
   reg [31:0] _zz_decode_BRANCH_CTRL_string;
@@ -2150,7 +2176,7 @@ module VexRiscv (
   assign writeBack_ENV_CTRL = _zz_writeBack_ENV_CTRL;
   always @(*) begin
     _zz_decode_RS2_2 = writeBack_REGFILE_WRITE_DATA;
-    if(when_DBusSimplePlugin_l568) begin
+    if(when_DBusSimplePlugin_l565) begin
       _zz_decode_RS2_2 = writeBack_DBusSimplePlugin_rspFormated;
     end
     if(when_MulPlugin_l147) begin
@@ -2228,7 +2254,7 @@ module VexRiscv (
   assign decode_arbitration_flushNext = 1'b0;
   always @(*) begin
     execute_arbitration_haltItself = 1'b0;
-    if(when_DBusSimplePlugin_l437) begin
+    if(when_DBusSimplePlugin_l434) begin
       execute_arbitration_haltItself = 1'b1;
     end
     if(when_CsrPlugin_l1591) begin
@@ -2255,7 +2281,7 @@ module VexRiscv (
   assign execute_arbitration_flushNext = 1'b0;
   always @(*) begin
     memory_arbitration_haltItself = 1'b0;
-    if(when_DBusSimplePlugin_l492) begin
+    if(when_DBusSimplePlugin_l489) begin
       memory_arbitration_haltItself = 1'b1;
     end
     if(when_MulDivIterativePlugin_l128) begin
@@ -2812,7 +2838,7 @@ module VexRiscv (
   end
 
   assign dBus_cmd_payload_data = _zz_dBus_cmd_payload_data;
-  assign when_DBusSimplePlugin_l437 = ((((execute_arbitration_isValid && execute_MEMORY_ENABLE) && (! dBus_cmd_ready)) && (! execute_DBusSimplePlugin_skipCmd)) && (! _zz_dBus_cmd_valid));
+  assign when_DBusSimplePlugin_l434 = ((((execute_arbitration_isValid && execute_MEMORY_ENABLE) && (! dBus_cmd_ready)) && (! execute_DBusSimplePlugin_skipCmd)) && (! _zz_dBus_cmd_valid));
   always @(*) begin
     case(dBus_cmd_payload_size)
       2'b00 : begin
@@ -2830,7 +2856,7 @@ module VexRiscv (
   assign execute_DBusSimplePlugin_formalMask = (_zz_execute_DBusSimplePlugin_formalMask <<< dBus_cmd_payload_address[1 : 0]);
   assign dBus_cmd_payload_mask = execute_DBusSimplePlugin_formalMask;
   assign dBus_cmd_payload_address = execute_SRC_ADD;
-  assign when_DBusSimplePlugin_l492 = (((memory_arbitration_isValid && memory_MEMORY_ENABLE) && (! memory_MEMORY_STORE)) && ((! dBus_rsp_ready) || 1'b0));
+  assign when_DBusSimplePlugin_l489 = (((memory_arbitration_isValid && memory_MEMORY_ENABLE) && (! memory_MEMORY_STORE)) && ((! dBus_rsp_ready) || 1'b0));
   always @(*) begin
     writeBack_DBusSimplePlugin_rspShifted = writeBack_MEMORY_READ_DATA;
     case(writeBack_MEMORY_ADDRESS_LOW)
@@ -2913,7 +2939,7 @@ module VexRiscv (
     endcase
   end
 
-  assign when_DBusSimplePlugin_l568 = (writeBack_arbitration_isValid && writeBack_MEMORY_ENABLE);
+  assign when_DBusSimplePlugin_l565 = (writeBack_arbitration_isValid && writeBack_MEMORY_ENABLE);
   always @(*) begin
     CsrPlugin_privilege = 2'b11;
     if(CsrPlugin_forceMachineWire) begin
@@ -3688,6 +3714,40 @@ module VexRiscv (
 
   assign when_CsrPlugin_l1717 = (CsrPlugin_privilege < execute_CsrPlugin_csrAddress[9 : 8]);
   assign when_CsrPlugin_l1725 = ((! execute_arbitration_isValid) || (! execute_IS_CSR));
+  assign dBus_cmd_halfPipe_fire = (dBus_cmd_halfPipe_valid && dBus_cmd_halfPipe_ready);
+  assign dBus_cmd_ready = (! dBus_cmd_rValid);
+  assign dBus_cmd_halfPipe_valid = dBus_cmd_rValid;
+  assign dBus_cmd_halfPipe_payload_wr = dBus_cmd_rData_wr;
+  assign dBus_cmd_halfPipe_payload_mask = dBus_cmd_rData_mask;
+  assign dBus_cmd_halfPipe_payload_address = dBus_cmd_rData_address;
+  assign dBus_cmd_halfPipe_payload_data = dBus_cmd_rData_data;
+  assign dBus_cmd_halfPipe_payload_size = dBus_cmd_rData_size;
+  assign dBusWishbone_ADR = (dBus_cmd_halfPipe_payload_address >>> 2'd2);
+  assign dBusWishbone_CTI = 3'b000;
+  assign dBusWishbone_BTE = 2'b00;
+  always @(*) begin
+    case(dBus_cmd_halfPipe_payload_size)
+      2'b00 : begin
+        _zz_dBusWishbone_SEL = 4'b0001;
+      end
+      2'b01 : begin
+        _zz_dBusWishbone_SEL = 4'b0011;
+      end
+      default : begin
+        _zz_dBusWishbone_SEL = 4'b1111;
+      end
+    endcase
+  end
+
+  assign dBusWishbone_SEL = (_zz_dBusWishbone_SEL <<< dBus_cmd_halfPipe_payload_address[1 : 0]);
+  assign dBusWishbone_WE = dBus_cmd_halfPipe_payload_wr;
+  assign dBusWishbone_DAT_MOSI = dBus_cmd_halfPipe_payload_data;
+  assign dBus_cmd_halfPipe_ready = (dBus_cmd_halfPipe_valid && (dBusWishbone_ACK || dBusWishbone_ERR));
+  assign dBusWishbone_CYC = dBus_cmd_halfPipe_valid;
+  assign dBusWishbone_STB = dBus_cmd_halfPipe_valid;
+  assign dBus_rsp_ready = ((dBus_cmd_halfPipe_valid && (! dBusWishbone_WE)) && (dBusWishbone_ACK || dBusWishbone_ERR));
+  assign dBus_rsp_data = dBusWishbone_DAT_MISO;
+  assign dBus_rsp_error = dBusWishbone_ERR;
   always @(posedge clk or posedge reset) begin
     if(reset) begin
       IBusCachedPlugin_fetchPc_pcReg <= 32'h00000000;
@@ -3726,6 +3786,7 @@ module VexRiscv (
       execute_arbitration_isValid <= 1'b0;
       memory_arbitration_isValid <= 1'b0;
       writeBack_arbitration_isValid <= 1'b0;
+      dBus_cmd_rValid <= 1'b0;
     end else begin
       if(IBusCachedPlugin_fetchPc_correction) begin
         IBusCachedPlugin_fetchPc_correctionReg <= 1'b1;
@@ -3924,6 +3985,12 @@ module VexRiscv (
           CsrPlugin_mie_MTIE <= CsrPlugin_csrMapping_writeDataSignal[7];
           CsrPlugin_mie_MSIE <= CsrPlugin_csrMapping_writeDataSignal[3];
         end
+      end
+      if(dBus_cmd_valid) begin
+        dBus_cmd_rValid <= 1'b1;
+      end
+      if(dBus_cmd_halfPipe_fire) begin
+        dBus_cmd_rValid <= 1'b0;
       end
     end
   end
@@ -4204,6 +4271,13 @@ module VexRiscv (
       if(execute_CsrPlugin_writeEnable) begin
         CsrPlugin_mip_MSIP <= CsrPlugin_csrMapping_writeDataSignal[3];
       end
+    end
+    if(dBus_cmd_ready) begin
+      dBus_cmd_rData_wr <= dBus_cmd_payload_wr;
+      dBus_cmd_rData_mask <= dBus_cmd_payload_mask;
+      dBus_cmd_rData_address <= dBus_cmd_payload_address;
+      dBus_cmd_rData_data <= dBus_cmd_payload_data;
+      dBus_cmd_rData_size <= dBus_cmd_payload_size;
     end
   end
 

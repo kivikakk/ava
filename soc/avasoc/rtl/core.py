@@ -47,16 +47,6 @@ class Core(wiring.Component):
         i_timerInterrupt = Signal()
         i_externalInterrupt = Signal()
         i_softwareInterrupt = Signal()
-        o_dBus_cmd_valid = Signal()
-        i_dBus_cmd_ready = Signal()
-        o_dBus_cmd_payload_wr = Signal()
-        o_dBus_cmd_payload_mask = Signal(4)
-        o_dBus_cmd_payload_address = Signal(32)
-        o_dBus_cmd_payload_data = Signal(32)
-        o_dBus_cmd_payload_size = Signal(2)
-        i_dBus_rsp_ready = Signal()
-        i_dBus_rsp_error = Signal()
-        i_dBus_rsp_data = Signal(32)
         i_reset = Signal(init=1)
 
         m.d.sync += i_reset.eq(0)
@@ -64,8 +54,22 @@ class Core(wiring.Component):
         m.submodules.uart = uart = UART(
             self._uart, baud=115_200, tx_fifo_depth=32, rx_fifo_depth=32)
 
+        # TODO: redo IMEM with Wishbone. Note that IBusCachedPlugin's Wishbone
+        # bridge (i.e. InstructionCacheMemBus.toWishbone) uses incrementing
+        # # burst read, which dovetails well with the SPI flash protocol, but
+        # requires a rework of the interleaving bits and pieces.
         m.submodules.imem = imem = IMem(base=self.SPI_IMEM_BASE)
         wiring.connect(m, wiring.flipped(self.spifr_bus), imem.spifr_bus)
+
+        o_dBusWishbone_CYC = Signal()
+        o_dBusWishbone_STB = Signal()
+        i_dBusWishbone_ACK = Signal()
+        o_dBusWishbone_WE = Signal()
+        o_dBusWishbone_ADR = Signal(30)
+        i_dBusWishbone_DAT_MISO = Signal(32)
+        o_dBusWishbone_DAT_MOSI = Signal(32)
+        o_dBusWishbone_SEL = Signal(4)
+        i_dBusWishbone_ERR = Signal()
 
         m.submodules.dmem_init = dmem_init = Memory(shape=32, depth=len(self._dmem), init=self._dmem)
         dmem_init_rp = dmem_init.read_port()
@@ -78,7 +82,6 @@ class Core(wiring.Component):
         mask = Signal(4)
         address = Signal(32)
         data = Signal(32)
-        size = Signal(2)
 
         dmem_addr = Signal.like(dmem_wp.addr)
         m.d.comb += [
@@ -88,8 +91,8 @@ class Core(wiring.Component):
         ]
 
         unhandled_dbus = lambda: Print(Format(
-            "unhandled dBus {} at {:08x} mask {:04b} size {} (data {:08x})",
-            wr, address, mask, size, data,
+            "unhandled dBus {} at {:08x} mask {:04b} (data {:08x})",
+            wr, address, mask, data,
         ))
 
         with m.FSM():
@@ -122,14 +125,14 @@ class Core(wiring.Component):
                     m.d.sync += address.eq(address + 4)
 
             with m.State('ready'):
-                m.d.comb += i_dBus_cmd_ready.eq(1)
-                with m.If(o_dBus_cmd_valid):
+                # TODO: is the Wishbone controller allowed to change data after
+                # asserting CYC/STB? if not, we can gain a cycle.
+                with m.If(o_dBusWishbone_CYC & o_dBusWishbone_STB):
                     m.d.sync += [
-                        wr.eq(o_dBus_cmd_payload_wr),
-                        mask.eq(o_dBus_cmd_payload_mask),
-                        address.eq(o_dBus_cmd_payload_address),
-                        data.eq(o_dBus_cmd_payload_data),
-                        size.eq(o_dBus_cmd_payload_size),
+                        wr.eq(o_dBusWishbone_WE),
+                        mask.eq(o_dBusWishbone_SEL),
+                        address.eq(o_dBusWishbone_ADR << 2),
+                        data.eq(o_dBusWishbone_DAT_MOSI),
                     ]
                     m.next = 'consider'
 
@@ -138,59 +141,58 @@ class Core(wiring.Component):
                 with m.If(address[24:] == (self.DMEM_BASE >> 24)):
                     with m.If(wr):
                         # m.d.sync += Print(Format(
-                        #     "[d WR @ {:06x} s{} #{:04b} = {:08x}]",
-                        #     dmem_addr, size, mask, data,
+                        #     "[d WR @ {:06x} #{:04b} = {:08x}]",
+                        #     dmem_addr, mask, data,
                         # ))
                         m.d.comb += [
                             dmem_wp.data.eq(data),
                             dmem_wp.en.eq(mask),
                             dmem_rp.en.eq(0),
                         ]
-                        m.d.comb += i_dBus_rsp_ready.eq(1)
+                        m.d.comb += i_dBusWishbone_ACK.eq(1)
                         m.next = 'ready'
                     with m.Else():
                         m.next = 'read'
-                with m.Elif((address == self.UART_BASE) & (size == 0)):
-                    m.d.comb += i_dBus_rsp_ready.eq(1)
+                with m.Elif((address == self.UART_BASE) & (mask == 0b0001)):
+                    m.d.comb += i_dBusWishbone_ACK.eq(1)
                     m.next = 'ready'
                     with m.If(wr):
                         m.d.comb += uart.wr.p.eq(data[:8])
                         m.d.comb += uart.wr.valid.eq(1)
                         with m.If(~uart.wr.ready):
-                            m.d.comb += i_dBus_rsp_ready.eq(0)
+                            m.d.comb += i_dBusWishbone_ACK.eq(0)
                             m.next = 'uart.write.stall'
                     with m.Else():
                         m.d.comb += uart.rd.ready.eq(1)
-                        m.d.comb += i_dBus_rsp_data.eq(Mux(uart.rd.valid, uart.rd.p, 0))
-                with m.Elif((address == self.UART_BASE) & (size == 1) & ~wr):
+                        m.d.comb += i_dBusWishbone_DAT_MISO.eq(Mux(uart.rd.valid, uart.rd.p, 0))
+                with m.Elif((address == self.UART_BASE) & (mask == 0b0011) & ~wr):
                     m.d.comb += uart.rd.ready.eq(1)
-                    m.d.comb += i_dBus_rsp_data.eq(Cat(uart.rd.p, uart.rd.valid))
-                    m.d.comb += i_dBus_rsp_ready.eq(1)
+                    m.d.comb += i_dBusWishbone_DAT_MISO.eq(Cat(uart.rd.p, uart.rd.valid))
+                    m.d.comb += i_dBusWishbone_ACK.eq(1)
                     m.next = 'ready'
-                with m.Elif((address == self.CSR_EXIT) & (size == 0) & wr & data[0]):
+                with m.Elif((address == self.CSR_EXIT) & (mask == 0b0001) & wr & data[0]):
                     m.d.sync += Print("\n! CSR_EXIT signalled -- stopped")
                     m.d.sync += running.eq(0)
                 with m.Else():
                     m.d.sync += unhandled_dbus()
-                    m.d.comb += i_dBus_rsp_ready.eq(1)
-                    m.d.comb += i_dBus_rsp_error.eq(1)
+                    m.d.comb += i_dBusWishbone_ERR.eq(1)
                     m.next = 'ready'
 
             with m.State('uart.write.stall'):
                 m.d.comb += uart.wr.p.eq(data[:8])
                 m.d.comb += uart.wr.valid.eq(1)
                 with m.If(uart.wr.ready):
-                    m.d.comb += i_dBus_rsp_ready.eq(1)
+                    m.d.comb += i_dBusWishbone_ACK.eq(1)
                     m.next = 'ready'
 
             with m.State('read'):
                 # m.d.sync += Print(Format(
-                #     "[d RD @ {:06x} s{} #{:04b} = {:08x}]",
-                #     dmem_addr, size, mask, dmem_rp.data,
+                #     "[d RD @ {:06x} #{:04b} = {:08x}]",
+                #     dmem_addr, mask, dmem_rp.data,
                 # ))
                 m.next = 'ready'
-                m.d.comb += i_dBus_rsp_ready.eq(1)
-                m.d.comb += i_dBus_rsp_data.eq(dmem_rp.data)
+                m.d.comb += i_dBusWishbone_ACK.eq(1)
+                m.d.comb += i_dBusWishbone_DAT_MISO.eq(dmem_rp.data)
 
         m.submodules.vexriscv = Instance("VexRiscv",
             i_timerInterrupt=i_timerInterrupt,
@@ -203,16 +205,15 @@ class Core(wiring.Component):
             i_iBus_rsp_valid=imem.rsp.valid,
             i_iBus_rsp_payload_data=imem.rsp.p.data,
             i_iBus_rsp_payload_error=imem.rsp.p.error,
-            o_dBus_cmd_valid=o_dBus_cmd_valid,
-            i_dBus_cmd_ready=i_dBus_cmd_ready,
-            o_dBus_cmd_payload_wr=o_dBus_cmd_payload_wr,
-            o_dBus_cmd_payload_mask=o_dBus_cmd_payload_mask,
-            o_dBus_cmd_payload_address=o_dBus_cmd_payload_address,
-            o_dBus_cmd_payload_data=o_dBus_cmd_payload_data,
-            o_dBus_cmd_payload_size=o_dBus_cmd_payload_size,
-            i_dBus_rsp_ready=i_dBus_rsp_ready,
-            i_dBus_rsp_error=i_dBus_rsp_error,
-            i_dBus_rsp_data=i_dBus_rsp_data,
+            o_dBusWishbone_CYC=o_dBusWishbone_CYC,
+            o_dBusWishbone_STB=o_dBusWishbone_STB,
+            i_dBusWishbone_ACK=i_dBusWishbone_ACK,
+            o_dBusWishbone_WE=o_dBusWishbone_WE,
+            o_dBusWishbone_ADR=o_dBusWishbone_ADR,
+            i_dBusWishbone_DAT_MISO=i_dBusWishbone_DAT_MISO,
+            o_dBusWishbone_DAT_MOSI=o_dBusWishbone_DAT_MOSI,
+            o_dBusWishbone_SEL=o_dBusWishbone_SEL,
+            i_dBusWishbone_ERR=i_dBusWishbone_ERR,
             i_clk=ClockSignal(),
             i_reset=i_reset,
         )
