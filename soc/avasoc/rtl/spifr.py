@@ -18,8 +18,9 @@ class SPIFlashReader(wiring.Component):
         "res": In(stream.Signature(8, always_ready=True)),
     })
 
-    def __init__(self):
+    def __init__(self, *, powerdown_between_requests=False):
         super().__init__(SPIFlashReader.Signature)
+        self._powerdown_between_requests = powerdown_between_requests
 
     def elaborate(self, platform):
         m = Module()
@@ -65,10 +66,9 @@ class SPIFlashReader(wiring.Component):
 
         m.d.sync += self.res.valid.eq(0)
 
-        with m.FSM() as fsm:
-            m.d.comb += self.req.ready.eq(fsm.ongoing('idle'))
-
+        with m.FSM():
             with m.State('idle'):
+                m.d.comb += self.req.ready.eq(1)
                 with m.If(self.req.valid):
                     m.d.sync += Assert(self.req.p.len % 4 == 0)
                     m.d.sync += [
@@ -103,6 +103,19 @@ class SPIFlashReader(wiring.Component):
                     ]
                     m.next = 'cmd'
 
+            with m.State('cmd.wait'):
+                m.d.comb += self.req.ready.eq(1)
+                with m.If(self.req.valid):
+                    m.d.sync += Assert(self.req.p.len % 4 == 0)
+                    m.d.sync += [
+                        cs.eq(1),
+                        sr.eq(Cat(self.req.p.addr, C(0x03, 8))),
+                        snd_bitcount.eq(31),
+                        rcv_bitcount.eq(7),
+                        rcv_bytecount.eq(self.req.p.len - 1),
+                    ]
+                    m.next = 'cmd'
+
             with m.State('cmd'):
                 m.d.sync += [
                     snd_bitcount.eq(snd_bitcount - 1),
@@ -123,11 +136,12 @@ class SPIFlashReader(wiring.Component):
                         self.res.valid.eq(1),
                     ]
                     with m.If(rcv_bytecount == 0):
-                        m.d.sync += [
-                            cs.eq(0),
-                            snd_bitcount.eq(TRES1_TDP_CYCLES - 1),
-                        ]
-                        m.next = 'powerdown'
+                        m.d.sync += cs.eq(0)
+                        if self._powerdown_between_requests:
+                            m.d.sync += snd_bitcount.eq(TRES1_TDP_CYCLES - 1)
+                            m.next = 'powerdown'
+                        else:
+                            m.next = 'cmd.wait'
                     with m.Else():
                         m.next = 'recv'
 
