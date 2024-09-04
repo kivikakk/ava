@@ -9,8 +9,6 @@ from ..targets import icebreaker
 
 __all__ = ["SPIFlashReader"]
 
-# TODO: do 32 bits at a time. (Do this when we have it tested on hardware so we
-#       can verify while we go.)
 
 class SPIFlashReader(wiring.Component):
     Signature = wiring.Signature({
