@@ -63,6 +63,9 @@ class Core(wiring.Component):
         i_dBus_rsp_ready = Signal()
         i_dBus_rsp_error = Signal()
         i_dBus_rsp_data = Signal(32)
+        i_reset = Signal(init=1)
+
+        m.d.sync += i_reset.eq(0)
 
         m.submodules.vexriscv = Instance("VexRiscv",
             i_timerInterrupt=i_timerInterrupt,
@@ -86,7 +89,7 @@ class Core(wiring.Component):
             i_dBus_rsp_error=i_dBus_rsp_error,
             i_dBus_rsp_data=i_dBus_rsp_data,
             i_clk=ClockSignal(),
-            i_reset=ResetSignal(),
+            i_reset=i_reset,
         )
 
         m.submodules.uart = uart = UART(
