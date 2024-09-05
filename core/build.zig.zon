@@ -3,8 +3,7 @@
     .version = "0.0.0",
     .dependencies = .{
         .avabasic = .{
-            .url = "../basic/",
-            .hash = "122028b4c98ea31ff6f5f21f6efc59aa6d30101f7e8eb9ffde0868badb22b33870f3",
+            .path = "../basic/",
         },
     },
     .paths = .{

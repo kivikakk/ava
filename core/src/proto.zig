@@ -5,6 +5,7 @@ const testing = std.testing;
 pub const RequestKind = enum(u8) {
     HELLO = 0x01,
     MACHINE_INIT = 0x02,
+    EXIT = 0x03,
 };
 
 pub const Request = union(RequestKind) {
@@ -12,11 +13,13 @@ pub const Request = union(RequestKind) {
 
     HELLO: void,
     MACHINE_INIT: []const u8,
+    EXIT: void,
 
     pub fn deinit(self: Self, allocator: Allocator) void {
         switch (self) {
             .HELLO => {},
             .MACHINE_INIT => |c| allocator.free(c),
+            .EXIT => {},
         }
     }
 
@@ -28,6 +31,7 @@ pub const Request = union(RequestKind) {
                 try writer.writeInt(u32, @intCast(c.len), .little);
                 try writer.writeAll(c);
             },
+            .EXIT => {},
         }
     }
 
@@ -42,6 +46,7 @@ pub const Request = union(RequestKind) {
                 try reader.readNoEof(buf);
                 return .{ .MACHINE_INIT = buf };
             },
+            .EXIT => return .EXIT,
         }
     }
 };
@@ -51,11 +56,13 @@ pub const Response = union(RequestKind) {
 
     HELLO: []const u8,
     MACHINE_INIT: void,
+    EXIT: void,
 
     pub fn deinit(allocator: Allocator, comptime kind: RequestKind, payload: std.meta.TagPayload(Response, kind)) void {
         switch (kind) {
             .HELLO => allocator.free(payload),
             .MACHINE_INIT => {},
+            .EXIT => {},
         }
     }
 
@@ -67,6 +74,9 @@ pub const Response = union(RequestKind) {
             },
             .MACHINE_INIT => {
                 try writer.writeByte(1);
+            },
+            .EXIT => {
+                try writer.writeByte(0xff);
             },
         }
     }
@@ -84,6 +94,9 @@ pub const Response = union(RequestKind) {
             },
             .MACHINE_INIT => {
                 std.debug.assert(try reader.readByte() == 1);
+            },
+            .EXIT => {
+                std.debug.assert(try reader.readByte() == 0xff);
             },
         }
     }

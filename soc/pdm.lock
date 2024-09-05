@@ -5,7 +5,7 @@
 groups = ["default", "test"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:7dc6e96c2370465eee068c7df2fc11fb16028f797ac68b4b7adaa72d41a657da"
+content_hash = "sha256:5a708e1640219d92f08d7d771e5924e39affd2735b36ace637ffbf2af9ed0be8"
 
 [[metadata.targets]]
 requires_python = ">=3.8"
@@ -244,8 +244,8 @@ name = "niar"
 version = "0.1.3"
 requires_python = ">=3.8"
 git = "https://git.sr.ht/~kivikakk/niar"
-ref = "4cb42dfedf7c9f238bfdd4c3ea22e43acc1b2677"
-revision = "4cb42dfedf7c9f238bfdd4c3ea22e43acc1b2677"
+ref = "2cbed9def87de25f19970bff902c691b2f354276"
+revision = "2cbed9def87de25f19970bff902c691b2f354276"
 summary = "A small framework for building projects with Amaranth"
 groups = ["default"]
 dependencies = [

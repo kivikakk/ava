@@ -56,7 +56,12 @@ pub fn deinit(self: *SimThread) void {
 }
 
 pub fn run(self: *SimThread) !void {
-    var state: enum { init, wait_hello, wait_machine_init, end } = .init;
+    var state: union(enum) {
+        init,
+        wait_hello,
+        wait_machine_init,
+        end: usize,
+    } = .init;
 
     self.tick();
     while (self.sim_controller.lockIfRunning()) {
@@ -80,11 +85,18 @@ pub fn run(self: *SimThread) !void {
                 state = .wait_machine_init;
             },
             .wait_machine_init => if (try self.uart_proto_connector.recv(.MACHINE_INIT)) |_| {
-                state = .end;
+                state = .{ .end = 0 };
             },
-            .end => {
+            .end => |*n| {
                 if (self.uart_proto_connector.recv_buffer.popOrNull()) |c| {
-                    std.debug.print("{c}", .{c});
+                    if (std.ascii.isPrint(c))
+                        std.debug.print("{c}", .{c})
+                    else
+                        std.debug.print("<{x:0>2}>", .{c});
+                    n.* += 1;
+                    if (n.* == 6) {
+                        try self.uart_proto_connector.send(.EXIT);
+                    }
                 }
             },
         }

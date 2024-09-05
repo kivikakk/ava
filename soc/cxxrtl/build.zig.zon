@@ -8,8 +8,7 @@
             .hash = "1220653eb5e3ad69ef73c8a40e3a7b91189ae35520d22019cb84872b2a6095fe092f",
         },
         .avacore = .{
-            .url = "../../core",
-            .hash = "1220cfe60a12b8b91cf6608ddb414c6d26c609acba677399b8eafe7ae9006d92722f",
+            .path = "../../core",
         },
     },
     .paths = .{

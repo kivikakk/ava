@@ -63,8 +63,11 @@ pub fn main() !void {
 
                 try machine.?.run(code.?);
             },
+            .EXIT => break,
         }
     }
+
+    try uart.writer.print("exiting main\n", .{});
 }
 
 var effects: Effects = .{};

@@ -3,6 +3,8 @@ const std = @import("std");
 const main = @import("main.zig");
 const uart = @import("uart.zig");
 
+// Please note: std.debug.panic reserves more than 4096 bytes of stack space in
+// std.debug.panicExtra.
 pub export fn core_start_zig() noreturn {
     main.main() catch |err|
         std.debug.panic("err in main: {}", .{err});
@@ -10,9 +12,10 @@ pub export fn core_start_zig() noreturn {
 }
 
 inline fn core_exit() noreturn {
-    const CSR_EXIT: *volatile u8 = @ptrFromInt(0x8000_ffff);
+    const CSR_EXIT: *volatile u8 = @ptrFromInt(0x8001_0000);
     CSR_EXIT.* = 1;
-    unreachable;
+    try uart.writer.print("core_exit finished\n", .{});
+    while (true) {}
 }
 
 pub fn panic(

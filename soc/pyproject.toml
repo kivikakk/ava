@@ -6,7 +6,7 @@ authors = [
     {name = "Asherah Connor", email = "ashe@kivikakk.ee"},
 ]
 dependencies = [
-    "niar @ git+https://git.sr.ht/~kivikakk/niar@4cb42dfedf7c9f238bfdd4c3ea22e43acc1b2677",
+    "niar @ git+https://git.sr.ht/~kivikakk/niar@2cbed9def87de25f19970bff902c691b2f354276",
     "amaranth @ git+https://github.com/kivikakk/amaranth@f8ea807a9108a99ec801d1f1e4b8e63019ec82ec",
     "amaranth-boards @ git+https://github.com/amaranth-lang/amaranth-boards@19b97324ecf9111c5d16377af79f82aad761c476",
     "amaranth-stdio @ git+https://github.com/kivikakk/amaranth-stdio@ca4fac262a2290495c82d76aa785bd8707afa781",

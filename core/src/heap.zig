@@ -78,7 +78,7 @@ fn alloc(
         1 => 0b001,
         2 => 0b011,
         3 => 0b111,
-        else => @panic("align greater than 8"),
+        else => std.debug.panic("heap alloc align log2_ptr {d}", .{log2_ptr_align}),
     };
 
     var ptr: *align(1) AllocationHeader = @ptrCast(heap[0..]);

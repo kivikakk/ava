@@ -46,6 +46,7 @@ pub fn build(b: *std.Build) void {
     core.root_module.single_threaded = true;
     core.entry = .disabled;
     const core_inst = b.addInstallArtifact(core, .{ .dest_dir = .{ .override = .bin } });
+    b.getInstallStep().dependOn(&core_inst.step);
 
     const avabasic_mod = b.dependency("avabasic", .{
         .target = target,

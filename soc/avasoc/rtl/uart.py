@@ -90,6 +90,7 @@ class UART(wiring.Component):
         return m
 
 
+# TODO: use amaranth-soc CSR as a base?
 class WishboneUART(wiring.Component):
     wb_bus: In(wishbone.bus.Signature(addr_width=0, data_width=32,
                                       granularity=8, features={"err"}))

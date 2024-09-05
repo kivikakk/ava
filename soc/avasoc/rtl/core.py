@@ -1,8 +1,9 @@
 from amaranth import *
 from amaranth.lib import wiring
 from amaranth.lib.memory import Memory
-from amaranth.lib.wiring import Out
-from amaranth_soc import wishbone
+from amaranth.lib.wiring import In, Out
+from amaranth_soc import csr, wishbone
+from amaranth_soc.csr.wishbone import WishboneCSRBridge
 from amaranth_soc.wishbone.sram import WishboneSRAM
 
 from .imem import IMem
@@ -30,7 +31,7 @@ class Core(wiring.Component):
 
     DMEM_BASE = 0x4000_0000
     UART_BASE = 0x8000_0000
-    CSR_EXIT  = 0x8000_ffff
+    CSR_BASE  = 0x8001_0000
 
     running: Out(1)
 
@@ -46,8 +47,6 @@ class Core(wiring.Component):
         running = Signal(init=1)
         m.d.comb += self.running.eq(running)
 
-        vex_reset = Signal(init=1)
-
         # TODO: redo IMEM with Wishbone. Note that IBusCachedPlugin's Wishbone
         # bridge (i.e. InstructionCacheMemBus.toWishbone) uses incrementing
         # burst read, which dovetails well with the SPI flash protocol, but
@@ -55,13 +54,10 @@ class Core(wiring.Component):
         m.submodules.imem = imem = IMem(base=self.SPI_IMEM_BASE)
         wiring.connect(m, wiring.flipped(self.spifr_bus), imem.spifr_bus)
 
-        # TODO:
-        # - restore CSR_EXIT.
-
         m.submodules.dbus = dbus = wishbone.Decoder(addr_width=30, data_width=32,
                                                     granularity=8, features={"err"})
 
-        m.submodules.sram = sram = WishboneSRAM(size=128*1024,
+        m.submodules.sram = sram = WishboneSRAM(size=self.DMEM_BYTES,
                                                 data_width=32, granularity=8, init=None)
         dbus.add(sram.wb_bus, name="dmem", addr=self.DMEM_BASE)
 
@@ -69,57 +65,21 @@ class Core(wiring.Component):
                                                 tx_fifo_depth=32, rx_fifo_depth=32)
         dbus.add(uart.wb_bus, name="uart", addr=self.UART_BASE)
 
-        # DMEM initialisation/VexRiscv dBus arbitration.
+        m.submodules.csrs = csrs = CSRsPeripheral()
+        m.submodules.csr_bridge = csr_bridge = WishboneCSRBridge(csrs.bus, data_width=32)
+        dbus.add(csr_bridge.wb_bus, name="csr_bridge", addr=self.CSR_BASE)
+        with m.If(csrs.stop):
+            m.d.sync += running.eq(0)
+
+        m.submodules.dmem_init = dmem_init = DMemInit(self._dmem,
+                                                      dmem_base=self.DMEM_BASE,
+                                                      dmem_bytes=self.DMEM_BYTES)
 
         vex_bus = dbus.bus.signature.create()
-        init_bus = dbus.bus.signature.create()
-        with m.If(vex_reset):
-            wiring.connect(m, dbus.bus, wiring.flipped(init_bus))
+        with m.If(~dmem_init.ready):
+            wiring.connect(m, dbus.bus, wiring.flipped(dmem_init.wb_bus))
         with m.Else():
             wiring.connect(m, dbus.bus, wiring.flipped(vex_bus))
-
-        m.submodules.dmem_init = dmem_init = Memory(shape=32, depth=len(self._dmem), init=self._dmem)
-        dmem_init_rp = dmem_init.read_port()
-
-        address = Signal(30)
-        m.d.comb += [
-            init_bus.adr.eq((self.DMEM_BASE >> 2) | address),
-            init_bus.sel.eq(0b1111),
-            init_bus.we.eq(1),
-        ]
-
-        with m.FSM():
-            with m.State('init.wait'):
-                m.next = 'init.write'
-
-            with m.State('init.write'):
-                m.d.comb += [
-                    init_bus.dat_w.eq(dmem_init_rp.data),
-                    init_bus.cyc.eq(1),
-                    init_bus.stb.eq(1),
-                ]
-                with m.If(init_bus.ack):
-                    m.d.sync += address.eq(address + 1)
-                    m.d.sync += dmem_init_rp.addr.eq(dmem_init_rp.addr + 1)
-                    with m.If(address == len(self._dmem) - 1):
-                        m.next = 'zero'
-                    with m.Else():
-                        m.next = 'init.wait'
-
-            with m.State('zero'):
-                m.d.comb += [
-                    init_bus.dat_w.eq(0),
-                    init_bus.cyc.eq(1),
-                    init_bus.stb.eq(1),
-                ]
-                with m.If(init_bus.ack):
-                    m.d.sync += address.eq(address + 1)
-                    with m.If(address == (self.DMEM_BYTES // 4) - 1):
-                        m.d.sync += vex_reset.eq(0)
-                        m.next = 'ready'
-
-            with m.State('ready'):
-                pass
 
         m.submodules.vexriscv = Instance("VexRiscv",
             i_timerInterrupt=Signal(),
@@ -142,7 +102,92 @@ class Core(wiring.Component):
             o_dBusWishbone_SEL=vex_bus.sel,
             i_dBusWishbone_ERR=vex_bus.err,
             i_clk=ClockSignal(),
-            i_reset=vex_reset,
+            i_reset=~dmem_init.ready,
         )
+
+        return m
+
+
+class DMemInit(wiring.Component):
+    wb_bus: In(wishbone.bus.Signature(addr_width=30, data_width=32,
+                                      granularity=8, features={"err"}))
+    ready: Out(1)
+
+    def __init__(self, dmem, *, dmem_base, dmem_bytes):
+        self._dmem = dmem
+        self._dmem_base = dmem_base
+        self._dmem_bytes = dmem_bytes
+        super().__init__()
+
+    def elaborate(self, platform):
+        m = Module()
+
+        m.submodules.mem = mem = Memory(shape=32, depth=len(self._dmem), init=self._dmem)
+        read_port = mem.read_port()
+
+        address = Signal.like(self.wb_bus.adr)
+        m.d.comb += [
+            self.wb_bus.adr.eq((self._dmem_base >> 2) | address),
+            self.wb_bus.sel.eq(0b1111),
+            self.wb_bus.we.eq(1),
+        ]
+
+        with m.FSM():
+            with m.State('init.wait'):
+                m.next = 'init.write'
+
+            with m.State('init.write'):
+                m.d.comb += [
+                    self.wb_bus.dat_w.eq(read_port.data),
+                    self.wb_bus.cyc.eq(1),
+                    self.wb_bus.stb.eq(1),
+                ]
+                with m.If(self.wb_bus.ack):
+                    m.d.sync += address.eq(address + 1)
+                    m.d.sync += read_port.addr.eq(read_port.addr + 1)
+                    with m.If(address == len(self._dmem) - 1):
+                        m.next = 'zero'
+                    with m.Else():
+                        m.next = 'init.wait'
+
+            with m.State('zero'):
+                m.d.comb += [
+                    self.wb_bus.dat_w.eq(0),
+                    self.wb_bus.cyc.eq(1),
+                    self.wb_bus.stb.eq(1),
+                ]
+                with m.If(self.wb_bus.ack):
+                    m.d.sync += address.eq(address + 1)
+                    with m.If(address == (self._dmem_bytes // 4) - 1):
+                        m.d.sync += self.ready.eq(1)
+                        m.next = 'ready'
+
+            with m.State('ready'):
+                pass
+        return m
+
+
+class CSRsPeripheral(wiring.Component):
+    bus: In(csr.Signature(addr_width=4, data_width=8))
+
+    stop: Out(1)
+
+    def __init__(self):
+        regs = csr.Builder(addr_width=4, data_width=8)
+        self._exit = regs.add("exit", csr.Register(csr.Field(csr.action.W, 1), access="w"), offset=0)
+
+        self._bridge = csr.Bridge(regs.as_memory_map())
+        super().__init__()
+        self.bus.memory_map = self._bridge.bus.memory_map
+
+    def elaborate(self, platform):
+        m = Module()
+
+        m.submodules.bridge = self._bridge
+        wiring.connect(m, wiring.flipped(self.bus), self._bridge.bus)
+
+        with m.If(self._exit.f.w_stb):
+            m.d.sync += Print("\n! CSR_EXIT signalled -- stopped")
+            m.d.sync += self.stop.eq(1)
 
         return m
