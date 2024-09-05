@@ -38,4 +38,22 @@
 
     dontCheckRuntimeDeps = 1; # amaranth 0.6.0.devX doesn't match anything.
   };
+
+  amaranth-soc = python.pkgs.buildPythonPackage rec {
+    pname = "amaranth-soc";
+    version = "0.1.dev20+g${pkgs.lib.substring 0 7 src.rev}";
+    src = pkgs.fetchFromGitHub {
+      owner = "amaranth-lang";
+      repo = "amaranth-soc";
+      rev = "9d6bd2c54b4ca28ea4c96cae38edb4c9c3bfdf51";
+      hash = "sha256-0WYOevnZfnIKdmxVutbpJWqnTCCALkh6To1vXbP4l+Y";
+    };
+    pyproject = true;
+
+    build-system = [python.pkgs.pdm-backend];
+
+    dependencies = [python.pkgs.amaranth];
+
+    dontCheckRuntimeDeps = 1; # amaranth 0.6.0.devX doesn't match anything.
+  };
 }

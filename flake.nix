@@ -119,6 +119,7 @@
         propagatedBuildInputs = [
           niar
           soc-deps.amaranth-stdio
+          soc-deps.amaranth-soc
         ];
 
         # XXX: no tests left after switching to VexRiscv.
