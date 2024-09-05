@@ -13,7 +13,7 @@ class icebreaker(ICEBreakerPlatform):
 
 
 class cxxrtl(niar.CxxrtlPlatform):
-    default_clk_frequency = 3_000_000.0
+    default_clk_frequency = 12_000_000.0
     uses_zig = True
 
     @dataclass

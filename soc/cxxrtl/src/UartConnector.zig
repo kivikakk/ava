@@ -5,7 +5,7 @@ const Cxxrtl = @import("zxxrtl");
 
 const UartConnector = @This();
 
-const DIVISOR = options.clock_hz / 115200;
+const DIVISOR = options.clock_hz / 1_500_000;
 
 tx: Cxxrtl.Object(bool),
 tx_state: enum { idle, bit } = .idle,

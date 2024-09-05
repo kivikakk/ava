@@ -44,19 +44,12 @@ class Core(wiring.Component):
         running = Signal(init=1)
         m.d.comb += self.running.eq(running)
 
-        i_timerInterrupt = Signal()
-        i_externalInterrupt = Signal()
-        i_softwareInterrupt = Signal()
-        i_reset = Signal(init=1)
-
-        m.d.sync += i_reset.eq(0)
-
         m.submodules.uart = uart = UART(
-            self._uart, baud=115_200, tx_fifo_depth=32, rx_fifo_depth=32)
+            self._uart, baud=1_500_000, tx_fifo_depth=32, rx_fifo_depth=32)
 
         # TODO: redo IMEM with Wishbone. Note that IBusCachedPlugin's Wishbone
         # bridge (i.e. InstructionCacheMemBus.toWishbone) uses incrementing
-        # # burst read, which dovetails well with the SPI flash protocol, but
+        # burst read, which dovetails well with the SPI flash protocol, but
         # requires a rework of the interleaving bits and pieces.
         m.submodules.imem = imem = IMem(base=self.SPI_IMEM_BASE)
         wiring.connect(m, wiring.flipped(self.spifr_bus), imem.spifr_bus)
@@ -194,10 +187,13 @@ class Core(wiring.Component):
                 m.d.comb += i_dBusWishbone_ACK.eq(1)
                 m.d.comb += i_dBusWishbone_DAT_MISO.eq(dmem_rp.data)
 
+        i_reset = Signal(init=1)
+        m.d.sync += i_reset.eq(0)
+
         m.submodules.vexriscv = Instance("VexRiscv",
-            i_timerInterrupt=i_timerInterrupt,
-            i_externalInterrupt=i_externalInterrupt,
-            i_softwareInterrupt=i_softwareInterrupt,
+            i_timerInterrupt=Signal(),
+            i_externalInterrupt=Signal(),
+            i_softwareInterrupt=Signal(),
             o_iBus_cmd_valid=imem.cmd.valid,
             i_iBus_cmd_ready=imem.cmd.ready,
             o_iBus_cmd_payload_address=imem.cmd.p.address,
