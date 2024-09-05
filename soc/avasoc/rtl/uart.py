@@ -2,10 +2,12 @@ from amaranth import *
 from amaranth.lib import stream, wiring
 from amaranth.lib.fifo import SyncFIFOBuffered
 from amaranth.lib.wiring import In, Out
+from amaranth_soc import wishbone
+from amaranth_soc.memory import MemoryMap
 from amaranth_stdio.serial import AsyncSerial
 
 
-__all__ = ["UART"]
+__all__ = ["UART", "WishboneUART"]
 
 
 class UART(wiring.Component):
@@ -84,5 +86,44 @@ class UART(wiring.Component):
                 m.next = "idle"
 
             m.d.comb += serial.rx.ack.eq(fsm.ongoing("idle"))
+
+        return m
+
+
+class WishboneUART(wiring.Component):
+    wb_bus: In(wishbone.bus.Signature(addr_width=0, data_width=32,
+                                      granularity=8, features={"err"}))
+
+    def __init__(self, plat_uart, *, baud, tx_fifo_depth, rx_fifo_depth):
+        self._uart = UART(plat_uart, baud=baud,
+                          tx_fifo_depth=tx_fifo_depth, rx_fifo_depth=rx_fifo_depth)
+
+        super().__init__()
+        self.wb_bus.memory_map = MemoryMap(addr_width=2, data_width=8)
+        self.wb_bus.memory_map.add_resource(self._uart, name=("uart",), size=2)
+        self.wb_bus.memory_map.freeze()
+
+    def elaborate(self, platform):
+        m = Module()
+
+        m.submodules._uart = self._uart
+
+        m.d.comb += self.wb_bus.dat_r.eq(Cat(self._uart.rd.p, self._uart.rd.valid))
+
+        with m.If(self.wb_bus.ack):
+            m.d.sync += self.wb_bus.ack.eq(0)
+            m.d.sync += self._uart.rd.ready.eq(0)
+        with m.Elif(self.wb_bus.cyc & self.wb_bus.stb):
+            m.d.sync += self.wb_bus.ack.eq(1)
+            with m.If(self.wb_bus.sel == 0b0001):
+                with m.If(self.wb_bus.we):
+                    m.d.comb += self._uart.wr.p.eq(self.wb_bus.dat_w[:8])
+                    m.d.comb += self._uart.wr.valid.eq(1)
+                    with m.If(~self._uart.wr.ready):
+                        m.d.sync += self.wb_bus.ack.eq(0)
+                with m.Else():
+                    m.d.sync += self._uart.rd.ready.eq(1)
+            with m.Elif((self.wb_bus.sel == 0b0011) & ~self.wb_bus.we):
+                m.d.sync += self._uart.rd.ready.eq(1)
 
         return m

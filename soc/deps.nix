@@ -41,12 +41,12 @@
 
   amaranth-soc = python.pkgs.buildPythonPackage rec {
     pname = "amaranth-soc";
-    version = "0.1.dev20+g${pkgs.lib.substring 0 7 src.rev}";
+    version = "0.1.dev21+g${pkgs.lib.substring 0 7 src.rev}";
     src = pkgs.fetchFromGitHub {
       owner = "amaranth-lang";
       repo = "amaranth-soc";
-      rev = "9d6bd2c54b4ca28ea4c96cae38edb4c9c3bfdf51";
-      hash = "sha256-0WYOevnZfnIKdmxVutbpJWqnTCCALkh6To1vXbP4l+Y";
+      rev = "7ed9405aa5d55f550dba1f531359d1185129b117";
+      hash = "sha256-ESO6Oych/z0M+AeR3U7V+Au6tsPvbcKGb+xU7rDJEtw=";
     };
     pyproject = true;
 

@@ -5,7 +5,7 @@
 groups = ["default", "test"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:390e2b82ac803c6b78dff6f4f4f71829b3f06c2ed9c777943b75fb6b68f6270a"
+content_hash = "sha256:7dc6e96c2370465eee068c7df2fc11fb16028f797ac68b4b7adaa72d41a657da"
 
 [[metadata.targets]]
 requires_python = ">=3.8"
@@ -41,11 +41,11 @@ dependencies = [
 
 [[package]]
 name = "amaranth-soc"
-version = "0.1.dev124"
+version = "0.1.dev125"
 requires_python = "~=3.8"
 git = "https://github.com/kivikakk/amaranth-soc"
-ref = "22079b5f6810579b3086ad8994d242548883bb2d"
-revision = "22079b5f6810579b3086ad8994d242548883bb2d"
+ref = "7ed9405aa5d55f550dba1f531359d1185129b117"
+revision = "7ed9405aa5d55f550dba1f531359d1185129b117"
 summary = "System on Chip toolkit for Amaranth HDL"
 groups = ["default"]
 dependencies = [
