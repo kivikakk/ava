@@ -26,7 +26,12 @@ class Core(wiring.Component):
     #
     # [^1]: requiring an Amaranth hack to let us use the existing Memory stuff;
     #      if we want to unhack it slightly, we can replace it with Instances
-    #      that produce the right $memrd_v2/$memwr_v2s, and wire up the ports.
+    #      that produce the right $memrd_v2/$memwr_v2s, and wire up the
+    #      ports[^2].
+    #
+    # [^2]: this is no longer true now that we use amaranth-soc's WishboneSRAM.
+    #       Unhacking would require hacking WishboneSRAM instead (to produce
+    #       those instances).
     DMEM_BYTES = 128 * 1024
 
     DMEM_BASE = 0x4000_0000
@@ -65,7 +70,7 @@ class Core(wiring.Component):
                                                 tx_fifo_depth=32, rx_fifo_depth=32)
         dbus.add(uart.wb_bus, name="uart", addr=self.UART_BASE)
 
-        m.submodules.csrs = csrs = CSRsPeripheral()
+        m.submodules.csrs = csrs = CSRPeripheral()
         m.submodules.csr_bridge = csr_bridge = WishboneCSRBridge(csrs.bus, data_width=32)
         dbus.add(csr_bridge.wb_bus, name="csr_bridge", addr=self.CSR_BASE)
         with m.If(csrs.stop):
@@ -167,7 +172,7 @@ class DMemInit(wiring.Component):
         return m
 
 
-class CSRsPeripheral(wiring.Component):
+class CSRPeripheral(wiring.Component):
     bus: In(csr.Signature(addr_width=4, data_width=8))
 
     stop: Out(1)

@@ -45,8 +45,8 @@
     src = pkgs.fetchFromGitHub {
       owner = "amaranth-lang";
       repo = "amaranth-soc";
-      rev = "7ed9405aa5d55f550dba1f531359d1185129b117";
-      hash = "sha256-ESO6Oych/z0M+AeR3U7V+Au6tsPvbcKGb+xU7rDJEtw=";
+      rev = "619521679eaa4a40e089bd29a97e2573b293877f";
+      hash = "sha256-WoJ+KrVX7NkEaO26U2o0fh1Jg0kvs91R/lcSqpeVmSU=";
     };
     pyproject = true;
 

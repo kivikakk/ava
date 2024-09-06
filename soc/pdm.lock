@@ -5,7 +5,7 @@
 groups = ["default", "test"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:5a708e1640219d92f08d7d771e5924e39affd2735b36ace637ffbf2af9ed0be8"
+content_hash = "sha256:bb552be8fef3fb1a0d337ffbc5b5f9a08046953c6286fd91105f517ab9b29762"
 
 [[metadata.targets]]
 requires_python = ">=3.8"
@@ -41,11 +41,11 @@ dependencies = [
 
 [[package]]
 name = "amaranth-soc"
-version = "0.1.dev125"
+version = "0.1.dev126"
 requires_python = "~=3.8"
 git = "https://github.com/kivikakk/amaranth-soc"
-ref = "7ed9405aa5d55f550dba1f531359d1185129b117"
-revision = "7ed9405aa5d55f550dba1f531359d1185129b117"
+ref = "619521679eaa4a40e089bd29a97e2573b293877f"
+revision = "619521679eaa4a40e089bd29a97e2573b293877f"
 summary = "System on Chip toolkit for Amaranth HDL"
 groups = ["default"]
 dependencies = [
@@ -244,8 +244,8 @@ name = "niar"
 version = "0.1.3"
 requires_python = ">=3.8"
 git = "https://git.sr.ht/~kivikakk/niar"
-ref = "2cbed9def87de25f19970bff902c691b2f354276"
-revision = "2cbed9def87de25f19970bff902c691b2f354276"
+ref = "56234604d0914245e7a7d4504a042820adae9b1b"
+revision = "56234604d0914245e7a7d4504a042820adae9b1b"
 summary = "A small framework for building projects with Amaranth"
 groups = ["default"]
 dependencies = [
