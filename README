@@ -13,7 +13,7 @@ core/
   RISC-V stack machine core.
 
 soc/
-  SoC integrating VexRiscv.
+  SoC in Amaranth integrating VexRiscv.
 
 
 Legal
