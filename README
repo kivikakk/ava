@@ -15,6 +15,9 @@ core/
 soc/
   SoC in Amaranth integrating VexRiscv.
 
+adc/
+  Amateur Development Client.
+
 
 Legal
 -----

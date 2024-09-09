@@ -1,0 +1,20 @@
+.{
+    .name = "avasoc-adc",
+    .version = "0.0.0",
+
+    .dependencies = .{
+        .avacore = .{
+            .path = "../core",
+        },
+        .serial = .{
+            .url = "https://github.com/kivikakk/serial/archive/d5eca2816c0dfd87cdfa1b9c971049dc9570df2a.tar.gz",
+            .hash = "1220aa2f271d89f728c8f30ba4b738e6cca3421c1f13dc7b12f162d16640b8069fae",
+        },
+    },
+    .paths = .{
+        "README",
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
