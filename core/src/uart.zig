@@ -42,6 +42,6 @@ pub fn readRequest(allocator: Allocator) !proto.Request {
     return try proto.Request.read(allocator, reader);
 }
 
-pub fn writeResponse(response: proto.Response) !void {
+pub fn writeEvent(response: proto.Event) !void {
     try response.write(writer);
 }

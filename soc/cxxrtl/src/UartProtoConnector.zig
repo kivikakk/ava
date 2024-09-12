@@ -41,11 +41,11 @@ pub fn send(self: *UartProtoConnector, req: proto.Request) !void {
     try req.write(self.uart_connector.tx_buffer.writer());
 }
 
-pub fn recv(self: *UartProtoConnector, comptime kind: proto.RequestKind) !?std.meta.TagPayload(proto.Response, kind) {
+pub fn recv(self: *UartProtoConnector) !?proto.Event {
     var fbs = std.io.fixedBufferStream(self.recv_buffer.items);
-    if (proto.Response.read(self.allocator, fbs.reader(), kind)) |resp| {
+    if (proto.Event.read(self.allocator, fbs.reader())) |ev| {
         self.recv_buffer.replaceRange(0, fbs.pos, &.{}) catch unreachable;
-        return resp;
+        return ev;
     } else |err| switch (err) {
         error.EndOfStream => return null,
         else => return err,

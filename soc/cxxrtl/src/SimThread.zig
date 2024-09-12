@@ -71,34 +71,43 @@ pub fn run(self: *SimThread) !void {
         self.spi_flash_connector.tick();
         try self.uart_proto_connector.tick();
 
-        switch (state) {
-            .init => if (try self.uart_proto_connector.recv(.MACHINE_INIT)) |_| {
-                try self.uart_proto_connector.send(.HELLO);
-                state = .wait_hello;
-            },
-            .wait_hello => if (try self.uart_proto_connector.recv(.HELLO)) |id| {
-                defer proto.Response.deinit(self.allocator, .HELLO, id);
-                std.debug.print("got hello: [{s}]\n", .{id});
+        while (try self.uart_proto_connector.recv()) |ev| {
+            defer ev.deinit(self.allocator);
+            switch (state) {
+                .init => {
+                    std.debug.assert(ev == .READY);
+                    try self.uart_proto_connector.send(.HELLO);
+                    state = .wait_hello;
+                },
+                .wait_hello => {
+                    std.debug.assert(ev == .VERSION);
+                    const v = ev.VERSION;
+                    std.debug.print("got version: [{s}]\n", .{v});
 
-                const code = "\x01\x01\x00\x01\x02\x00\x07\x00\x04\x06";
-                try self.uart_proto_connector.send(.{ .MACHINE_INIT = code });
-                state = .wait_machine_init;
-            },
-            .wait_machine_init => if (try self.uart_proto_connector.recv(.MACHINE_INIT)) |_| {
-                state = .{ .end = 0 };
-            },
-            .end => |*n| {
-                if (self.uart_proto_connector.recv_buffer.popOrNull()) |c| {
-                    if (std.ascii.isPrint(c))
-                        std.debug.print("{c}", .{c})
-                    else
-                        std.debug.print("<{x:0>2}>", .{c});
-                    n.* += 1;
-                    if (n.* == 6) {
-                        try self.uart_proto_connector.send(.EXIT);
+                    const code = "\x01\x01\x00\x01\x02\x00\x07\x00\x04\x06";
+                    try self.uart_proto_connector.send(.{ .MACHINE_INIT = code });
+                    state = .wait_machine_init;
+                },
+                .wait_machine_init => {
+                    std.debug.print("got executing\n", .{});
+                    std.debug.assert(ev == .EXECUTING);
+                    state = .{ .end = 0 };
+                },
+                .end => |*n| {
+                    std.debug.assert(ev == .UART);
+                    const m = ev.UART;
+                    for (m) |c| {
+                        if (std.ascii.isPrint(c))
+                            std.debug.print("{c}", .{c})
+                        else
+                            std.debug.print("<{x:0>2}>", .{c});
+                        n.* += 1;
+                        if (n.* == 6) {
+                            try self.uart_proto_connector.send(.EXIT);
+                        }
                     }
-                }
-            },
+                },
+            }
         }
 
         if (!self.running.curr()) {
