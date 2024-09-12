@@ -16,6 +16,8 @@ SECTIONS {
     } > imem
 
     .data 0x40000000 : AT(text_right) {
+        data_left = .;
+
         *(.rodata*)
         *(.data*)
         *(.sdata*)

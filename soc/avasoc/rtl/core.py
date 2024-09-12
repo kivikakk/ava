@@ -3,6 +3,7 @@ from amaranth.lib import wiring
 from amaranth.lib.wiring import In, Out
 from amaranth_soc import csr, wishbone
 from amaranth_soc.csr.wishbone import WishboneCSRBridge
+from amaranth_soc.memory import MemoryMap
 from amaranth_soc.wishbone.sram import WishboneSRAM
 
 from .imem import IMem
@@ -59,6 +60,9 @@ class Core(wiring.Component):
 
         m.submodules.dbus = dbus = wishbone.Decoder(addr_width=30, data_width=32,
                                                     granularity=8, features={"err"})
+
+        m.submodules.dimem = dimem = WishboneIMem()
+        dbus.add(dimem.wb_bus, name="dimem", addr=self.IMEM_BASE)
 
         m.submodules.sram = sram = WishboneSRAM(size=self.DMEM_BYTES,
                                                 data_width=32, granularity=8, init=None)
@@ -126,5 +130,50 @@ class CSRPeripheral(wiring.Component):
         with m.If(self._exit.f.w_stb):
             m.d.sync += Print("\n! EXIT signalled -- stopped")
             m.d.sync += self.stop.eq(1)
+
+        return m
+
+
+class WishboneIMem(wiring.Component):
+    wb_bus: In(wishbone.bus.Signature(addr_width=18, data_width=32,
+                                      granularity=8, features={"err"}))
+
+    def __init__(self):
+        def wonk32(path):
+            b = path.read_bytes()
+            while len(b) % 4 != 0:
+                b += b'\0'
+            return list(chain.from_iterable(struct.iter_unpack('<L', b)))
+
+        from pathlib import Path
+        from itertools import chain
+        import struct
+        from amaranth.lib.memory import Memory, MemoryData
+        core_bin = Path(__file__).parent.parent.parent.parent / "core" / "zig-out" / "bin"
+        init = wonk32(core_bin / "avacore.bin")
+
+        self._mem_data = MemoryData(depth=(128 * 1024 * 8) // 32,
+                                    shape=32, init=init)
+        self._mem      = Memory(self._mem_data)
+        super().__init__()
+
+        self.wb_bus.memory_map = MemoryMap(addr_width=20, data_width=8)
+        self.wb_bus.memory_map.add_resource(self._mem, name=("mem",), size=0x10_0000)
+        self.wb_bus.memory_map.freeze()
+
+    def elaborate(self, platform):
+        m = Module()
+        m.submodules.mem = self._mem
+
+        read_port = self._mem.read_port()
+        m.d.comb += [
+            read_port.addr.eq(self.wb_bus.adr),
+            self.wb_bus.dat_r.eq(read_port.data),
+        ]
+
+        with m.If(self.wb_bus.ack):
+            m.d.sync += self.wb_bus.ack.eq(0)
+        with m.Elif(self.wb_bus.cyc & self.wb_bus.stb):
+            m.d.sync += self.wb_bus.ack.eq(1)
 
         return m

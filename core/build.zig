@@ -56,6 +56,10 @@ pub fn build(b: *std.Build) void {
 
     const rom_bin = b.addSystemCommand(&.{
         "llvm-objcopy",
+        "--set-section-alignment",
+        ".text=1",
+        "--set-section-alignment",
+        ".data=1",
         "--output-target=binary",
         "-j",
         ".text",
