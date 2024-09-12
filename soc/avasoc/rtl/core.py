@@ -1,6 +1,5 @@
 from amaranth import *
 from amaranth.lib import wiring
-from amaranth.lib.memory import Memory
 from amaranth.lib.wiring import In, Out
 from amaranth_soc import csr, wishbone
 from amaranth_soc.csr.wishbone import WishboneCSRBridge
@@ -19,8 +18,7 @@ class Core(wiring.Component):
 
     # We're targetting the iCE40UP SPRAM for DMEM, which gives us 128KiB.
     # SPRAM is in 4x 32KiB blocks (16 bits wide, 16,384 deep).
-    # SPRAM isn't initialisable[^1]; we init it from BRAM.  DMEM is still small
-    # enough that this is feasible.
+    # SPRAM isn't initialisable[^1]; we init it on startup from IMEM.
     #
     # BSS and minimum stack size availability are asserted in the linker script.
     #
@@ -35,6 +33,7 @@ class Core(wiring.Component):
     DMEM_BYTES = 128 * 1024
 
     DMEM_BASE = 0x4000_0000
+    IMEM_BASE = 0x8000_0000
     UART_BASE = 0xf000_0000
     CSR_BASE  = 0xf001_0000
 
@@ -42,12 +41,11 @@ class Core(wiring.Component):
 
     spifr_bus: Out(SPIFlashReader.Signature)
 
-    def __init__(self, *, dmem):
-        super().__init__()
-        self._dmem = dmem
-
     def elaborate(self, platform):
         m = Module()
+
+        reset = Signal(init=1)
+        m.d.sync += reset.eq(0)
 
         running = Signal(init=1)
         m.d.comb += self.running.eq(running)
@@ -76,15 +74,8 @@ class Core(wiring.Component):
         with m.If(csrs.stop):
             m.d.sync += running.eq(0)
 
-        m.submodules.dmem_init = dmem_init = DMemInit(self._dmem,
-                                                      dmem_base=self.DMEM_BASE,
-                                                      dmem_bytes=self.DMEM_BYTES)
-
         vex_bus = dbus.bus.signature.create()
-        with m.If(~dmem_init.ready):
-            wiring.connect(m, dbus.bus, wiring.flipped(dmem_init.wb_bus))
-        with m.Else():
-            wiring.connect(m, dbus.bus, wiring.flipped(vex_bus))
+        wiring.connect(m, dbus.bus, wiring.flipped(vex_bus))
 
         m.submodules.vexriscv = Instance("VexRiscv",
             i_timerInterrupt=Signal(),
@@ -107,68 +98,9 @@ class Core(wiring.Component):
             o_dBusWishbone_SEL=vex_bus.sel,
             i_dBusWishbone_ERR=vex_bus.err,
             i_clk=ClockSignal(),
-            i_reset=~dmem_init.ready,
+            i_reset=reset,
         )
 
-        return m
-
-
-class DMemInit(wiring.Component):
-    wb_bus: In(wishbone.bus.Signature(addr_width=30, data_width=32,
-                                      granularity=8, features={"err"}))
-    ready: Out(1)
-
-    def __init__(self, dmem, *, dmem_base, dmem_bytes):
-        self._dmem = dmem
-        self._dmem_base = dmem_base
-        self._dmem_bytes = dmem_bytes
-        super().__init__()
-
-    def elaborate(self, platform):
-        m = Module()
-
-        m.submodules.mem = mem = Memory(shape=32, depth=len(self._dmem), init=self._dmem)
-        read_port = mem.read_port()
-
-        address = Signal.like(self.wb_bus.adr)
-        m.d.comb += [
-            self.wb_bus.adr.eq((self._dmem_base >> 2) | address),
-            self.wb_bus.sel.eq(0b1111),
-            self.wb_bus.we.eq(1),
-        ]
-
-        with m.FSM():
-            with m.State('init.wait'):
-                m.next = 'init.write'
-
-            with m.State('init.write'):
-                m.d.comb += [
-                    self.wb_bus.dat_w.eq(read_port.data),
-                    self.wb_bus.cyc.eq(1),
-                    self.wb_bus.stb.eq(1),
-                ]
-                with m.If(self.wb_bus.ack):
-                    m.d.sync += address.eq(address + 1)
-                    m.d.sync += read_port.addr.eq(read_port.addr + 1)
-                    with m.If(address == len(self._dmem) - 1):
-                        m.next = 'zero'
-                    with m.Else():
-                        m.next = 'init.wait'
-
-            with m.State('zero'):
-                m.d.comb += [
-                    self.wb_bus.dat_w.eq(0),
-                    self.wb_bus.cyc.eq(1),
-                    self.wb_bus.stb.eq(1),
-                ]
-                with m.If(self.wb_bus.ack):
-                    m.d.sync += address.eq(address + 1)
-                    with m.If(address == (self._dmem_bytes // 4) - 1):
-                        m.d.sync += self.ready.eq(1)
-                        m.next = 'ready'
-
-            with m.State('ready'):
-                pass
         return m
 
 

@@ -1,7 +1,3 @@
-import struct
-from itertools import chain
-from pathlib import Path
-
 from amaranth import *
 from amaranth.lib import wiring
 from amaranth.lib.wiring import In, Out
@@ -12,17 +8,6 @@ from .spifr import SPIFlashReader
 
 
 __all__ = ["Top"]
-
-
-def wonk32(path):
-    b = path.read_bytes()
-    while len(b) % 4 != 0:
-        b += b'\0'
-    return list(chain.from_iterable(struct.iter_unpack('<L', b)))
-
-
-core_bin = Path(__file__).parent.parent.parent.parent / "core" / "zig-out" / "bin"
-DMEM = wonk32(core_bin / "avacore.dmem.bin")
 
 
 class Top(wiring.Component):
@@ -51,7 +36,7 @@ class Top(wiring.Component):
         rst = Signal()
         m.d.sync += rst.eq(0)
 
-        core = Core(dmem=DMEM)
+        core = Core()
 
         match platform:
             case icebreaker():

@@ -3,7 +3,7 @@ const Cxxrtl = @import("zxxrtl");
 
 const SpiFlashConnector = @This();
 
-const ROM = @embedFile("avacore.imem.bin");
+const ROM = @embedFile("avacore.bin");
 const ROM_BASE = 0x0080_0000;
 
 const COUNTDOWN_BETWEEN_BYTES = 2;

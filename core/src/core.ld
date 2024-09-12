@@ -2,17 +2,28 @@ OUTPUT_FORMAT(elf32-littleriscv)
 OUTPUT_ARCH(riscv)
 ENTRY(core_start)
 
-SECTIONS {
-    . = 0x40000000;
+MEMORY {
+    dmem (RW) : ORIGIN = 0x40000000, LENGTH = 128K
+    imem (RX) : ORIGIN = 0x80000000, LENGTH = 1M
+}
 
-    .data : {
+SECTIONS {
+    .text 0x80000000 : {
+        *(.text*)
+
+        . = ALIGN(4);
+        text_right = .;
+    } > imem
+
+    .data 0x40000000 : AT(text_right) {
         *(.rodata*)
         *(.data*)
         *(.sdata*)
         *(.sbss*)
-    }
 
-    . = ALIGN(4);
+        . = ALIGN(4);
+        data_right = .;
+    } > dmem
 
     .bss : {
         *(.bss*)
@@ -24,12 +35,6 @@ SECTIONS {
 
         . = 0x40020000;
         sp_right = .;
-    }
-
-    . = 0x80000000;
-
-    .text : {
-        *(.text*)
-    }
+    } > dmem
 
 }

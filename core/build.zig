@@ -54,26 +54,16 @@ pub fn build(b: *std.Build) void {
     }).module("avabasic");
     core.root_module.addImport("avabasic", avabasic_mod);
 
-    const imem_bin = b.addSystemCommand(&.{
+    const rom_bin = b.addSystemCommand(&.{
         "llvm-objcopy",
         "--output-target=binary",
         "-j",
         ".text",
-        b.fmt("{s}/bin/avacore", .{b.install_prefix}),
-        b.fmt("{s}/bin/avacore.imem.bin", .{b.install_prefix}),
-    });
-    imem_bin.step.dependOn(&core_inst.step);
-    b.getInstallStep().dependOn(&imem_bin.step);
-
-    // TODO: look into b.addObjCopy.
-    const dmem_bin = b.addSystemCommand(&.{
-        "llvm-objcopy",
-        "--output-target=binary",
         "-j",
         ".data",
         b.fmt("{s}/bin/avacore", .{b.install_prefix}),
-        b.fmt("{s}/bin/avacore.dmem.bin", .{b.install_prefix}),
+        b.fmt("{s}/bin/avacore.bin", .{b.install_prefix}),
     });
-    dmem_bin.step.dependOn(&core_inst.step);
-    b.getInstallStep().dependOn(&dmem_bin.step);
+    rom_bin.step.dependOn(&core_inst.step);
+    b.getInstallStep().dependOn(&rom_bin.step);
 }
