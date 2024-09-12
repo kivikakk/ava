@@ -12,7 +12,7 @@ pub export fn core_start_zig() noreturn {
 }
 
 inline fn core_exit() noreturn {
-    const CSR_EXIT: *volatile u8 = @ptrFromInt(0x8001_0000);
+    const CSR_EXIT: *volatile u8 = @ptrFromInt(0xf001_0000);
     CSR_EXIT.* = 1;
     try uart.writer.print("core_exit finished\n", .{});
     while (true) {}

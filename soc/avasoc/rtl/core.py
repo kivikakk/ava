@@ -35,8 +35,8 @@ class Core(wiring.Component):
     DMEM_BYTES = 128 * 1024
 
     DMEM_BASE = 0x4000_0000
-    UART_BASE = 0x8000_0000
-    CSR_BASE  = 0x8001_0000
+    UART_BASE = 0xf000_0000
+    CSR_BASE  = 0xf001_0000
 
     running: Out(1)
 
@@ -192,7 +192,7 @@ class CSRPeripheral(wiring.Component):
         wiring.connect(m, wiring.flipped(self.bus), self._bridge.bus)
 
         with m.If(self._exit.f.w_stb):
-            m.d.sync += Print("\n! CSR_EXIT signalled -- stopped")
+            m.d.sync += Print("\n! EXIT signalled -- stopped")
             m.d.sync += self.stop.eq(1)
 
         return m

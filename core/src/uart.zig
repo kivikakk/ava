@@ -4,8 +4,8 @@ const uart = @This();
 
 const proto = @import("proto.zig");
 
-const UART: *volatile u8 = @ptrFromInt(0x8000_0000);
-const UART_STATUS: *volatile u16 = @ptrFromInt(0x8000_0000);
+const UART: *volatile u8 = @ptrFromInt(0xf000_0000);
+const UART_STATUS: *volatile u16 = @ptrFromInt(0xf000_0000);
 
 pub const WriteError = error{};
 pub const writer = std.io.GenericWriter(void, WriteError, writeFn){ .context = {} };
