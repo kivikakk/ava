@@ -115,16 +115,17 @@ class WishboneUART(wiring.Component):
             m.d.sync += self.wb_bus.ack.eq(0)
             m.d.sync += self._uart.rd.ready.eq(0)
         with m.Elif(self.wb_bus.cyc & self.wb_bus.stb):
-            m.d.sync += self.wb_bus.ack.eq(1)
             with m.If(self.wb_bus.sel == 0b0001):
                 with m.If(self.wb_bus.we):
                     m.d.comb += self._uart.wr.p.eq(self.wb_bus.dat_w[:8])
                     m.d.comb += self._uart.wr.valid.eq(1)
-                    with m.If(~self._uart.wr.ready):
-                        m.d.sync += self.wb_bus.ack.eq(0)
+                    m.d.sync += self.wb_bus.ack.eq(self._uart.wr.ready)
                 with m.Else():
+                    # Data-only read blocks the CPU.
                     m.d.sync += self._uart.rd.ready.eq(1)
+                    m.d.sync += self.wb_bus.ack.eq(self._uart.rd.valid)
             with m.Elif((self.wb_bus.sel == 0b0011) & ~self.wb_bus.we):
+                m.d.sync += self.wb_bus.ack.eq(1)
                 m.d.sync += self._uart.rd.ready.eq(1)
 
         return m

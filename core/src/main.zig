@@ -1,13 +1,13 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const uart = @import("uart.zig");
-const proto = @import("proto.zig");
-const heap = @import("heap.zig");
-
 const stack = @import("avabasic").stack;
 const isa = @import("avabasic").isa;
 const PrintLoc = @import("avabasic").PrintLoc;
+
+const uart = @import("./uart.zig");
+const proto = @import("./proto.zig");
+const heap = @import("./heap.zig");
 
 const VERSION: usize = 2;
 

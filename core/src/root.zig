@@ -1,7 +1,8 @@
 const std = @import("std");
 
-const main = @import("main.zig");
-const uart = @import("uart.zig");
+const main = @import("./main.zig");
+const uart = @import("./uart.zig");
+const mmio = @import("./mmio.zig");
 
 // Please note: std.debug.panic reserves more than 4096 bytes of stack space in
 // std.debug.panicExtra.
@@ -12,8 +13,7 @@ pub export fn core_start_zig() noreturn {
 }
 
 inline fn core_exit() noreturn {
-    const CSR_EXIT: *volatile u8 = @ptrFromInt(0xf001_0000);
-    CSR_EXIT.* = 1;
+    mmio.CSR_EXIT.* = 1;
     try uart.writer.print("core_exit finished\n", .{});
     while (true) {}
 }
