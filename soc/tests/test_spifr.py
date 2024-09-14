@@ -27,7 +27,6 @@ def test_simple():
         reading = None
         bit = 0
 
-        last = None
         async for spiclk, cs, copi in ctx.changed(dut.clk).sample(dut.cs, dut.copi):
             if spiclk:
                 assert cs
@@ -64,24 +63,27 @@ def test_simple():
                         ctx.set(dut.cipo, 1)
 
     async def bench(ctx):
-        assert ctx.get(dut.req.ready)
 
         for addr in DATA.keys():
             expected = DATA[addr] + [0xFF, 0xFF]
 
-            ctx.set(dut.req.p.addr, addr)
-            ctx.set(dut.req.p.len, len(expected))
-            ctx.set(dut.req.valid, 1)
+            assert ctx.get(dut.addr_stb.ready)
+            ctx.set(dut.addr_stb.p, addr)
+            ctx.set(dut.addr_stb.valid, 1)
             await ctx.tick()
-            ctx.set(dut.req.p.addr, 0)
-            ctx.set(dut.req.valid, 0)
-            assert not ctx.get(dut.req.ready)
+            ctx.set(dut.addr_stb.p, 0)
+            ctx.set(dut.addr_stb.valid, 0)
+            assert not ctx.get(dut.addr_stb.ready)
 
             for byte in expected:
                 (actual,) = await ctx.tick().sample(dut.res.p).until(dut.res.valid)
                 assert byte == actual
 
-            await ctx.tick().until(dut.req.ready)
+            ctx.set(dut.stop_stb.valid, 1)
+            await ctx.tick().until(dut.stop_stb.ready)
+            ctx.set(dut.stop_stb.valid, 0)
+
+            await ctx.tick().until(dut.addr_stb.ready)
 
     sim = Simulator(Fragment.get(dut, test()))
     sim.add_clock(1e-6)

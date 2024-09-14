@@ -12,7 +12,8 @@ __all__ = ["SPIFlashReader"]
 
 class SPIFlashReader(wiring.Component):
     Signature = wiring.Signature({
-        "req": Out(stream.Signature(data.StructLayout({ "addr": 24, "len": 16 }))),
+        "addr_stb": Out(stream.Signature(24)),
+        "stop_stb": Out(stream.Signature(0)),
         "res": In(stream.Signature(8, always_ready=True)),
     })
 
@@ -58,8 +59,6 @@ class SPIFlashReader(wiring.Component):
         snd_bitcount = Signal(range(max(32, TRES1_TDP_CYCLES)))
 
         rcv_bitcount = Signal(range(8))
-        rcv_bytecount = Signal.like(self.req.p.len)
-
         addr = Signal(24)
 
         m.d.comb += [
@@ -72,14 +71,13 @@ class SPIFlashReader(wiring.Component):
 
         with m.FSM():
             with m.State('idle'):
-                m.d.comb += self.req.ready.eq(1)
-                with m.If(self.req.valid):
+                m.d.comb += self.addr_stb.ready.eq(1)
+                with m.If(self.addr_stb.valid):
                     m.d.sync += [
                         cs.eq(1),
                         sr.eq(0xAB00_0000),
                         snd_bitcount.eq(31),
-                        addr.eq(self.req.p.addr),
-                        rcv_bytecount.eq(self.req.p.len - 1),
+                        addr.eq(self.addr_stb.p),
                     ]
                     m.next = 'powerdown.release'
 
@@ -108,14 +106,13 @@ class SPIFlashReader(wiring.Component):
                     m.next = 'cmd'
 
             with m.State('cmd.wait'):
-                m.d.comb += self.req.ready.eq(1)
-                with m.If(self.req.valid):
+                m.d.comb += self.addr_stb.ready.eq(1)
+                with m.If(self.addr_stb.valid):
                     m.d.sync += [
                         cs.eq(1),
-                        sr.eq(Cat(self.req.p.addr, C(0x03, 8))),
+                        sr.eq(Cat(self.addr_stb.p, C(0x03, 8))),
                         snd_bitcount.eq(31),
                         rcv_bitcount.eq(7),
-                        rcv_bytecount.eq(self.req.p.len - 1),
                     ]
                     m.next = 'cmd'
 
@@ -134,11 +131,11 @@ class SPIFlashReader(wiring.Component):
                 ]
                 with m.If(rcv_bitcount == 0):
                     m.d.sync += [
-                        rcv_bytecount.eq(rcv_bytecount - 1),
                         rcv_bitcount.eq(7),
                         self.res.valid.eq(1),
                     ]
-                    with m.If(rcv_bytecount == 0):
+                    m.d.comb += self.stop_stb.ready.eq(1)
+                    with m.If(self.stop_stb.valid):
                         m.d.sync += cs.eq(0)
                         m.next = 'cmd.wait'
 
