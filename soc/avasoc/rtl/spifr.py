@@ -59,7 +59,6 @@ class SPIFlashReader(wiring.Component):
         snd_bitcount = Signal(range(max(32, TRES1_TDP_CYCLES)))
 
         rcv_bitcount = Signal(range(8))
-        addr = Signal(24)
 
         m.d.comb += [
             copi.eq(sr[-1]),
@@ -71,15 +70,12 @@ class SPIFlashReader(wiring.Component):
 
         with m.FSM():
             with m.State('idle'):
-                m.d.comb += self.addr_stb.ready.eq(1)
-                with m.If(self.addr_stb.valid):
-                    m.d.sync += [
-                        cs.eq(1),
-                        sr.eq(0xAB00_0000),
-                        snd_bitcount.eq(31),
-                        addr.eq(self.addr_stb.p),
-                    ]
-                    m.next = 'powerdown.release'
+                m.d.sync += [
+                    cs.eq(1),
+                    sr.eq(0xAB00_0000),
+                    snd_bitcount.eq(31),
+                ]
+                m.next = 'powerdown.release'
 
             with m.State('powerdown.release'):
                 m.d.sync += [
@@ -91,19 +87,7 @@ class SPIFlashReader(wiring.Component):
                         cs.eq(0),
                         snd_bitcount.eq(TRES1_TDP_CYCLES - 1),
                     ]
-                    m.next = 'wait'
-
-            with m.State('wait'):
-                with m.If(snd_bitcount != 0):
-                    m.d.sync += snd_bitcount.eq(snd_bitcount - 1)
-                with m.Else():
-                    m.d.sync += [
-                        cs.eq(1),
-                        sr.eq(Cat(addr, C(0x03, 8))),
-                        snd_bitcount.eq(31),
-                        rcv_bitcount.eq(7),
-                    ]
-                    m.next = 'cmd'
+                    m.next = 'cmd.wait'
 
             with m.State('cmd.wait'):
                 m.d.comb += self.addr_stb.ready.eq(1)

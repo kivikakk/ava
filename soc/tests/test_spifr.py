@@ -17,6 +17,7 @@ def test_simple():
     DATA = {
         0x24_0000: [0xAB, 0x00, 0x77, 0xFF, 0x10],
         0x00_FFFF: [0x01, 0x23, 0x45, 0x67, 0x89],
+        0x88_8888: [],
     }
 
     async def spi(ctx):
@@ -63,14 +64,16 @@ def test_simple():
                         ctx.set(dut.cipo, 1)
 
     async def bench(ctx):
-
         for addr in DATA.keys():
             expected = DATA[addr] + [0xFF, 0xFF]
 
-            assert ctx.get(dut.addr_stb.ready)
+            await ctx.tick().until(dut.addr_stb.ready)
+
             ctx.set(dut.addr_stb.p, addr)
             ctx.set(dut.addr_stb.valid, 1)
+
             await ctx.tick()
+
             ctx.set(dut.addr_stb.p, 0)
             ctx.set(dut.addr_stb.valid, 0)
             assert not ctx.get(dut.addr_stb.ready)
@@ -83,7 +86,7 @@ def test_simple():
             await ctx.tick().until(dut.stop_stb.ready)
             ctx.set(dut.stop_stb.valid, 0)
 
-            await ctx.tick().until(dut.addr_stb.ready)
+        await ctx.tick().until(dut.addr_stb.ready)
 
     sim = Simulator(Fragment.get(dut, test()))
     sim.add_clock(1e-6)
