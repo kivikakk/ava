@@ -57,8 +57,13 @@ class SPIFlashReader(wiring.Component):
 
         sr = Signal(32)
         snd_bitcount = Signal(range(max(32, TRES1_TDP_CYCLES)))
-
         rcv_bitcount = Signal(range(8))
+
+        stopping = Signal(init=1)
+        m.d.comb += self.stop_stb.ready.eq(~stopping)
+        with m.If(self.stop_stb.valid & self.stop_stb.ready):
+            m.d.sync += Print(Format("spifr: got stop signal"))
+            m.d.sync += stopping.eq(1)
 
         m.d.comb += [
             copi.eq(sr[-1]),
@@ -92,11 +97,13 @@ class SPIFlashReader(wiring.Component):
             with m.State('cmd.wait'):
                 m.d.comb += self.addr_stb.ready.eq(1)
                 with m.If(self.addr_stb.valid):
+                    m.d.sync += Print(Format("spifr: issuing read: {:06x}", self.addr_stb.p))
                     m.d.sync += [
                         cs.eq(1),
                         sr.eq(Cat(self.addr_stb.p, C(0x03, 8))),
                         snd_bitcount.eq(31),
                         rcv_bitcount.eq(7),
+                        stopping.eq(0),
                     ]
                     m.next = 'cmd'
 
@@ -118,8 +125,8 @@ class SPIFlashReader(wiring.Component):
                         rcv_bitcount.eq(7),
                         self.res.valid.eq(1),
                     ]
-                    m.d.comb += self.stop_stb.ready.eq(1)
-                    with m.If(self.stop_stb.valid):
+                    with m.If(stopping):
+                        m.d.sync += Print(Format("spifr: stopping"))
                         m.d.sync += cs.eq(0)
                         m.next = 'cmd.wait'
 

@@ -16,7 +16,8 @@ stop_stb_ready: Cxxrtl.Object(bool),
 res_p: Cxxrtl.Object(u8),
 res_valid: Cxxrtl.Object(bool),
 
-state: enum { idle, read },
+state: enum { powerdown_release, cmd_wait, read },
+stopping: bool,
 address: u24,
 countdown: u8,
 
@@ -29,8 +30,6 @@ pub fn init(cxxrtl: Cxxrtl) SpiFlashConnector {
     const res_p = cxxrtl.get(u8, "spifr_res_p");
     const res_valid = cxxrtl.get(bool, "spifr_res_valid");
 
-    addr_stb_ready.next(true);
-
     return .{
         .addr_stb_p = addr_stb_p,
         .addr_stb_valid = addr_stb_valid,
@@ -40,42 +39,59 @@ pub fn init(cxxrtl: Cxxrtl) SpiFlashConnector {
         .res_p = res_p,
         .res_valid = res_valid,
 
-        .state = .idle,
+        .state = .powerdown_release,
+        .stopping = true,
         .address = 0,
-        .countdown = 0,
+        .countdown = 8,
     };
 }
 
 pub fn tick(self: *SpiFlashConnector) void {
-    self.stop_stb_ready.next(false);
+    if (!self.stopping and self.stop_stb_valid.curr()) {
+        std.debug.print("SpiFlashConnector: got stop signal\n", .{});
+        self.stopping = true;
+    }
+    self.stop_stb_ready.next(!self.stopping);
+
     self.res_valid.next(false);
 
     switch (self.state) {
-        .idle => {
+        .powerdown_release => {
+            self.countdown -= 1;
+            if (self.countdown == 0) {
+                std.debug.print("SpiFlashConnector: setting addr_stb_ready\n", .{});
+                self.addr_stb_ready.next(true);
+                self.state = .cmd_wait;
+            }
+        },
+        .cmd_wait => {
             if (self.addr_stb_valid.curr()) {
                 self.address = self.addr_stb_p.curr();
+                std.debug.print("SpiFlashConnector: got address: {x:0>6}\n", .{self.address});
+                std.debug.print("SpiFlashConnector: addr_stb_ready is {}\n", .{self.addr_stb_ready.curr()});
 
                 if (self.address >= ROM_BASE and self.address < ROM_BASE + ROM.len) {
+                    std.debug.print("SpiFlashConnector: lowering stb\n", .{});
                     self.addr_stb_ready.next(false);
                     self.state = .read;
+                    self.stopping = false;
                     self.countdown = COUNTDOWN_BETWEEN_BYTES;
                 }
             }
         },
         .read => {
             self.countdown -= 1;
-            if (self.countdown == 1) {
-                self.stop_stb_ready.next(true);
-            } else if (self.countdown == 0) {
-                if (self.stop_stb_valid.curr()) {
-                    self.addr_stb_ready.next(true);
-                    self.state = .idle;
-                } else {
-                    self.countdown = COUNTDOWN_BETWEEN_BYTES;
-                    self.res_p.next(if (self.address - ROM_BASE < ROM.len) ROM[self.address - ROM_BASE] else 0xff);
-                    self.res_valid.next(true);
+            if (self.countdown == 0) {
+                self.countdown = COUNTDOWN_BETWEEN_BYTES;
+                self.res_p.next(if (self.address - ROM_BASE < ROM.len) ROM[self.address - ROM_BASE] else 0xff);
+                self.res_valid.next(true);
 
-                    self.address += 1;
+                self.address += 1;
+
+                if (self.stop_stb_valid.curr()) {
+                    std.debug.print("SpiFlashConnector: stopping\n", .{});
+                    self.addr_stb_ready.next(true);
+                    self.state = .cmd_wait;
                 }
             }
         },

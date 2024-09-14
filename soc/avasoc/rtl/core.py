@@ -6,7 +6,7 @@ from amaranth_soc.csr.wishbone import WishboneCSRBridge
 from amaranth_soc.memory import MemoryMap
 from amaranth_soc.wishbone.sram import WishboneSRAM
 
-from .imem import IMem
+from .imem import WishboneIMem
 from .spifr import SPIFlashReader
 from .uart import WishboneUART
 
@@ -54,13 +54,14 @@ class Core(wiring.Component):
         m.submodules.ibus = ibus = wishbone.Decoder(addr_width=30, data_width=32,
                                                     granularity=8, features={"err", "cti", "bte"})
 
-        m.submodules.imem = imem = IMem(base=self.SPI_IMEM_BASE)
+        m.submodules.imem = imem = WishboneIMem(base=self.SPI_IMEM_BASE)
+        wiring.connect(m, wiring.flipped(self.spifr_bus), imem.spifr_bus)
         ibus.add(imem.wb_bus, name="imem", addr=self.IMEM_BASE)
 
         m.submodules.dbus = dbus = wishbone.Decoder(addr_width=30, data_width=32,
                                                     granularity=8, features={"err"})
 
-        m.submodules.dimem = dimem = WishboneIMem()
+        m.submodules.dimem = dimem = AltWishboneIMem()
         dbus.add(dimem.wb_bus, name="dimem", addr=self.IMEM_BASE)
 
         m.submodules.sram = sram = WishboneSRAM(size=self.DMEM_BYTES,
@@ -134,7 +135,7 @@ class CSRPeripheral(wiring.Component):
         return m
 
 
-class WishboneIMem(wiring.Component):
+class AltWishboneIMem(wiring.Component):
     wb_bus: In(wishbone.bus.Signature(addr_width=18, data_width=32,
                                       granularity=8, features={"err"}))
 

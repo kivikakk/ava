@@ -63,7 +63,7 @@ pub fn run(self: *SimThread) !void {
         end: usize,
     } = .init;
 
-    self.tick();
+    // self.tick(); // XXX
     while (self.sim_controller.lockIfRunning()) {
         defer self.sim_controller.unlock();
         self.tick();
