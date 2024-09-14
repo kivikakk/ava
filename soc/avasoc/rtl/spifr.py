@@ -12,21 +12,15 @@ __all__ = ["SPIFlashReader"]
 
 class SPIFlashReader(wiring.Component):
     Signature = wiring.Signature({
-        "addr_stb": Out(stream.Signature(24)),
-        "stop_stb": Out(stream.Signature(0)),
+        "req": Out(stream.Signature(data.StructLayout({ "addr": 24, "len": 16 }))),
         "res": In(stream.Signature(8, always_ready=True)),
     })
 
-    def __init__(self, *, powerdown_between_requests=False):
+    def __init__(self):
         super().__init__(SPIFlashReader.Signature)
-        self._powerdown_between_requests = powerdown_between_requests
 
     def elaborate(self, platform):
         m = Module()
-
-        if getattr(platform, "simulation", False):
-            # Blackboxed in tests.
-            return m
 
         copi = Signal()
         cipo = Signal()
@@ -44,7 +38,16 @@ class SPIFlashReader(wiring.Component):
                 ]
 
             case _:
-                raise NotImplementedError
+                self.copi = Signal()
+                self.cipo = Signal()
+                self.cs = Signal()
+                self.clk = Signal()
+                m.d.comb += [
+                    self.copi.eq(copi),
+                    cipo.eq(self.cipo),
+                    self.cs.eq(cs),
+                    self.clk.eq(clk),
+                ]
 
         freq = platform.default_clk_frequency
         # tRES1 (/CS High to Standby Mode without ID Read) and tDP (/CS High to
@@ -55,6 +58,9 @@ class SPIFlashReader(wiring.Component):
         snd_bitcount = Signal(range(max(32, TRES1_TDP_CYCLES)))
 
         rcv_bitcount = Signal(range(8))
+        rcv_bytecount = Signal.like(self.req.p.len)
+
+        addr = Signal(24)
 
         m.d.comb += [
             copi.eq(sr[-1]),
@@ -66,12 +72,14 @@ class SPIFlashReader(wiring.Component):
 
         with m.FSM():
             with m.State('idle'):
-                m.d.comb += self.addr_stb.ready.eq(1)
-                with m.If(self.addr_stb.valid):
+                m.d.comb += self.req.ready.eq(1)
+                with m.If(self.req.valid):
                     m.d.sync += [
                         cs.eq(1),
-                        sr.eq(0xAB000000),
+                        sr.eq(0xAB00_0000),
                         snd_bitcount.eq(31),
+                        addr.eq(self.req.p.addr),
+                        rcv_bytecount.eq(self.req.p.len - 1),
                     ]
                     m.next = 'powerdown.release'
 
@@ -93,20 +101,21 @@ class SPIFlashReader(wiring.Component):
                 with m.Else():
                     m.d.sync += [
                         cs.eq(1),
-                        sr.eq(Cat(self.addr_stb.p, C(0x03, 8))),
+                        sr.eq(Cat(addr, C(0x03, 8))),
                         snd_bitcount.eq(31),
                         rcv_bitcount.eq(7),
                     ]
                     m.next = 'cmd'
 
             with m.State('cmd.wait'):
-                m.d.comb += self.addr_stb.ready.eq(1)
-                with m.If(self.addr_stb.valid):
+                m.d.comb += self.req.ready.eq(1)
+                with m.If(self.req.valid):
                     m.d.sync += [
                         cs.eq(1),
-                        sr.eq(Cat(self.addr_stb.p, C(0x03, 8))),
+                        sr.eq(Cat(self.req.p.addr, C(0x03, 8))),
                         snd_bitcount.eq(31),
                         rcv_bitcount.eq(7),
+                        rcv_bytecount.eq(self.req.p.len - 1),
                     ]
                     m.next = 'cmd'
 
@@ -125,23 +134,12 @@ class SPIFlashReader(wiring.Component):
                 ]
                 with m.If(rcv_bitcount == 0):
                     m.d.sync += [
+                        rcv_bytecount.eq(rcv_bytecount - 1),
                         rcv_bitcount.eq(7),
                         self.res.valid.eq(1),
                     ]
                     with m.If(rcv_bytecount == 0):
                         m.d.sync += cs.eq(0)
-                        if self._powerdown_between_requests:
-                            m.d.sync += snd_bitcount.eq(TRES1_TDP_CYCLES - 1)
-                            m.next = 'powerdown'
-                        else:
-                            m.next = 'cmd.wait'
-                    with m.Else():
-                        m.next = 'recv'
-
-            with m.State('powerdown'):
-                with m.If(snd_bitcount != 0):
-                    m.d.sync += snd_bitcount.eq(snd_bitcount - 1)
-                with m.Else():
-                    m.next = 'idle'
+                        m.next = 'cmd.wait'
 
         return m

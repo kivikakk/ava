@@ -5,11 +5,15 @@ from amaranth import *
 from amaranth_boards.icebreaker import ICEBreakerPlatform
 
 
-__all__ = ["icebreaker", "cxxrtl"]
+__all__ = ["icebreaker", "test", "cxxrtl"]
 
 
 class icebreaker(ICEBreakerPlatform):
     prepare_kwargs = {"synth_opts": "-dsp -spram"}
+
+
+class test:
+    default_clk_frequency = 1_000_000
 
 
 class cxxrtl(niar.CxxrtlPlatform):
