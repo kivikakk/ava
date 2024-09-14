@@ -22,7 +22,7 @@
 
 // Generator : SpinalHDL v1.10.2a    git head : a348a60b7e8b6a455c72e1536ec3d74a2ea16935
 // Component : VexRiscv
-// Git hash  : 37de7b202bbf4fea7ae2d35b93993b795cc62512
+// Git hash  : 947ba5e967e87777c493ceac3c022802195ccf76
 
 `timescale 1ns/1ps
 
@@ -30,13 +30,17 @@ module VexRiscv (
   input  wire          timerInterrupt,
   input  wire          externalInterrupt,
   input  wire          softwareInterrupt,
-  output wire          iBus_cmd_valid,
-  input  wire          iBus_cmd_ready,
-  output reg  [31:0]   iBus_cmd_payload_address,
-  output wire [2:0]    iBus_cmd_payload_size,
-  input  wire          iBus_rsp_valid,
-  input  wire [31:0]   iBus_rsp_payload_data,
-  input  wire          iBus_rsp_payload_error,
+  output reg           iBusWishbone_CYC,
+  output reg           iBusWishbone_STB,
+  input  wire          iBusWishbone_ACK,
+  output wire          iBusWishbone_WE,
+  output wire [29:0]   iBusWishbone_ADR,
+  input  wire [31:0]   iBusWishbone_DAT_MISO,
+  output wire [31:0]   iBusWishbone_DAT_MOSI,
+  output wire [3:0]    iBusWishbone_SEL,
+  input  wire          iBusWishbone_ERR,
+  output wire [2:0]    iBusWishbone_CTI,
+  output wire [1:0]    iBusWishbone_BTE,
   output wire          dBusWishbone_CYC,
   output wire          dBusWishbone_STB,
   input  wire          dBusWishbone_ACK,
@@ -279,6 +283,7 @@ module VexRiscv (
   wire       [0:0]    _zz_memory_DivPlugin_rs2_2;
   wire       [19:0]   _zz__zz_execute_BranchPlugin_branch_src2;
   wire       [11:0]   _zz__zz_execute_BranchPlugin_branch_src2_4;
+  wire       [26:0]   _zz_iBusWishbone_ADR_1;
   wire       [51:0]   memory_MUL_LOW;
   wire       [31:0]   memory_MEMORY_READ_DATA;
   wire       [31:0]   execute_BRANCH_CALC;
@@ -670,6 +675,13 @@ module VexRiscv (
   reg                 IBusCachedPlugin_injector_nextPcCalc_valids_3;
   wire                when_Fetcher_l331_3;
   reg        [31:0]   IBusCachedPlugin_injector_formal_rawInDecode;
+  wire                iBus_cmd_valid;
+  wire                iBus_cmd_ready;
+  reg        [31:0]   iBus_cmd_payload_address;
+  wire       [2:0]    iBus_cmd_payload_size;
+  wire                iBus_rsp_valid;
+  wire       [31:0]   iBus_rsp_payload_data;
+  wire                iBus_rsp_payload_error;
   reg        [31:0]   IBusCachedPlugin_rspCounter;
   wire                IBusCachedPlugin_s0_tightlyCoupledHit;
   reg                 IBusCachedPlugin_s1_tightlyCoupledHit;
@@ -1045,6 +1057,12 @@ module VexRiscv (
   reg                 when_CsrPlugin_l1719;
   wire                when_CsrPlugin_l1717;
   wire                when_CsrPlugin_l1725;
+  reg        [2:0]    _zz_iBusWishbone_ADR;
+  wire                when_InstructionCache_l239;
+  wire                when_InstructionCache_l242;
+  reg                 _zz_iBus_rsp_valid;
+  reg        [31:0]   iBusWishbone_DAT_MISO_regNext;
+  reg                 iBusWishbone_ERR_regNext;
   wire                dBus_cmd_halfPipe_valid;
   wire                dBus_cmd_halfPipe_ready;
   wire                dBus_cmd_halfPipe_payload_wr;
@@ -1189,6 +1207,7 @@ module VexRiscv (
   assign _zz_memory_DivPlugin_rs2_1 = {31'd0, _zz_memory_DivPlugin_rs2_2};
   assign _zz__zz_execute_BranchPlugin_branch_src2 = {{{execute_INSTRUCTION[31],execute_INSTRUCTION[19 : 12]},execute_INSTRUCTION[20]},execute_INSTRUCTION[30 : 21]};
   assign _zz__zz_execute_BranchPlugin_branch_src2_4 = {{{execute_INSTRUCTION[31],execute_INSTRUCTION[7]},execute_INSTRUCTION[30 : 25]},execute_INSTRUCTION[11 : 8]};
+  assign _zz_iBusWishbone_ADR_1 = (iBus_cmd_payload_address >>> 3'd5);
   assign _zz_decode_RegFilePlugin_rs1Data = 1'b1;
   assign _zz_decode_RegFilePlugin_rs2Data = 1'b1;
   assign _zz_IBusCachedPlugin_decompressor_decompressed_27 = {_zz_IBusCachedPlugin_decompressor_decompressed_12,_zz_IBusCachedPlugin_decompressor_decompressed[4 : 3]};
@@ -3702,6 +3721,32 @@ module VexRiscv (
 
   assign when_CsrPlugin_l1717 = (CsrPlugin_privilege < execute_CsrPlugin_csrAddress[9 : 8]);
   assign when_CsrPlugin_l1725 = ((! execute_arbitration_isValid) || (! execute_IS_CSR));
+  assign iBusWishbone_ADR = {_zz_iBusWishbone_ADR_1,_zz_iBusWishbone_ADR};
+  assign iBusWishbone_CTI = ((_zz_iBusWishbone_ADR == 3'b111) ? 3'b111 : 3'b010);
+  assign iBusWishbone_BTE = 2'b00;
+  assign iBusWishbone_SEL = 4'b1111;
+  assign iBusWishbone_WE = 1'b0;
+  assign iBusWishbone_DAT_MOSI = 32'bxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx;
+  always @(*) begin
+    iBusWishbone_CYC = 1'b0;
+    if(when_InstructionCache_l239) begin
+      iBusWishbone_CYC = 1'b1;
+    end
+  end
+
+  always @(*) begin
+    iBusWishbone_STB = 1'b0;
+    if(when_InstructionCache_l239) begin
+      iBusWishbone_STB = 1'b1;
+    end
+  end
+
+  assign when_InstructionCache_l239 = (iBus_cmd_valid || (_zz_iBusWishbone_ADR != 3'b000));
+  assign when_InstructionCache_l242 = (iBusWishbone_ACK || iBusWishbone_ERR);
+  assign iBus_cmd_ready = (iBus_cmd_valid && (iBusWishbone_ACK || iBusWishbone_ERR));
+  assign iBus_rsp_valid = _zz_iBus_rsp_valid;
+  assign iBus_rsp_payload_data = iBusWishbone_DAT_MISO_regNext;
+  assign iBus_rsp_payload_error = iBusWishbone_ERR_regNext;
   assign dBus_cmd_halfPipe_fire = (dBus_cmd_halfPipe_valid && dBus_cmd_halfPipe_ready);
   assign dBus_cmd_ready = (! dBus_cmd_rValid);
   assign dBus_cmd_halfPipe_valid = dBus_cmd_rValid;
@@ -3774,6 +3819,8 @@ module VexRiscv (
       execute_arbitration_isValid <= 1'b0;
       memory_arbitration_isValid <= 1'b0;
       writeBack_arbitration_isValid <= 1'b0;
+      _zz_iBusWishbone_ADR <= 3'b000;
+      _zz_iBus_rsp_valid <= 1'b0;
       dBus_cmd_rValid <= 1'b0;
     end else begin
       if(IBusCachedPlugin_fetchPc_correction) begin
@@ -3974,6 +4021,12 @@ module VexRiscv (
           CsrPlugin_mie_MSIE <= CsrPlugin_csrMapping_writeDataSignal[3];
         end
       end
+      if(when_InstructionCache_l239) begin
+        if(when_InstructionCache_l242) begin
+          _zz_iBusWishbone_ADR <= (_zz_iBusWishbone_ADR + 3'b001);
+        end
+      end
+      _zz_iBus_rsp_valid <= (iBusWishbone_CYC && (iBusWishbone_ACK || iBusWishbone_ERR));
       if(dBus_cmd_valid) begin
         dBus_cmd_rValid <= 1'b1;
       end
@@ -4260,6 +4313,8 @@ module VexRiscv (
         CsrPlugin_mip_MSIP <= CsrPlugin_csrMapping_writeDataSignal[3];
       end
     end
+    iBusWishbone_DAT_MISO_regNext <= iBusWishbone_DAT_MISO;
+    iBusWishbone_ERR_regNext <= iBusWishbone_ERR;
     if(dBus_cmd_ready) begin
       dBus_cmd_rData_wr <= dBus_cmd_payload_wr;
       dBus_cmd_rData_mask <= dBus_cmd_payload_mask;

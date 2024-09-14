@@ -33,6 +33,6 @@ test = [
 ]
 
 [tool.pytest.ini_options]
-addopts = ["-n", "auto"]
+# addopts = ["-n", "auto"]
 testpaths = ["tests"]
-markers = ["slow"]
+# markers = ["slow"]

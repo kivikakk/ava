@@ -51,12 +51,11 @@ class Core(wiring.Component):
         running = Signal(init=1)
         m.d.comb += self.running.eq(running)
 
-        # TODO: redo IMEM with Wishbone. Note that IBusCachedPlugin's Wishbone
-        # bridge (i.e. InstructionCacheMemBus.toWishbone) uses incrementing
-        # burst read, which dovetails well with the SPI flash protocol, but
-        # requires a rework of the interleaving bits and pieces.
+        m.submodules.ibus = ibus = wishbone.Decoder(addr_width=30, data_width=32,
+                                                    granularity=8, features={"err", "cti", "bte"})
+
         m.submodules.imem = imem = IMem(base=self.SPI_IMEM_BASE)
-        wiring.connect(m, wiring.flipped(self.spifr_bus), imem.spifr_bus)
+        ibus.add(imem.wb_bus, name="imem", addr=self.IMEM_BASE)
 
         m.submodules.dbus = dbus = wishbone.Decoder(addr_width=30, data_width=32,
                                                     granularity=8, features={"err"})
@@ -78,29 +77,30 @@ class Core(wiring.Component):
         with m.If(csrs.stop):
             m.d.sync += running.eq(0)
 
-        vex_bus = dbus.bus.signature.create()
-        wiring.connect(m, dbus.bus, wiring.flipped(vex_bus))
-
         m.submodules.vexriscv = Instance("VexRiscv",
             i_timerInterrupt=Signal(),
             i_externalInterrupt=Signal(),
             i_softwareInterrupt=Signal(),
-            o_iBus_cmd_valid=imem.cmd.valid,
-            i_iBus_cmd_ready=imem.cmd.ready,
-            o_iBus_cmd_payload_address=imem.cmd.p.address,
-            o_iBus_cmd_payload_size=imem.cmd.p.size,
-            i_iBus_rsp_valid=imem.rsp.valid,
-            i_iBus_rsp_payload_data=imem.rsp.p.data,
-            i_iBus_rsp_payload_error=imem.rsp.p.error,
-            o_dBusWishbone_CYC=vex_bus.cyc,
-            o_dBusWishbone_STB=vex_bus.stb,
-            i_dBusWishbone_ACK=vex_bus.ack,
-            o_dBusWishbone_WE=vex_bus.we,
-            o_dBusWishbone_ADR=vex_bus.adr,
-            i_dBusWishbone_DAT_MISO=vex_bus.dat_r,
-            o_dBusWishbone_DAT_MOSI=vex_bus.dat_w,
-            o_dBusWishbone_SEL=vex_bus.sel,
-            i_dBusWishbone_ERR=vex_bus.err,
+            o_iBusWishbone_CYC=ibus.bus.cyc,
+            o_iBusWishbone_STB=ibus.bus.stb,
+            i_iBusWishbone_ACK=ibus.bus.ack,
+            o_iBusWishbone_WE=ibus.bus.we,
+            o_iBusWishbone_ADR=ibus.bus.adr,
+            i_iBusWishbone_DAT_MISO=ibus.bus.dat_r,
+            o_iBusWishbone_DAT_MOSI=ibus.bus.dat_w,
+            o_iBusWishbone_SEL=ibus.bus.sel,
+            i_iBusWishbone_ERR=ibus.bus.err,
+            o_iBusWishbone_CTI=ibus.bus.cti,
+            o_iBusWishbone_BTE=ibus.bus.bte,
+            o_dBusWishbone_CYC=dbus.bus.cyc,
+            o_dBusWishbone_STB=dbus.bus.stb,
+            i_dBusWishbone_ACK=dbus.bus.ack,
+            o_dBusWishbone_WE=dbus.bus.we,
+            o_dBusWishbone_ADR=dbus.bus.adr,
+            i_dBusWishbone_DAT_MISO=dbus.bus.dat_r,
+            o_dBusWishbone_DAT_MOSI=dbus.bus.dat_w,
+            o_dBusWishbone_SEL=dbus.bus.sel,
+            i_dBusWishbone_ERR=dbus.bus.err,
             i_clk=ClockSignal(),
             i_reset=reset,
         )

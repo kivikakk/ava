@@ -19,10 +19,12 @@ class Top(wiring.Component):
 
                 "running": Out(1),
 
-                "spifr_req_p_addr": Out(24),
-                "spifr_req_p_len": Out(16),
-                "spifr_req_valid": Out(1),
-                "spifr_req_ready": In(1),
+                "spifr_addr_stb_p": Out(24),
+                "spifr_addr_stb_valid": Out(1),
+                "spifr_addr_stb_ready": In(1),
+
+                "spifr_stop_stb_valid": Out(1),
+                "spifr_stop_stb_ready": In(1),
 
                 "spifr_res_p": In(8),
                 "spifr_res_valid": In(1),
@@ -57,12 +59,15 @@ class Top(wiring.Component):
                 m.d.comb += self.running.eq(core.running)
 
                 m.d.comb += [
-                    self.spifr_req_p_addr.eq(core.spifr_bus.req.p.addr),
-                    self.spifr_req_p_len.eq(core.spifr_bus.req.p.len),
-                    self.spifr_req_valid.eq(core.spifr_bus.req.valid),
-                    core.spifr_bus.req.ready.eq(self.spifr_req_ready),
-                    core.spifr_bus.res.p.eq(self.spifr_res_p),
-                    core.spifr_bus.res.valid.eq(self.spifr_res_valid),
+                    self.spifr_addr_stb_p.eq         (core.spifr_bus.addr_stb.p),
+                    self.spifr_addr_stb_valid.eq     (core.spifr_bus.addr_stb.valid),
+                    core.spifr_bus.addr_stb.ready.eq (self.spifr_addr_stb_ready),
+
+                    self.spifr_stop_stb_valid.eq     (core.spifr_bus.stop_stb.valid),
+                    core.spifr_bus.stop_stb.ready.eq (self.spifr_stop_stb_ready),
+
+                    core.spifr_bus.res.p.eq          (self.spifr_res_p),
+                    core.spifr_bus.res.valid.eq      (self.spifr_res_valid),
                 ]
 
         m.submodules.core = ResetInserter(rst)(EnableInserter(core.running)(core))
