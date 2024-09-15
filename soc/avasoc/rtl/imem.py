@@ -10,7 +10,7 @@ from .spifr import SPIFlashReader
 __all__ = ["WishboneIMem"]
 
 class WishboneIMem(wiring.Component):
-    wb_bus: In(wishbone.bus.Signature(addr_width=18, data_width=32,
+    wb_bus: In(wishbone.bus.Signature(addr_width=22, data_width=32,
                                       granularity=8, features={"err", "cti", "bte"}))
     spifr_bus: Out(SPIFlashReader.Signature)
 
@@ -20,7 +20,7 @@ class WishboneIMem(wiring.Component):
         self._base = base
         super().__init__()
 
-        self.wb_bus.memory_map = MemoryMap(addr_width=20, data_width=8)
+        self.wb_bus.memory_map = MemoryMap(addr_width=24, data_width=8)
         # TODO: add_resource I guess.
         self.wb_bus.memory_map.freeze()
 
@@ -44,6 +44,7 @@ class WishboneIMem(wiring.Component):
             with m.State('await'):
                 with m.If(self.spifr_bus.res.valid):
                     m.d.sync += byte_no.eq(byte_no + 1)
+                    # m.d.sync += Print(Format("WishboneIMem: spifr_bus yielded {:02x}", self.spifr_bus.res.p))
                     with m.Switch(byte_no):
                         with m.Case(0):
                             m.d.sync += self.wb_bus.dat_r[:8].eq(self.spifr_bus.res.p)

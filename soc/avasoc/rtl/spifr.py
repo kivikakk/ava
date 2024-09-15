@@ -121,6 +121,7 @@ class SPIFlashReader(wiring.Component):
                     sr.eq(Cat(cipo, sr[:-1])),
                 ]
                 with m.If(rcv_bitcount == 0):
+                    # m.d.sync += Print(Format("spifr: valid with {:02x}", Cat(cipo, sr[:7])))
                     m.d.sync += [
                         rcv_bitcount.eq(7),
                         self.res.valid.eq(1),
