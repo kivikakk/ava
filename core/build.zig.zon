@@ -5,6 +5,10 @@
         .avabasic = .{
             .path = "../basic/",
         },
+        .eheap = .{
+            .url = "https://github.com/kivikakk/eheap/archive/682b6f4a31fbca52374b1c8479a6b1c1de6bbb76.tar.gz",
+            .hash = "1220a8fc43912347fda92f1cbdfdeb030ed44861acdbb5459c764ed711170e296964",
+        },
     },
     .paths = .{
         "build.zig",

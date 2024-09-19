@@ -54,6 +54,12 @@ pub fn build(b: *std.Build) void {
     }).module("avabasic");
     core.root_module.addImport("avabasic", avabasic_mod);
 
+    const eheap_mod = b.dependency("eheap", .{
+        .target = target,
+        .optimize = optimize,
+    }).module("eheap");
+    core.root_module.addImport("eheap", eheap_mod);
+
     const rom_bin = b.addSystemCommand(&.{
         "llvm-objcopy",
         "--set-section-alignment",
