@@ -51,18 +51,28 @@ class Core(wiring.Component):
         running = Signal(init=1)
         m.d.comb += self.running.eq(running)
 
-        m.submodules.ibus = ibus = wishbone.Decoder(addr_width=30, data_width=32,
-                                                    granularity=8, features={"err", "cti", "bte"})
-
         m.submodules.imem = imem = WishboneIMem(base=self.SPI_IMEM_BASE)
         wiring.connect(m, wiring.flipped(self.spifr_bus), imem.spifr_bus)
-        ibus.add(imem.wb_bus, name="imem", addr=self.IMEM_BASE)
+
+        m.submodules.imem_arbiter = imem_arbiter = wishbone.Arbiter(addr_width=22, data_width=32, granularity=8, features={"err", "cti", "bte"})
+        wiring.connect(m, imem_arbiter.bus, imem.wb_bus)
+
+        m.submodules.ibus = ibus = wishbone.Decoder(addr_width=30, data_width=32,
+                                                    granularity=8, features={"err", "cti", "bte"})
+        ibus_imem = imem.wb_bus.signature.flip().create()
+        ibus_imem.memory_map = MemoryMap(addr_width=24, data_width=8)
+        ibus_imem.memory_map.freeze()
+        imem_arbiter.add(ibus_imem)
+        ibus.add(ibus_imem, name="imem", addr=self.IMEM_BASE)
 
         m.submodules.dbus = dbus = wishbone.Decoder(addr_width=30, data_width=32,
-                                                    granularity=8, features={"err"})
+                                                    granularity=8, features={"err", "cti", "bte"})
 
-        m.submodules.dimem = dimem = AltWishboneIMem()
-        dbus.add(dimem.wb_bus, name="dimem", addr=self.IMEM_BASE)
+        dbus_imem = imem.wb_bus.signature.flip().create()
+        dbus_imem.memory_map = MemoryMap(addr_width=24, data_width=8)
+        dbus_imem.memory_map.freeze()
+        imem_arbiter.add(dbus_imem)
+        dbus.add(dbus_imem, name="imem", addr=self.IMEM_BASE)
 
         m.submodules.sram = sram = WishboneSRAM(size=self.DMEM_BYTES,
                                                 data_width=32, granularity=8, init=None)
@@ -131,50 +141,5 @@ class CSRPeripheral(wiring.Component):
         with m.If(self._exit.f.w_stb):
             m.d.sync += Print("\n! EXIT signalled -- stopped")
             m.d.sync += self.stop.eq(1)
-
-        return m
-
-
-class AltWishboneIMem(wiring.Component):
-    wb_bus: In(wishbone.bus.Signature(addr_width=18, data_width=32,
-                                      granularity=8, features={"err"}))
-
-    def __init__(self):
-        def wonk32(path):
-            b = path.read_bytes()
-            while len(b) % 4 != 0:
-                b += b'\0'
-            return list(chain.from_iterable(struct.iter_unpack('<L', b)))
-
-        from pathlib import Path
-        from itertools import chain
-        import struct
-        from amaranth.lib.memory import Memory, MemoryData
-        core_bin = Path(__file__).parent.parent.parent.parent / "core" / "zig-out" / "bin"
-        init = wonk32(core_bin / "avacore.bin")
-
-        self._mem_data = MemoryData(depth=(128 * 1024 * 8) // 32,
-                                    shape=32, init=init)
-        self._mem      = Memory(self._mem_data)
-        super().__init__()
-
-        self.wb_bus.memory_map = MemoryMap(addr_width=20, data_width=8)
-        self.wb_bus.memory_map.add_resource(self._mem, name=("mem",), size=0x10_0000)
-        self.wb_bus.memory_map.freeze()
-
-    def elaborate(self, platform):
-        m = Module()
-        m.submodules.mem = self._mem
-
-        read_port = self._mem.read_port()
-        m.d.comb += [
-            read_port.addr.eq(self.wb_bus.adr),
-            self.wb_bus.dat_r.eq(read_port.data),
-        ]
-
-        with m.If(self.wb_bus.ack):
-            m.d.sync += self.wb_bus.ack.eq(0)
-        with m.Elif(self.wb_bus.cyc & self.wb_bus.stb):
-            m.d.sync += self.wb_bus.ack.eq(1)
 
         return m

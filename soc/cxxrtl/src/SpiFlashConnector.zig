@@ -48,7 +48,7 @@ pub fn init(cxxrtl: Cxxrtl) SpiFlashConnector {
 
 pub fn tick(self: *SpiFlashConnector) void {
     if (!self.stopping and self.stop_stb_valid.curr()) {
-        std.debug.print("SpiFlashConnector: got stop signal\n", .{});
+        // std.debug.print("SpiFlashConnector: got stop signal\n", .{});
         self.stopping = true;
     }
     self.stop_stb_ready.next(!self.stopping);
@@ -59,7 +59,7 @@ pub fn tick(self: *SpiFlashConnector) void {
         .powerdown_release => {
             self.countdown -= 1;
             if (self.countdown == 0) {
-                std.debug.print("SpiFlashConnector: setting addr_stb_ready\n", .{});
+                // std.debug.print("SpiFlashConnector: setting addr_stb_ready\n", .{});
                 self.addr_stb_ready.next(true);
                 self.state = .cmd_wait;
             }
@@ -67,11 +67,11 @@ pub fn tick(self: *SpiFlashConnector) void {
         .cmd_wait => {
             if (self.addr_stb_valid.curr()) {
                 self.address = self.addr_stb_p.curr();
-                std.debug.print("SpiFlashConnector: got address: {x:0>6}\n", .{self.address});
-                std.debug.print("SpiFlashConnector: addr_stb_ready is {}\n", .{self.addr_stb_ready.curr()});
+                // std.debug.print("SpiFlashConnector: got address: {x:0>6}\n", .{self.address});
+                // std.debug.print("SpiFlashConnector: addr_stb_ready is {}\n", .{self.addr_stb_ready.curr()});
 
                 if (self.address >= ROM_BASE and self.address < ROM_BASE + ROM.len) {
-                    std.debug.print("SpiFlashConnector: lowering stb\n", .{});
+                    // std.debug.print("SpiFlashConnector: lowering stb\n", .{});
                     self.addr_stb_ready.next(false);
                     self.state = .read;
                     self.stopping = false;
@@ -89,7 +89,7 @@ pub fn tick(self: *SpiFlashConnector) void {
                 self.address += 1;
 
                 if (self.stop_stb_valid.curr()) {
-                    std.debug.print("SpiFlashConnector: stopping\n", .{});
+                    // std.debug.print("SpiFlashConnector: stopping\n", .{});
                     self.addr_stb_ready.next(true);
                     self.state = .cmd_wait;
                 }

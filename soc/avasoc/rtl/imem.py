@@ -9,6 +9,7 @@ from .spifr import SPIFlashReader
 
 __all__ = ["WishboneIMem"]
 
+# TODO: support CTI.
 class WishboneIMem(wiring.Component):
     wb_bus: In(wishbone.bus.Signature(addr_width=22, data_width=32,
                                       granularity=8, features={"err", "cti", "bte"}))
@@ -37,7 +38,7 @@ class WishboneIMem(wiring.Component):
                     m.d.comb += self.spifr_bus.addr_stb.p.eq(self._base | (self.wb_bus.adr << 2))
                     m.d.comb += self.spifr_bus.addr_stb.valid.eq(1)
                     with m.If(self.spifr_bus.addr_stb.ready):
-                        m.d.sync += Print(Format("WishboneIMem: self.wb_bus.adr: {:06x}", self._base | (self.wb_bus.adr << 2)))
+                        # m.d.sync += Print(Format("WishboneIMem: self.wb_bus.adr: {:06x}", self._base | (self.wb_bus.adr << 2)))
                         m.d.sync += byte_no.eq(0)
                         m.next = 'await'
 
@@ -59,11 +60,11 @@ class WishboneIMem(wiring.Component):
 
             with m.State('stop'):
                 with m.If(self.wb_bus.ack):
-                    m.d.sync += Print(Format("WishboneIMem: yielded: {:08x}", self.wb_bus.dat_r))
+                    # m.d.sync += Print(Format("WishboneIMem: yielded: {:08x}", self.wb_bus.dat_r))
                     m.d.sync += self.wb_bus.ack.eq(0)
                 m.d.comb += self.spifr_bus.stop_stb.valid.eq(1)
                 with m.If(self.spifr_bus.stop_stb.ready):
-                    m.d.sync += Print(Format("WishboneIMem: back to idle"))
+                    # m.d.sync += Print(Format("WishboneIMem: back to idle"))
                     m.next = 'idle'
 
         return m
