@@ -10,12 +10,11 @@ const uart = @import("./uart.zig");
 const proto = @import("./proto.zig");
 
 const VERSION: usize = 2;
-var arena: [64 * 1024]u8 align(4) = undefined;
+const heap = eheap.Heap(64 * 1024);
 
 pub fn main() !void {
-    var heap: eheap.Heap(64 * 1024) = .{ .arena = arena };
     heap.initialize();
-    const allocator = heap.allocator();
+    const allocator = heap.allocator;
 
     var machine: ?stack.Machine(Effects) = null;
     var code: ?[]const u8 = null;
@@ -38,7 +37,7 @@ pub fn main() !void {
                 if (code) |c|
                     allocator.free(c);
 
-                effects = .{ .allocator = allocator };
+                effects = .{};
                 machine = stack.Machine(Effects).init(allocator, &effects, null);
                 code = new_code;
 
@@ -59,15 +58,14 @@ const Effects = struct {
 
     pub const Error = error{};
 
-    allocator: Allocator,
     printloc: PrintLoc = .{},
 
     pub fn deinit(_: *Self) void {}
 
-    pub fn print(self: *Self, v: isa.Value) !void {
+    pub fn print(_: *Self, v: isa.Value) !void {
         var b = std.ArrayListUnmanaged(u8){};
-        defer b.deinit(self.allocator);
-        try isa.printFormat(self.allocator, b.writer(self.allocator), v);
+        defer b.deinit(heap.allocator);
+        try isa.printFormat(heap.allocator, b.writer(heap.allocator), v);
         try uart.writeEvent(.{ .UART = b.items });
     }
 
