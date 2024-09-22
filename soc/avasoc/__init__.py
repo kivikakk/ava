@@ -23,7 +23,7 @@ class AvaSoc(niar.Project):
 def flash(p, parser):
     def exec(args):
         offset = int(args.offset, base=0)
-        cmd = ["iceprog", "-o", hex(offset), "cxxrtl/src/avacore.imem.bin"]
+        cmd = ["iceprog", "-o", hex(offset), "../core/zig-out/bin/avacore.bin"]
         logger.debug(f"executing: {" ".join(cmd)}")
         os.execvp("iceprog", cmd)
 
