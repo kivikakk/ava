@@ -6,18 +6,20 @@ const SimController = @This();
 
 controller_allocator: std.mem.Allocator,
 thread: std.Thread,
-vcd_out: ?[]const u8,
+vcd: ?[]const u8,
+uart_stream: std.net.Stream,
 state: SimThread,
 mutex: std.Thread.Mutex = .{},
 running: bool = true,
 tick_number: usize = 0,
 
-pub fn start(allocator: std.mem.Allocator, vcd_out: ?[]const u8) !*SimController {
+pub fn start(allocator: std.mem.Allocator, vcd: ?[]const u8, uart_stream: std.net.Stream) !*SimController {
     var sim_controller = try allocator.create(SimController);
     sim_controller.* = .{
         .controller_allocator = allocator,
         .thread = undefined,
-        .vcd_out = vcd_out,
+        .vcd = vcd,
+        .uart_stream = uart_stream,
         .state = undefined,
     };
     const thread = try std.Thread.spawn(.{}, simThreadStart, .{sim_controller});

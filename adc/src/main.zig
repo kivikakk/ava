@@ -12,23 +12,45 @@ pub fn main() !void {
     var args = try Args.parse(allocator);
     defer args.deinit();
 
-    const port_path = "/dev/cu.usbserial-ibU1IGlC1";
-    var port = std.fs.cwd().openFile(port_path, .{ .mode = .read_write }) catch |err| switch (err) {
-        error.FileNotFound => {
-            std.debug.panic("file not found accessing '{s}'", .{port_path});
+    switch (args.port) {
+        .serial => |path| {
+            const port = std.fs.cwd().openFile(path, .{ .mode = .read_write }) catch |err| switch (err) {
+                error.FileNotFound => {
+                    std.debug.panic("file not found accessing '{s}'", .{path});
+                },
+                else => return err,
+            };
+            defer port.close();
+
+            try serial.configureSerialPort(port, .{
+                .baud_rate = 1_500_000,
+            });
+
+            try exe(allocator, port.reader(), port.writer());
         },
-        else => return err,
-    };
-    defer port.close();
+        .socket => |path| {
+            const port = std.net.connectUnixSocket(path) catch |err| switch (err) {
+                error.FileNotFound => {
+                    std.debug.panic("file not found accessing '{s}'", .{path});
+                },
+                else => return err,
+            };
+            defer port.close();
 
-    try serial.configureSerialPort(port, .{
-        .baud_rate = 1_500_000,
-    });
+            try exe(allocator, port.reader(), port.writer());
+        },
+    }
+}
 
-    try proto.Request.write(.HELLO, port.writer());
+fn exe(allocator: std.mem.Allocator, reader: anytype, writer: anytype) !void {
+    try proto.Request.write(.HELLO, writer);
 
-    const ev = try proto.Event.read(allocator, port.reader());
+    var ev = try proto.Event.read(allocator, reader);
     defer ev.deinit(allocator);
+
+    if (ev == .READY) {
+        ev = try proto.Event.read(allocator, reader);
+    }
 
     std.debug.assert(ev == .VERSION);
     std.debug.print("connected to {s}\n", .{ev.VERSION});

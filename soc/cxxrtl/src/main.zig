@@ -12,14 +12,26 @@ pub fn main() !void {
     var args = try Args.parse(allocator);
     defer args.deinit();
 
-    var sim_controller = try SimController.start(allocator, args.vcd_out);
+    const uart_socket_path = args.uart orelse "cxxrtl-uart";
+
+    const socket_addr = try std.net.Address.initUnix(uart_socket_path);
+    var socket_server = try socket_addr.listen(.{});
+
+    std.debug.print("waiting for UART connection on '{s}' ... ", .{uart_socket_path});
+    const socket_conn = try socket_server.accept();
+    std.debug.print("accepted!\n", .{});
+
+    socket_server.deinit();
+    defer socket_conn.stream.close();
+
+    const flags = try std.posix.fcntl(socket_conn.stream.handle, std.posix.F.GETFL, 0);
+    _ = try std.posix.fcntl(socket_conn.stream.handle, std.posix.F.SETFL, flags | (1 << @bitOffsetOf(std.posix.O, "NONBLOCK")));
+
+    var sim_controller = try SimController.start(allocator, args.vcd, socket_conn.stream);
     defer sim_controller.joinDeinit();
 
     while (sim_controller.lockIfRunning()) {
         defer sim_controller.unlock();
-        // if (sim_controller.tickNumber() > 1_000) {
-        //     sim_controller.halt();
-        // }
     }
 
     std.debug.print("\nfinished at tick number {d}\n", .{sim_controller.tickNumber()});
