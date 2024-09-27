@@ -9,7 +9,7 @@ const PrintLoc = @import("avabasic").PrintLoc;
 const uart = @import("./uart.zig");
 const proto = @import("./proto.zig");
 
-const VERSION: usize = 2;
+const VERSION: usize = 3;
 const heap = eheap.Heap(64 * 1024);
 
 pub fn main() !void {
@@ -17,32 +17,29 @@ pub fn main() !void {
     const allocator = heap.allocator;
 
     var machine: ?stack.Machine(Effects) = null;
-    var code: ?[]const u8 = null;
 
     while (true) {
-        try uart.writeEvent(.READY);
-
         const req = uart.readRequest(allocator) catch {
             try uart.writeEvent(.{ .ERROR = "readRequest" });
             continue;
         };
         defer req.deinit(allocator);
+
         switch (req) {
-            .HELLO => {
-                try uart.writeEvent(.{ .VERSION = std.fmt.comptimePrint("AvaCore {d}", .{VERSION}) });
-            },
-            .MACHINE_INIT => |new_code| {
+            .HELLO => try uart.writeEvent(.{ .VERSION = std.fmt.comptimePrint("AvaCore {d}", .{VERSION}) }),
+            .MACHINE_INIT => {
                 if (machine) |*m|
                     m.deinit();
-                if (code) |c|
-                    allocator.free(c);
 
                 effects = .{};
                 machine = stack.Machine(Effects).init(allocator, &effects, null);
-                code = new_code;
-
-                try uart.writeEvent(.EXECUTING);
-                try machine.?.run(code.?);
+                try uart.writeEvent(.OK);
+            },
+            .MACHINE_EXEC => |code| {
+                if (machine) |*m| {
+                    try uart.writeEvent(.OK);
+                    try m.run(code);
+                } else try uart.writeEvent(.INVALID);
             },
             .EXIT => break,
         }
@@ -66,19 +63,19 @@ const Effects = struct {
         var b = std.ArrayListUnmanaged(u8){};
         defer b.deinit(heap.allocator);
         try isa.printFormat(heap.allocator, b.writer(heap.allocator), v);
-        try uart.writeEvent(.{ .UART = b.items });
+        try uart.writeEvent(.{ .DEBUG = b.items });
     }
 
     pub fn printComma(self: *Self) !void {
         switch (self.printloc.comma()) {
-            .newline => try uart.writeEvent(.{ .UART = "\n" }),
+            .newline => try uart.writeEvent(.{ .DEBUG = "\n" }),
             .spaces => |s| for (0..s) |_|
-                try uart.writeEvent(.{ .UART = " " }),
+                try uart.writeEvent(.{ .DEBUG = " " }),
         }
     }
 
     pub fn printLinefeed(_: *Self) !void {
-        try uart.writeEvent(.{ .UART = "\n" });
+        try uart.writeEvent(.{ .DEBUG = "\n" });
     }
 
     pub fn pragmaPrinted(_: *Self, _: []const u8) !void {

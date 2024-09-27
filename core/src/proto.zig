@@ -7,14 +7,16 @@ const frame = @import("./frame.zig");
 pub const RequestTag = enum(u8) {
     HELLO = 0x01,
     MACHINE_INIT = 0x02,
-    EXIT = 0x03,
+    MACHINE_EXEC = 0x03,
+    EXIT = 0xfe,
 };
 
 pub const Request = union(RequestTag) {
     const Self = @This();
 
     HELLO,
-    MACHINE_INIT: []const u8,
+    MACHINE_INIT,
+    MACHINE_EXEC: []const u8,
     EXIT,
 
     pub fn deinit(self: Self, allocator: Allocator) void {
@@ -31,21 +33,21 @@ pub const Request = union(RequestTag) {
 };
 
 pub const EventTag = enum(u8) {
-    READY = 0x01,
+    OK = 0x01,
     VERSION = 0x02,
-    EXECUTING = 0x03,
-    ERROR = 0x04,
-    UART = 0x05,
+    DEBUG = 0x03,
+    INVALID = 0x04,
+    ERROR = 0xfe,
 };
 
 pub const Event = union(EventTag) {
     const Self = @This();
 
-    READY,
+    OK,
     VERSION: []const u8,
-    EXECUTING,
+    DEBUG: []const u8,
+    INVALID,
     ERROR: []const u8,
-    UART: []const u8,
 
     pub fn deinit(self: Self, allocator: Allocator) void {
         frame.free(Self, allocator, self);
@@ -74,7 +76,7 @@ fn expectRoundtrip(comptime T: type, inp: T) !void {
 
 test "roundtrips" {
     try expectRoundtrip(Request, .HELLO);
-    try expectRoundtrip(Request, .{ .MACHINE_INIT = "\xaa\xbb\xcc" });
-    try expectRoundtrip(Event, .READY);
+    try expectRoundtrip(Request, .{ .MACHINE_EXEC = "\xaa\xbb\xcc" });
+    try expectRoundtrip(Event, .OK);
     try expectRoundtrip(Event, .{ .VERSION = "xyzzy 123!" });
 }

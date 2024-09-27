@@ -11,6 +11,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const avabasic_mod = b.dependency("avabasic", .{
+        .target = target,
+        .optimize = optimize,
+    }).module("avabasic");
+    exe.root_module.addImport("avabasic", avabasic_mod);
+
     const avacore_mod = b.dependency("avacore", .{
         .target = target,
         .optimize = optimize,
