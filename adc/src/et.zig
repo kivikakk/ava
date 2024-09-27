@@ -9,6 +9,7 @@ pub fn EventThread(comptime Reader: type) type {
 
         allocator: Allocator,
         reader: Reader,
+        handle: std.posix.fd_t,
         thread: std.Thread = undefined,
         mutex: std.Thread.Mutex = .{},
         sema: std.Thread.Semaphore = .{},
@@ -16,11 +17,12 @@ pub fn EventThread(comptime Reader: type) type {
         evs: std.ArrayList(proto.Event),
         running: std.atomic.Value(bool),
 
-        pub fn init(allocator: Allocator, reader: Reader) !*Self {
+        pub fn init(allocator: Allocator, reader: Reader, handle: std.posix.fd_t) !*Self {
             var et = try allocator.create(Self);
             et.* = .{
                 .allocator = allocator,
                 .reader = reader,
+                .handle = handle,
                 .evs = std.ArrayList(proto.Event).init(allocator),
                 .running = std.atomic.Value(bool).init(true),
             };
@@ -31,8 +33,10 @@ pub fn EventThread(comptime Reader: type) type {
         fn run(self: *Self) void {
             while (self.running.load(.acquire)) {
                 // TODO: handle errors & communicate back.
-                const ev = proto.Event.read(self.allocator, self.reader) catch |err|
-                    std.debug.panic("EventThread read error: {any}", .{err});
+                const ev = proto.Event.read(self.allocator, self.reader) catch |err| switch (err) {
+                    error.NotOpenForReading, error.EndOfStream => return,
+                    else => std.debug.panic("EventThread read error: {any}", .{err}),
+                };
 
                 switch (ev) {
                     .DEBUG => |msg| {
@@ -62,7 +66,7 @@ pub fn EventThread(comptime Reader: type) type {
 
         pub fn deinit(self: *Self) void {
             self.running.store(false, .release);
-            // TODO: cause run()'s blocking read to abort safely.
+            std.posix.close(self.handle);
             self.thread.join();
             for (self.evs.items) |ev|
                 ev.deinit(self.allocator);

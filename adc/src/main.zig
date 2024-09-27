@@ -23,13 +23,12 @@ pub fn main() !void {
                 error.Unexpected => std.debug.panic("unexpected error opening '{s}' -- not a serial port?", .{path}),
                 else => return err,
             };
-            defer port.close();
 
             try serial.configureSerialPort(port, .{
                 .baud_rate = 1_500_000,
             });
 
-            try exe(allocator, port.reader(), port.writer());
+            try exe(allocator, port.reader(), port.handle, port.writer());
         },
         .socket => |path| {
             const port = std.net.connectUnixSocket(path) catch |err| switch (err) {
@@ -37,15 +36,14 @@ pub fn main() !void {
                 error.ConnectionRefused => std.debug.panic("connection refused connecting to '{s}' -- cxxrtl not running?", .{path}),
                 else => return err,
             };
-            defer port.close();
 
-            try exe(allocator, port.reader(), port.writer());
+            try exe(allocator, port.reader(), port.handle, port.writer());
         },
     }
 }
 
-fn exe(allocator: Allocator, reader: anytype, writer: anytype) !void {
-    var et = try EventThread(@TypeOf(reader)).init(allocator, reader);
+fn exe(allocator: Allocator, reader: anytype, reader_handle: std.posix.fd_t, writer: anytype) !void {
+    var et = try EventThread(@TypeOf(reader)).init(allocator, reader, reader_handle);
     defer et.deinit();
 
     {
@@ -57,19 +55,10 @@ fn exe(allocator: Allocator, reader: anytype, writer: anytype) !void {
     }
 
     {
-        try proto.Request.write(.MACHINE_QUERY, writer);
+        try proto.Request.write(.MACHINE_INIT, writer);
         const ev = et.readWait();
         defer ev.deinit(allocator);
-        switch (ev) {
-            .OK => {},
-            .INVALID => {
-                try proto.Request.write(.MACHINE_INIT, writer);
-                const ev2 = et.readWait();
-                defer ev2.deinit(allocator);
-                std.debug.assert(ev2 == .OK);
-            },
-            else => std.debug.panic("unexpected reply to MACHINE_QUERY: {any}", .{ev}),
-        }
+        std.debug.assert(ev == .OK);
     }
 
     var c = try Compiler.init(allocator, null);

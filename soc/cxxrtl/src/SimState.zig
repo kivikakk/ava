@@ -62,16 +62,12 @@ pub fn run(self: *SimState, uart_stream: std.net.Stream) !void {
 
         switch (self.uart_connector.tick()) {
             .nop => {},
-            .data => |b| {
-                std.debug.print("rtl->ADC: {x:0>2}\n", .{b});
-                try uart_stream.writer().writeByte(b);
-            },
+            .data => |b| try uart_stream.writer().writeByte(b),
         }
 
         self.tick();
 
         if (uart_stream.reader().readByte()) |b| {
-            std.debug.print("ADC->rtl: {x:0>2}\n", .{b});
             try self.uart_connector.tx_buffer.append(b);
         } else |err| switch (err) {
             error.EndOfStream => {
