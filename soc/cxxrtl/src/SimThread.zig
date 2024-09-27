@@ -9,9 +9,8 @@ const SpiFlashConnector = @import("./SpiFlashConnector.zig");
 
 const SimThread = @This();
 
-sim_controller: *SimController,
 allocator: std.mem.Allocator,
-
+sim_controller: *SimController,
 cxxrtl: Cxxrtl,
 vcd: ?Cxxrtl.Vcd,
 
@@ -35,15 +34,15 @@ pub fn init(allocator: Allocator, sim_controller: *SimController) SimThread {
     const spi_flash_connector = SpiFlashConnector.init(cxxrtl);
 
     return .{
-        .sim_controller = sim_controller,
         .allocator = allocator,
+        .sim_controller = sim_controller,
         .cxxrtl = cxxrtl,
         .vcd = vcd,
         .clk = clk,
         .rst = rst,
+        .running = running,
         .spi_flash_connector = spi_flash_connector,
         .uart_connector = UartConnector.init(allocator, cxxrtl),
-        .running = running,
     };
 }
 

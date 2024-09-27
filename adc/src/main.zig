@@ -1,10 +1,12 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const serial = @import("serial");
 
 const proto = @import("avacore").proto;
 const Parser = @import("avabasic").Parser;
 const Compiler = @import("avabasic").Compiler;
 const Args = @import("./Args.zig");
+const EventThread = @import("./et.zig").EventThread;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -42,10 +44,13 @@ pub fn main() !void {
     }
 }
 
-fn exe(allocator: std.mem.Allocator, reader: anytype, writer: anytype) !void {
+fn exe(allocator: Allocator, reader: anytype, writer: anytype) !void {
+    var et = try EventThread(@TypeOf(reader)).init(allocator, reader);
+    defer et.deinit();
+
     {
         try proto.Request.write(.HELLO, writer);
-        const ev = try proto.Event.read(allocator, reader);
+        const ev = et.readWait();
         defer ev.deinit(allocator);
         std.debug.assert(ev == .VERSION);
         std.debug.print("connected to {s}\n", .{ev.VERSION});
@@ -53,7 +58,7 @@ fn exe(allocator: std.mem.Allocator, reader: anytype, writer: anytype) !void {
 
     {
         try proto.Request.write(.MACHINE_INIT, writer);
-        const ev = try proto.Event.read(allocator, reader);
+        const ev = et.readWait();
         defer ev.deinit(allocator);
         std.debug.assert(ev == .OK);
     }
@@ -69,12 +74,14 @@ fn exe(allocator: std.mem.Allocator, reader: anytype, writer: anytype) !void {
         const sx = try Parser.parse(allocator, inp, null);
         defer Parser.free(allocator, sx);
 
-        const code = try c.compileStmts(sx);
-        defer allocator.free(code);
+        if (sx.len > 0) {
+            const code = try c.compileStmts(sx);
+            defer allocator.free(code);
 
-        try proto.Request.write(.{ .MACHINE_EXEC = code }, writer);
-        const ev = try proto.Event.read(allocator, reader);
-        defer ev.deinit(allocator);
-        std.debug.assert(ev == .OK);
+            try proto.Request.write(.{ .MACHINE_EXEC = code }, writer);
+            const ev = et.readWait();
+            defer ev.deinit(allocator);
+            std.debug.assert(ev == .OK);
+        }
     }
 }
