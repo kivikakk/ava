@@ -44,6 +44,8 @@
 
       basic-deps = pkgs.callPackage ./basic/deps.nix {};
       soc-deps = pkgs.callPackage ./soc/deps.nix {inherit python;};
+      # TODO: when we have internet
+      # adc-deps = pkgs.callPackage ./adc/deps.nix {};
 
       python-de = with python.pkgs; [
         python-lsp-server
@@ -105,6 +107,7 @@
           zig
           zls
           pkgs.llvmPackages.bintools
+          pkgs.libiconv
         ];
       };
 
@@ -122,13 +125,12 @@
           soc-deps.amaranth-soc
         ];
 
-        # XXX: no tests left after switching to VexRiscv.
-        # doCheck = true;
-        # nativeCheckInputs = with python.pkgs; [
-        #   python.pkgs.pytestCheckHook
-        #   python.pkgs.pytest-xdist
-        #   packages.avabasic
-        # ];
+        doCheck = true;
+        nativeCheckInputs = with python.pkgs; [
+          python.pkgs.pytestCheckHook
+          python.pkgs.pytest-xdist
+          packages.avabasic
+        ];
 
         postFixup = ''
           wrapProgram $out/bin/avasoc \
@@ -167,5 +169,25 @@
             zls
           ];
       };
+
+      # TODO: when we have internet
+      # packages.adc = pkgs.stdenvNoCC.mkDerivation {
+      #   name = "adc";
+      #   version = "main";
+      #   src = gitignoreSource ./adc;
+      #   nativeBuildInputs = [zig
+      #   pkgs.libiconv];
+      #   dontConfigure = true;
+      #   dontInstall = true;
+      #   doCheck = true;
+      #   buildPhase = ''
+      #     mkdir -p .cache
+      #     ln -s ${adc-deps} .cache/p
+      #     zig build install --cache-dir $(pwd)/.zig-cache --global-cache-dir $(pwd)/.cache -Doptimize=ReleaseSafe --prefix $out
+      #   '';
+      #   checkPhase = ''
+      #     zig build test --cache-dir $(pwd)/.zig-cache --global-cache-dir $(pwd)/.cache
+      #   '';
+      # };
     });
 }

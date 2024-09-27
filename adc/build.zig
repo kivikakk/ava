@@ -1,8 +1,11 @@
 const std = @import("std");
+const SDL = @import("SDL.zig");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+
+    const sdlsdk = SDL.init(b, null);
 
     const exe = b.addExecutable(.{
         .name = "adc",
@@ -10,6 +13,9 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    exe.linkLibCpp();
+    sdlsdk.link(exe, .dynamic);
+    exe.root_module.addImport("sdl2", sdlsdk.getWrapperModule());
 
     const avabasic_mod = b.dependency("avabasic", .{
         .target = target,
