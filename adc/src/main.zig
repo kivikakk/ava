@@ -57,10 +57,19 @@ fn exe(allocator: Allocator, reader: anytype, writer: anytype) !void {
     }
 
     {
-        try proto.Request.write(.MACHINE_INIT, writer);
+        try proto.Request.write(.MACHINE_QUERY, writer);
         const ev = et.readWait();
         defer ev.deinit(allocator);
-        std.debug.assert(ev == .OK);
+        switch (ev) {
+            .OK => {},
+            .INVALID => {
+                try proto.Request.write(.MACHINE_INIT, writer);
+                const ev2 = et.readWait();
+                defer ev2.deinit(allocator);
+                std.debug.assert(ev2 == .OK);
+            },
+            else => std.debug.panic("unexpected reply to MACHINE_QUERY: {any}", .{ev}),
+        }
     }
 
     var c = try Compiler.init(allocator, null);

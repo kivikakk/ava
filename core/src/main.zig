@@ -28,6 +28,7 @@ pub fn main() !void {
 
         switch (req) {
             .HELLO => try uart.writeEvent(.{ .VERSION = std.fmt.comptimePrint("AvaCore {d}", .{VERSION}) }),
+            .MACHINE_QUERY => try uart.writeEvent(if (machine != null) .OK else .INVALID),
             .MACHINE_INIT => {
                 if (machine) |*m|
                     m.deinit();

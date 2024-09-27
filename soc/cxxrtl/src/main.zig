@@ -1,8 +1,10 @@
 const std = @import("std");
 
 const Args = @import("./Args.zig");
-const SimController = @import("./SimController.zig");
-const SimThread = @import("./SimThread.zig");
+const SimState = @import("./SimState.zig");
+
+var aborted: std.atomic.Value(bool) = .{ .raw = false };
+var socket_server_stream: ?std.net.Stream = null;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -18,9 +20,23 @@ pub fn main() !void {
     var socket_server = try socket_addr.listen(.{});
     defer socket_server.deinit();
 
-    while (true) {
+    socket_server_stream = socket_server.stream;
+
+    var sim_state = SimState.init(allocator, &aborted, args.vcd);
+    defer sim_state.deinit();
+
+    try std.posix.sigaction(std.posix.SIG.INT, &.{
+        .handler = .{ .handler = sigint },
+        .mask = std.posix.empty_sigset,
+        .flags = 0,
+    }, null);
+
+    while (!aborted.load(.acquire)) {
         std.debug.print("waiting for UART connection on '{s}' ... ", .{uart_socket_path});
-        const socket_conn = try socket_server.accept();
+        const socket_conn = socket_server.accept() catch |err| {
+            if (aborted.load(.acquire)) break;
+            return err;
+        };
         std.debug.print("accepted!\n", .{});
 
         defer socket_conn.stream.close();
@@ -28,13 +44,14 @@ pub fn main() !void {
         const flags = try std.posix.fcntl(socket_conn.stream.handle, std.posix.F.GETFL, 0);
         _ = try std.posix.fcntl(socket_conn.stream.handle, std.posix.F.SETFL, flags | (1 << @bitOffsetOf(std.posix.O, "NONBLOCK")));
 
-        var sim_controller = try SimController.start(allocator, args.vcd, socket_conn.stream);
-        defer sim_controller.joinDeinit();
-
-        while (sim_controller.lockIfRunning()) {
-            defer sim_controller.unlock();
-        }
-
-        std.debug.print("\nfinished at tick number {d}\n", .{sim_controller.tickNumber()});
+        try sim_state.run(socket_conn.stream);
     }
+
+    std.debug.print("\nfinished at tick number {d}\n", .{sim_state.tick_number});
+    try sim_state.writeVcd();
+}
+
+fn sigint(_: i32) callconv(.C) void {
+    aborted.store(true, .release);
+    if (socket_server_stream) |s| s.close();
 }

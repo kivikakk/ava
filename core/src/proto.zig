@@ -7,7 +7,8 @@ const frame = @import("./frame.zig");
 pub const RequestTag = enum(u8) {
     HELLO = 0x01,
     MACHINE_INIT = 0x02,
-    MACHINE_EXEC = 0x03,
+    MACHINE_QUERY = 0x03,
+    MACHINE_EXEC = 0x04,
     DUMP_HEAP = 0xfd,
     EXIT = 0xfe,
 };
@@ -17,6 +18,7 @@ pub const Request = union(RequestTag) {
 
     HELLO,
     MACHINE_INIT,
+    MACHINE_QUERY,
     MACHINE_EXEC: []const u8,
     DUMP_HEAP,
     EXIT,

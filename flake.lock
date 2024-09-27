@@ -76,11 +76,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1725639266,
-        "narHash": "sha256-tEJLujYn3U9mjjE1O7ul8aay/hqgVPtaIRfD38UvJSU=",
+        "lastModified": 1727422375,
+        "narHash": "sha256-RsTn2Wzf/Pp8RxDB2pHmxAW6eE2WdH06uyBULOgyrBs=",
         "ref": "refs/heads/main",
-        "rev": "56234604d0914245e7a7d4504a042820adae9b1b",
-        "revCount": 80,
+        "rev": "6a0c97d1f5ded12eef2fb4395c3ef9bb9d1d865a",
+        "revCount": 81,
         "type": "git",
         "url": "https://git.sr.ht/~kivikakk/niar"
       },
