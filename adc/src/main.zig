@@ -71,6 +71,14 @@ fn exe(allocator: Allocator, reader: anytype, writer: anytype) !void {
         const inp = try std.io.getStdIn().reader().readUntilDelimiterOrEofAlloc(allocator, '\n', 1048576) orelse return;
         defer allocator.free(inp);
 
+        if (std.ascii.eqlIgnoreCase(inp, "~heap")) {
+            try proto.Request.write(.DUMP_HEAP, writer);
+            const ev = et.readWait();
+            defer ev.deinit(allocator);
+            std.debug.assert(ev == .OK);
+            continue;
+        }
+
         const sx = try Parser.parse(allocator, inp, null);
         defer Parser.free(allocator, sx);
 

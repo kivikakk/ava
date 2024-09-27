@@ -17,6 +17,7 @@ pub fn main() !void {
     const allocator = heap.allocator;
 
     var machine: ?stack.Machine(Effects) = null;
+    defer if (machine) |*m| m.deinit();
 
     while (true) {
         const req = uart.readRequest(allocator) catch {
@@ -37,15 +38,36 @@ pub fn main() !void {
             },
             .MACHINE_EXEC => |code| {
                 if (machine) |*m| {
-                    try uart.writeEvent(.OK);
                     try m.run(code);
+                    try uart.writeEvent(.OK);
                 } else try uart.writeEvent(.INVALID);
+            },
+            .DUMP_HEAP => {
+                var allocs: usize = 0;
+                var holes: usize = 0;
+                var ptr = heap.start();
+                while (true) : (ptr = ptr.next() orelse break) {
+                    if (ptr.occupied)
+                        allocs += 1
+                    else
+                        holes += 1;
+                }
+
+                const s = try std.fmt.allocPrint(
+                    allocator,
+                    "in use: {d}/{d}\n{d} alloc(s), {d} hole(s)\n",
+                    .{ heap.ArenaSize - heap.arena_free, heap.ArenaSize, allocs, holes },
+                );
+                defer allocator.free(s);
+
+                try uart.writeEvent(.{ .DEBUG = s });
+                try uart.writeEvent(.OK);
             },
             .EXIT => break,
         }
     }
 
-    try uart.writer.print("exiting main\n", .{});
+    try uart.writeEvent(.{ .DEBUG = "exiting main" });
 }
 
 var effects: Effects = undefined;

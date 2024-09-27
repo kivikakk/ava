@@ -36,7 +36,7 @@ pub fn EventThread(comptime Reader: type) type {
 
                 switch (ev) {
                     .DEBUG => |msg| {
-                        std.debug.print("debug: '{s}'\n", .{msg});
+                        std.debug.print("{s}", .{msg});
                         ev.deinit(self.allocator);
                         continue;
                     },
