@@ -44,8 +44,7 @@
 
       basic-deps = pkgs.callPackage ./basic/deps.nix {};
       soc-deps = pkgs.callPackage ./soc/deps.nix {inherit python;};
-      # TODO: when we have internet
-      # adc-deps = pkgs.callPackage ./adc/deps.nix {};
+      adc-deps = pkgs.callPackage ./adc/deps.nix {};
 
       python-de = with python.pkgs; [
         python-lsp-server
@@ -107,8 +106,17 @@
           zig
           zls
           pkgs.llvmPackages.bintools
+          # adc
           pkgs.libiconv
+          pkgs.SDL2
+          pkgs.pkg-config  # See shellHook.
         ];
+
+        shellHook = ''
+          # See https://github.com/ziglang/zig/issues/18998.
+          unset NIX_CFLAGS_COMPILE
+          unset NIX_LDFLAGS
+        '';
       };
 
       packages.avasoc = python.pkgs.buildPythonApplication {
@@ -170,13 +178,15 @@
           ];
       };
 
-      # TODO: when we have internet
+      # TODO: zon2nix doesn't support path-based dependencies.
       # packages.adc = pkgs.stdenvNoCC.mkDerivation {
       #   name = "adc";
       #   version = "main";
       #   src = gitignoreSource ./adc;
-      #   nativeBuildInputs = [zig
-      #   pkgs.libiconv];
+      #   nativeBuildInputs = [
+      #     zig
+      #     pkgs.libiconv
+      #   ];
       #   dontConfigure = true;
       #   dontInstall = true;
       #   doCheck = true;

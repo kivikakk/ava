@@ -1,12 +1,14 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const serial = @import("serial");
+const SDL = @import("sdl2");
 
 const proto = @import("avacore").proto;
 const Parser = @import("avabasic").Parser;
 const Compiler = @import("avabasic").Compiler;
 const Args = @import("./Args.zig");
-const EventThread = @import("./et.zig").EventThread;
+const EventThread = @import("./EventThread.zig");
+const Font = @import("./Font.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -28,7 +30,7 @@ pub fn main() !void {
                 .baud_rate = 1_500_000,
             });
 
-            try exe(allocator, port.reader(), port.handle, port.writer());
+            return exe(allocator, port.reader().any(), port.handle, port.writer().any());
         },
         .socket => |path| {
             const port = std.net.connectUnixSocket(path) catch |err| switch (err) {
@@ -37,13 +39,13 @@ pub fn main() !void {
                 else => return err,
             };
 
-            try exe(allocator, port.reader(), port.handle, port.writer());
+            return exe(allocator, port.reader().any(), port.handle, port.writer().any());
         },
     }
 }
 
-fn exe(allocator: Allocator, reader: anytype, reader_handle: std.posix.fd_t, writer: anytype) !void {
-    var et = try EventThread(@TypeOf(reader)).init(allocator, reader, reader_handle);
+fn exe(allocator: Allocator, reader: std.io.AnyReader, reader_handle: std.posix.fd_t, writer: std.io.AnyWriter) !void {
+    var et = try EventThread.init(allocator, reader, reader_handle);
     defer et.deinit();
 
     {
@@ -53,6 +55,20 @@ fn exe(allocator: Allocator, reader: anytype, reader_handle: std.posix.fd_t, wri
         std.debug.assert(ev == .VERSION);
         std.debug.print("connected to {s}\n", .{ev.VERSION});
     }
+
+    try SDL.init(.{ .video = true, .events = true });
+    defer SDL.quit();
+
+    var window = try SDL.createWindow("Ava BASIC ADC", .default, .default, 640, 480, .{});
+    defer window.destroy();
+
+    var renderer = try SDL.createRenderer(window, null, .{ .accelerated = true, .target_texture = true });
+    defer renderer.destroy();
+
+    var font = try Font.fromData(renderer, @embedFile("cp437.vga"));
+    defer font.deinit();
+
+    _ = try SDL.showCursor(false);
 
     {
         try proto.Request.write(.MACHINE_INIT, writer);
@@ -64,30 +80,40 @@ fn exe(allocator: Allocator, reader: anytype, reader_handle: std.posix.fd_t, wri
     var c = try Compiler.init(allocator, null);
     defer c.deinit();
 
-    while (true) {
-        std.debug.print("> ", .{});
-        const inp = try std.io.getStdIn().reader().readUntilDelimiterOrEofAlloc(allocator, '\n', 1048576) orelse return;
-        defer allocator.free(inp);
+    var running = true;
+    while (running) {
+        while (SDL.pollEvent()) |ev|
+            switch (ev) {
+                .quit => running = false,
+                else => {},
+            };
 
-        if (std.ascii.eqlIgnoreCase(inp, "~heap")) {
-            try proto.Request.write(.DUMP_HEAP, writer);
-            const ev = et.readWait();
-            defer ev.deinit(allocator);
-            std.debug.assert(ev == .OK);
-            continue;
-        }
+        try renderer.clear();
+        renderer.present();
 
-        const sx = try Parser.parse(allocator, inp, null);
-        defer Parser.free(allocator, sx);
+        // std.debug.print("> ", .{});
+        // const inp = try std.io.getStdIn().reader().readUntilDelimiterOrEofAlloc(allocator, '\n', 1048576) orelse return;
+        // defer allocator.free(inp);
 
-        if (sx.len > 0) {
-            const code = try c.compileStmts(sx);
-            defer allocator.free(code);
+        // if (std.ascii.eqlIgnoreCase(inp, "~heap")) {
+        //     try proto.Request.write(.DUMP_HEAP, writer);
+        //     const ev = et.readWait();
+        //     defer ev.deinit(allocator);
+        //     std.debug.assert(ev == .OK);
+        //     continue;
+        // }
 
-            try proto.Request.write(.{ .MACHINE_EXEC = code }, writer);
-            const ev = et.readWait();
-            defer ev.deinit(allocator);
-            std.debug.assert(ev == .OK);
-        }
+        // const sx = try Parser.parse(allocator, inp, null);
+        // defer Parser.free(allocator, sx);
+
+        // if (sx.len > 0) {
+        //     const code = try c.compileStmts(sx);
+        //     defer allocator.free(code);
+
+        //     try proto.Request.write(.{ .MACHINE_EXEC = code }, writer);
+        //     const ev = et.readWait();
+        //     defer ev.deinit(allocator);
+        //     std.debug.assert(ev == .OK);
+        // }
     }
 }

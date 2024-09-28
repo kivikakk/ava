@@ -31,7 +31,7 @@ pub const Request = union(RequestTag) {
         try frame.write(Self, writer, self);
     }
 
-    pub fn read(allocator: Allocator, reader: anytype) (Allocator.Error || @TypeOf(reader).NoEofError)!Self {
+    pub fn read(allocator: Allocator, reader: anytype) (Allocator.Error || @TypeOf(reader).Error || error{EndOfStream})!Self {
         return frame.read(Self, allocator, reader);
     }
 };
@@ -61,7 +61,7 @@ pub const Event = union(EventTag) {
         try frame.write(Self, writer, self);
     }
 
-    pub fn read(allocator: Allocator, reader: anytype) (Allocator.Error || @TypeOf(reader).NoEofError)!Self {
+    pub fn read(allocator: Allocator, reader: anytype) (Allocator.Error || @TypeOf(reader).Error || error{EndOfStream})!Self {
         return frame.read(Self, allocator, reader);
     }
 };

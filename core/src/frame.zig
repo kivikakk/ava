@@ -9,7 +9,7 @@ pub fn write(comptime T: type, writer: anytype, t: T) @TypeOf(writer).Error!void
     return try serialize(T, writer, t);
 }
 
-pub fn read(comptime T: type, allocator: Allocator, reader: anytype) (Allocator.Error || @TypeOf(reader).NoEofError)!T {
+pub fn read(comptime T: type, allocator: Allocator, reader: anytype) (Allocator.Error || @TypeOf(reader).Error || error{EndOfStream})!T {
     const len = try reader.readInt(u16, .little);
     std.debug.assert(len > 0);
 
@@ -91,7 +91,7 @@ fn serializeLength(comptime T: type, payload: T) usize {
     }
 }
 
-fn deserialize(comptime T: type, allocator: Allocator, reader: anytype) (Allocator.Error || @TypeOf(reader).NoEofError)!T {
+fn deserialize(comptime T: type, allocator: Allocator, reader: anytype) (Allocator.Error || @TypeOf(reader).Error || error{EndOfStream})!T {
     switch (@typeInfo(T)) {
         .Union => |u| {
             comptime std.debug.assert(u.tag_type != null);
