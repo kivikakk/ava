@@ -4,7 +4,7 @@ const Font = @This();
 
 charset: [256]SDL.Texture,
 
-const CgaColors = [16]u24{
+pub const CgaColors = [16]u24{
     0x000000,
     0x0000AA,
     0x00AA00,
@@ -63,13 +63,13 @@ pub fn render(self: *Font, renderer: SDL.Renderer, pair: u16, x: usize, y: usize
     const character = pair & 0xff;
 
     try renderer.setColorRGBA(@intCast(bg >> 16), @intCast((bg >> 8) & 0xff), @intCast(bg & 0xff), 255);
-    try renderer.fillRect(.{ .x = x * 8, .y = y * 16, .width = 8, .height = 16 });
+    try renderer.fillRect(.{ .x = @intCast(x * 8), .y = @intCast(y * 16), .width = 8, .height = 16 });
 
     // original didn't include alpha
     try self.charset[character].setColorModRGBA(@intCast(fg >> 16), @intCast((fg >> 8) & 0xff), @intCast(fg & 0xff), 255);
     try renderer.copy(
         self.charset[character],
         .{ .x = 0, .y = 0, .width = 8, .height = 16 },
-        .{ .x = x * 8, .y = y * 16, .width = 8, .height = 16 },
+        .{ .x = @intCast(x * 8), .y = @intCast(y * 16), .width = 8, .height = 16 },
     );
 }
