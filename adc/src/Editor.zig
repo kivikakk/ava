@@ -58,8 +58,10 @@ pub fn currentDocLine(self: *Editor) !*std.ArrayList(u8) {
     return &self.doc_lines.items[self.cursor_y];
 }
 
-pub fn currentDocLineFirst(self: *Editor) !usize {
-    return lineFirst((try self.currentDocLine()).items);
+pub fn maybeCurrentDocLine(self: *Editor) ?*std.ArrayList(u8) {
+    if (self.cursor_y == self.doc_lines.items.len)
+        return null;
+    return &self.doc_lines.items[self.cursor_y];
 }
 
 pub fn lineFirst(line: []const u8) usize {
@@ -97,8 +99,8 @@ pub fn deleteAt(self: *Editor, mode: enum { backspace, delete }) !void {
         self.cursor_x = @intCast((try self.currentDocLine()).items.len);
     } else if (mode == .backspace) {
         // self.cursor_x > 0
-        const f = try self.currentDocLineFirst();
         const line = try self.currentDocLine();
+        const f = lineFirst(line.items);
         if (self.cursor_x == f) {
             var back_to: usize = 0;
             if (self.cursor_y > 0) {
