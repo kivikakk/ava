@@ -59,7 +59,11 @@ pub fn currentDocLine(self: *Editor) !*std.ArrayList(u8) {
 }
 
 pub fn currentDocLineFirst(self: *Editor) !usize {
-    for ((try self.currentDocLine()).items, 0..) |c, i|
+    return lineFirst((try self.currentDocLine()).items);
+}
+
+pub fn lineFirst(line: []const u8) usize {
+    for (line, 0..) |c, i|
         if (c != ' ')
             return i;
     return 0;
@@ -82,18 +86,34 @@ pub fn deleteAt(self: *Editor, mode: enum { backspace, delete }) !void {
             return;
         }
 
-        const removed = self.doc_lines.orderedRemove(self.cursor_y);
-        self.cursor_y -= 1;
+        if (self.cursor_y == self.doc_lines.items.len)
+            self.cursor_y -= 1
+        else {
+            const removed = self.doc_lines.orderedRemove(self.cursor_y);
+            self.cursor_y -= 1;
+            try (try self.currentDocLine()).appendSlice(removed.items);
+            removed.deinit();
+        }
         self.cursor_x = @intCast((try self.currentDocLine()).items.len);
-        try (try self.currentDocLine()).appendSlice(removed.items);
-        removed.deinit();
     } else if (mode == .backspace) {
         // self.cursor_x > 0
         const f = try self.currentDocLineFirst();
         const line = try self.currentDocLine();
         if (self.cursor_x == f) {
-            try line.replaceRange(0, f, &.{});
-            self.cursor_x = 0;
+            var back_to: usize = 0;
+            if (self.cursor_y > 0) {
+                var y: usize = self.cursor_y - 1;
+                while (true) : (y -= 1) {
+                    const lf = lineFirst(self.doc_lines.items[y].items);
+                    if (lf < f) {
+                        back_to = lf;
+                        break;
+                    }
+                    if (y == 0) break;
+                }
+            }
+            try line.replaceRange(0, f - back_to, &.{});
+            self.cursor_x = back_to;
         } else {
             if (self.cursor_x - 1 < line.items.len)
                 _ = line.orderedRemove(self.cursor_x - 1);

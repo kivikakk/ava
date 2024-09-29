@@ -174,8 +174,10 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
     } else if (sym == .delete) {
         try editor.deleteAt(.delete);
     } else if (sym == .home) {
+        // TODO: this shouldn't result in new line insertion
         editor.cursor_x = try editor.currentDocLineFirst();
     } else if (sym == .end) {
+        // TODO: this shouldn't result in new line insertion
         editor.cursor_x = @intCast((try editor.currentDocLine()).items.len);
     }
 
