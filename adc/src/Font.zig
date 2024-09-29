@@ -1,3 +1,4 @@
+const std = @import("std");
 const SDL = @import("sdl2");
 
 const Font = @This();
@@ -60,7 +61,7 @@ pub fn deinit(self: *Font) void {
 pub fn render(self: *Font, renderer: SDL.Renderer, pair: u16, x: usize, y: usize) !void {
     const bg = CgaColors[(pair >> (8 + 4)) & 0x7];
     const fg = CgaColors[(pair >> 8) & 0xf];
-    const character = pair & 0xff;
+    const character: u8 = @intCast(pair & 0xff);
 
     try renderer.setColorRGBA(@intCast(bg >> 16), @intCast((bg >> 8) & 0xff), @intCast(bg & 0xff), 255);
     try renderer.fillRect(.{ .x = @intCast(x * 8), .y = @intCast(y * 16), .width = 8, .height = 16 });
@@ -69,7 +70,7 @@ pub fn render(self: *Font, renderer: SDL.Renderer, pair: u16, x: usize, y: usize
     try self.charset[character].setColorModRGBA(@intCast(fg >> 16), @intCast((fg >> 8) & 0xff), @intCast(fg & 0xff), 255);
     try renderer.copy(
         self.charset[character],
-        .{ .x = 0, .y = 0, .width = 8, .height = 16 },
         .{ .x = @intCast(x * 8), .y = @intCast(y * 16), .width = 8, .height = 16 },
+        .{ .x = 0, .y = 0, .width = 8, .height = 16 },
     );
 }

@@ -8,7 +8,7 @@ const Parser = @import("avabasic").Parser;
 const Compiler = @import("avabasic").Compiler;
 const Args = @import("./Args.zig");
 const EventThread = @import("./EventThread.zig");
-const Font = @import("./Font.zig");
+const Kyuubey = @import("./Kyuubey.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -47,6 +47,10 @@ pub fn main() !void {
 // https://retrocomputing.stackexchange.com/a/27805/20624
 const FLIP_MS = 266;
 
+// sauce?
+const TYPEMATIC_DELAY = 250;
+const TYPEMATIC_REPEAT = 100;
+
 fn exe(allocator: Allocator, reader: std.io.AnyReader, reader_handle: std.posix.fd_t, writer: std.io.AnyWriter) !void {
     var et = try EventThread.init(allocator, reader, reader_handle);
     defer et.deinit();
@@ -59,24 +63,6 @@ fn exe(allocator: Allocator, reader: std.io.AnyReader, reader_handle: std.posix.
         std.debug.print("connected to {s}\n", .{ev.VERSION});
     }
 
-    try SDL.init(.{ .video = true, .events = true });
-    defer SDL.quit();
-
-    const scale = 1.3;
-
-    var window = try SDL.createWindow("Ava BASIC ADC", .default, .default, 640 * scale, 400 * scale, .{});
-    defer window.destroy();
-
-    var renderer = try SDL.createRenderer(window, null, .{ .accelerated = true, .target_texture = true, .present_vsync = true });
-    defer renderer.destroy();
-
-    try renderer.setScale(scale, scale);
-
-    var font = try Font.fromData(renderer, @embedFile("cp437.vga"));
-    defer font.deinit();
-
-    _ = try SDL.showCursor(false);
-
     {
         try proto.Request.write(.MACHINE_INIT, writer);
         const ev = et.readWait();
@@ -87,59 +73,84 @@ fn exe(allocator: Allocator, reader: std.io.AnyReader, reader_handle: std.posix.
     var c = try Compiler.init(allocator, null);
     defer c.deinit();
 
-    const screen = [_]u16{0x0700} ** (80 * 25);
-    var mouse_x: u16 = 100;
-    var mouse_y: u16 = 100;
-    var cursor_on = true;
-    const cursor_x = 0;
-    const cursor_y = 0;
+    // ---
+
+    try SDL.init(.{ .video = true, .events = true });
+    defer SDL.quit();
+
+    const scale = 2;
+
+    var window = try SDL.createWindow("Ava BASIC ADC", .default, .default, 640 * scale, 400 * scale, .{});
+    defer window.destroy();
+
+    var renderer = try SDL.createRenderer(window, null, .{ .accelerated = true, .target_texture = true, .present_vsync = true });
+    defer renderer.destroy();
+
+    try renderer.setScale(scale, scale);
+    _ = try SDL.showCursor(false);
+
+    var qb = try Kyuubey.init(renderer);
+    defer qb.deinit();
 
     var until_flip: i16 = FLIP_MS;
     var last_tick = SDL.getTicks64();
 
+    var keydown_tick: u64 = 0;
+    var keydown_sym: SDL.Keycode = .unknown;
+    var keydown_mod: SDL.KeyModifierSet = undefined;
+    var typematic_on = false;
+
     var running = true;
     while (running) {
+        if (keydown_tick > 0 and !typematic_on and last_tick >= keydown_tick + TYPEMATIC_DELAY) {
+            typematic_on = true;
+            keydown_tick = last_tick;
+            try qb.keyPress(keydown_sym, keydown_mod);
+        } else if (keydown_tick > 0 and typematic_on and last_tick >= keydown_tick + TYPEMATIC_REPEAT) {
+            keydown_tick = last_tick;
+            try qb.keyPress(keydown_sym, keydown_mod);
+        }
+
         while (SDL.pollEvent()) |ev|
             switch (ev) {
+                .key_down => |key| {
+                    if (key.is_repeat) break;
+
+                    try qb.keyDown(key.keycode, key.modifiers);
+                    try qb.keyPress(key.keycode, key.modifiers);
+                    keydown_tick = SDL.getTicks64();
+                    keydown_sym = key.keycode;
+                    keydown_mod = key.modifiers;
+                    typematic_on = false;
+                },
+                .key_up => |key| {
+                    try qb.keyUp(key.keycode);
+                    keydown_tick = 0;
+                },
                 .mouse_motion => |motion| {
-                    // const old_x = mouse_x;
-                    // const old_y = mouse_y;
+                    const old_x = qb.mouse_x;
+                    const old_y = qb.mouse_y;
 
-                    mouse_x = @intFromFloat(@as(f32, @floatFromInt(motion.x)) / scale);
-                    mouse_y = @intFromFloat(@as(f32, @floatFromInt(motion.y)) / scale);
+                    qb.mouse_x = @intFromFloat(@as(f32, @floatFromInt(motion.x)) / scale);
+                    qb.mouse_y = @intFromFloat(@as(f32, @floatFromInt(motion.y)) / scale);
 
-                    // if (mouse_x != old_x or mouse_y != old_y)
-                    //     text_refresh();
+                    if (qb.mouse_x != old_x or qb.mouse_y != old_y)
+                        try qb.textRefresh();
+                },
+                .mouse_button_down => |button| {
+                    const old_x = qb.mouse_x;
+                    const old_y = qb.mouse_y;
+                    qb.mouse_x = @intFromFloat(@as(f32, @floatFromInt(button.x)) / scale);
+                    qb.mouse_y = @intFromFloat(@as(f32, @floatFromInt(button.y)) / scale);
+
+                    if (qb.mouse_x != old_x or qb.mouse_y != old_y)
+                        try qb.textRefresh();
+
+                    try qb.mouseClick(button.button);
                 },
                 .quit => running = false,
                 else => {},
             };
-
-        try renderer.clear();
-
-        for (0..25) |y|
-            for (0..80) |x| {
-                var pair = screen[y * 80 + x];
-                if (mouse_x / 8 == x and mouse_y / 16 == y)
-                    pair = ((7 - (pair >> 12)) << 12) |
-                        ((7 - ((pair >> 8) & 0xF)) << 8) |
-                        (pair & 0xFF);
-                try font.render(renderer, pair, x, y);
-            };
-
-        if (cursor_on) {
-            const pair = screen[cursor_y * 80 + cursor_x];
-            const fg = Font.CgaColors[(pair >> 8) & 0xF];
-            try renderer.setColorRGBA(@intCast(fg >> 16), @intCast((fg >> 8) & 0xFF), @intCast(fg & 0xFF), 255);
-            try renderer.fillRect(.{
-                .x = @intCast(cursor_x * 8),
-                .y = @intCast(cursor_y * 16 + 16 - 3),
-                .width = 8,
-                .height = 2,
-            });
-        }
-
-        renderer.present();
 
         const this_tick = SDL.getTicks64();
         const delta_tick = this_tick - last_tick;
@@ -148,7 +159,8 @@ fn exe(allocator: Allocator, reader: std.io.AnyReader, reader_handle: std.posix.
         until_flip -= @intCast(delta_tick);
         if (until_flip <= 0) {
             until_flip += FLIP_MS;
-            cursor_on = !cursor_on;
+            qb.cursor_on = !qb.cursor_on;
+            try qb.textRefresh();
         }
 
         // std.debug.print("> ", .{});
