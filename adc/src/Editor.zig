@@ -41,6 +41,13 @@ pub fn currentDocLine(self: *Editor) *std.ArrayList(u8) {
     return &self.doc_lines.items[self.cursor_y];
 }
 
+pub fn currentDocLineFirst(self: *Editor) usize {
+    for (self.currentDocLine().items, 0..) |c, i|
+        if (c != ' ')
+            return i;
+    return 0;
+}
+
 pub fn splitLine(self: *Editor) !void {
     var current_line = self.currentDocLine();
     var next_line = std.ArrayList(u8).init(self.allocator);
@@ -63,8 +70,13 @@ pub fn deleteAt(self: *Editor, mode: enum { backspace, delete }) !void {
         self.cursor_x = @intCast(self.currentDocLine().items.len);
         try self.currentDocLine().appendSlice(removed.items);
         removed.deinit();
-    } else if (mode == .backspace) {
+    } else if (mode == .backspace and self.cursor_x == self.currentDocLineFirst()) {
         // self.cursor_x > 0
+        const f = self.currentDocLineFirst();
+        try self.currentDocLine().replaceRange(0, f, &.{});
+        self.cursor_x = 0;
+    } else if (mode == .backspace) {
+        // self.cursor_x > 0, self.cursor_x != self.currentDocLineFirst()
         _ = self.currentDocLine().orderedRemove(self.cursor_x - 1);
         self.cursor_x -= 1;
     } else if (self.cursor_x == self.currentDocLine().items.len) {

@@ -159,20 +159,11 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
         editor.cursor_x = 0;
         editor.cursor_y += 1;
     } else if (sym == .backspace) {
-        // TODO: if at the first non-whitespace character (not before, not after), delete
-        // to start of line.
         try editor.deleteAt(.backspace);
     } else if (sym == .delete) {
         try editor.deleteAt(.delete);
     } else if (sym == .home) {
-        const line = editor.currentDocLine().items;
-        var i: usize = 0;
-        for (line, 0..) |c, j|
-            if (c != ' ') {
-                i = j;
-                break;
-            };
-        editor.cursor_x = i;
+        editor.cursor_x = editor.currentDocLineFirst();
     } else if (sym == .end) {
         editor.cursor_x = @intCast(editor.currentDocLine().items.len);
     }
