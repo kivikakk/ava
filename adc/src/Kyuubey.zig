@@ -162,7 +162,7 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
             0;
     }
 
-    const adjust: usize = if (editor.immediate) 1 else 2;
+    const adjust: usize = if (editor.immediate or editor.height == 1) 1 else 2;
     if (editor.cursor_y < editor.scroll_y) {
         editor.scroll_y = editor.cursor_y;
     } else if (editor.cursor_y > editor.scroll_y + editor.height - adjust) {
@@ -305,11 +305,13 @@ fn renderEditor(self: *Kyuubey, editor: *Editor) void {
             self.screen[(editor.top + editor.height - 1) * 80 + 79] = 0x7019;
         }
 
-        self.screen[(editor.top + editor.height) * 80 + 1] = 0x701b;
-        for (2..78) |x|
-            self.screen[(editor.top + editor.height) * 80 + x] = 0x70b0;
-        self.screen[(editor.top + editor.height) * 80 + (editor.scroll_x * 75 / 178) + 2] = 0x0000;
-        self.screen[(editor.top + editor.height) * 80 + 78] = 0x701a;
+        if (editor.height > 1) {
+            self.screen[(editor.top + editor.height) * 80 + 1] = 0x701b;
+            for (2..78) |x|
+                self.screen[(editor.top + editor.height) * 80 + x] = 0x70b0;
+            self.screen[(editor.top + editor.height) * 80 + (editor.scroll_x * 75 / 178) + 2] = 0x0000;
+            self.screen[(editor.top + editor.height) * 80 + 78] = 0x701a;
+        }
     }
 }
 
