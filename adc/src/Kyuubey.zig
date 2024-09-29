@@ -283,8 +283,7 @@ fn renderEditor(self: *Kyuubey, editor: *Editor) void {
 
     for (0..@min(editor.height, editor.lines.items.len - editor.scroll_y)) |y| {
         const line = &editor.lines.items[editor.scroll_y + y];
-        const upper =
-            @min(line.items.len, 78 + editor.scroll_x);
+        const upper = @min(line.items.len, 78 + editor.scroll_x);
         if (upper > editor.scroll_x) {
             for (editor.scroll_x..upper) |x|
                 self.screen[(y + editor.top + 1) * 80 + 1 + x - editor.scroll_x] |= line.items[x];
@@ -296,12 +295,7 @@ fn renderEditor(self: *Kyuubey, editor: *Editor) void {
             self.screen[(editor.top + 1) * 80 + 79] = 0x7018;
             for (editor.top + 2..editor.top + editor.height - 1) |y|
                 self.screen[y * 80 + 79] = 0x70b0;
-
-            if (editor.lines.items.len == 0)
-                self.screen[(editor.top + 2) * 80 + 79] = 0x0000
-            else
-                self.screen[(editor.top + 2 + (editor.cursor_y * (editor.height - 4) / editor.lines.items.len)) * 80 + 79] = 0x0000;
-
+            self.screen[(editor.top + 2 + editor.verticalScrollThumb()) * 80 + 79] = 0x0000;
             self.screen[(editor.top + editor.height - 1) * 80 + 79] = 0x7019;
         }
 
@@ -309,7 +303,7 @@ fn renderEditor(self: *Kyuubey, editor: *Editor) void {
             self.screen[(editor.top + editor.height) * 80 + 1] = 0x701b;
             for (2..78) |x|
                 self.screen[(editor.top + editor.height) * 80 + x] = 0x70b0;
-            self.screen[(editor.top + editor.height) * 80 + (editor.scroll_x * 75 / 178) + 2] = 0x0000;
+            self.screen[(editor.top + editor.height) * 80 + 2 + editor.horizontalScrollThumb()] = 0x0000;
             self.screen[(editor.top + editor.height) * 80 + 78] = 0x701a;
         }
     }

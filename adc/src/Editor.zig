@@ -160,11 +160,25 @@ pub fn maybeHandleClick(self: *Editor, button: SDL.MouseButton, x: usize, y: usi
         const scrollbar = !self.immediate and y == self.top + self.height;
         if (scrollbar and self.active) {
             if (x == 1) {
-                self.scroll_x = if (self.scroll_x == 0) 0 else self.scroll_x - 1;
+                if (self.scroll_x > 0) {
+                    self.scroll_x -= 1;
+                    self.cursor_x -= 1;
+                }
             } else if (x > 1 and x < 78) {
-                // TODO: determine which side of the scroll thumb, do the thing
+                const hst = self.horizontalScrollThumb();
+                if (x - 2 < hst) {
+                    self.scroll_x = if (self.scroll_x >= 78) self.scroll_x - 78 else 0;
+                } else if (x - 2 > hst) {
+                    self.scroll_x = if (self.scroll_x <= 100) self.scroll_x + 78 else 178;
+                } else {
+                    self.scroll_x = (hst * 178 + 74) / 75;
+                }
+                self.cursor_x = self.scroll_x;
             } else if (x == 78) {
-                self.scroll_x = @min(self.scroll_x + 1, 255 - 77);
+                if (self.scroll_x < 178) {
+                    self.scroll_x += 1;
+                    self.cursor_x += 1;
+                }
             }
             if (self.cursor_x < self.scroll_x)
                 self.cursor_x = self.scroll_x
@@ -179,4 +193,14 @@ pub fn maybeHandleClick(self: *Editor, button: SDL.MouseButton, x: usize, y: usi
         return true;
     }
     return false;
+}
+
+pub fn horizontalScrollThumb(self: *const Editor) usize {
+    return self.scroll_x * 75 / 178;
+}
+
+pub fn verticalScrollThumb(self: *const Editor) usize {
+    if (self.lines.items.len == 0)
+        return 0;
+    return self.cursor_y * (self.height - 4) / self.lines.items.len;
 }
