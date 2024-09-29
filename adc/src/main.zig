@@ -47,9 +47,9 @@ pub fn main() !void {
 // https://retrocomputing.stackexchange.com/a/27805/20624
 const FLIP_MS = 266;
 
-// sauce?
-const TYPEMATIC_DELAY = 250;
-const TYPEMATIC_REPEAT = 100;
+// https://ejmastnak.com/tutorials/arch/typematic-rate/
+const TYPEMATIC_DELAY = 500;
+const TYPEMATIC_REPEAT = 1000 / 25;
 
 fn exe(allocator: Allocator, reader: std.io.AnyReader, reader_handle: std.posix.fd_t, writer: std.io.AnyWriter) !void {
     var et = try EventThread.init(allocator, reader, reader_handle);

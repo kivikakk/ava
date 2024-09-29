@@ -18,8 +18,7 @@ scroll_x: usize = 0,
 scroll_y: usize = 0,
 
 pub fn init(allocator: Allocator, title: []const u8, top: usize, height: usize, immediate: bool) !Editor {
-    var doc_lines = std.ArrayList(std.ArrayList(u8)).init(allocator);
-    try doc_lines.append(std.ArrayList(u8).init(allocator));
+    const doc_lines = std.ArrayList(std.ArrayList(u8)).init(allocator);
     return .{
         .allocator = allocator,
         .title = try allocator.dupe(u8, title),
@@ -37,19 +36,21 @@ pub fn deinit(self: *Editor) void {
     self.doc_lines.deinit();
 }
 
-pub fn currentDocLine(self: *Editor) *std.ArrayList(u8) {
+pub fn currentDocLine(self: *Editor) !*std.ArrayList(u8) {
+    if (self.cursor_y == self.doc_lines.items.len)
+        try self.doc_lines.append(std.ArrayList(u8).init(self.allocator));
     return &self.doc_lines.items[self.cursor_y];
 }
 
-pub fn currentDocLineFirst(self: *Editor) usize {
-    for (self.currentDocLine().items, 0..) |c, i|
+pub fn currentDocLineFirst(self: *Editor) !usize {
+    for ((try self.currentDocLine()).items, 0..) |c, i|
         if (c != ' ')
             return i;
     return 0;
 }
 
 pub fn splitLine(self: *Editor) !void {
-    var current_line = self.currentDocLine();
+    var current_line = try self.currentDocLine();
     var next_line = std.ArrayList(u8).init(self.allocator);
     try next_line.appendSlice(current_line.items[self.cursor_x..]);
     try current_line.replaceRange(self.cursor_x, current_line.items.len - self.cursor_x, &.{});
@@ -67,28 +68,31 @@ pub fn deleteAt(self: *Editor, mode: enum { backspace, delete }) !void {
 
         const removed = self.doc_lines.orderedRemove(self.cursor_y);
         self.cursor_y -= 1;
-        self.cursor_x = @intCast(self.currentDocLine().items.len);
-        try self.currentDocLine().appendSlice(removed.items);
+        self.cursor_x = @intCast((try self.currentDocLine()).items.len);
+        try (try self.currentDocLine()).appendSlice(removed.items);
         removed.deinit();
-    } else if (mode == .backspace and self.cursor_x == self.currentDocLineFirst()) {
-        // self.cursor_x > 0
-        const f = self.currentDocLineFirst();
-        try self.currentDocLine().replaceRange(0, f, &.{});
-        self.cursor_x = 0;
     } else if (mode == .backspace) {
-        // self.cursor_x > 0, self.cursor_x != self.currentDocLineFirst()
-        _ = self.currentDocLine().orderedRemove(self.cursor_x - 1);
-        self.cursor_x -= 1;
-    } else if (self.cursor_x == self.currentDocLine().items.len) {
+        // self.cursor_x > 0
+        const f = try self.currentDocLineFirst();
+        const line = try self.currentDocLine();
+        if (self.cursor_x == f) {
+            try line.replaceRange(0, f, &.{});
+            self.cursor_x = 0;
+        } else {
+            if (self.cursor_x - 1 < line.items.len)
+                _ = line.orderedRemove(self.cursor_x - 1);
+            self.cursor_x -= 1;
+        }
+    } else if (self.cursor_x == (try self.currentDocLine()).items.len) {
         // mode == .delete
         if (self.cursor_y == self.doc_lines.items.len - 1)
             return;
 
         const removed = self.doc_lines.orderedRemove(self.cursor_y + 1);
-        try self.currentDocLine().appendSlice(removed.items);
+        try (try self.currentDocLine()).appendSlice(removed.items);
         removed.deinit();
     } else {
         // mode == .delete, self.cursor_x < self.currentDocLine().items.len
-        _ = self.currentDocLine().orderedRemove(self.cursor_x);
+        _ = (try self.currentDocLine()).orderedRemove(self.cursor_x);
     }
 }

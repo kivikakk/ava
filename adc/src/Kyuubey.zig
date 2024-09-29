@@ -28,10 +28,16 @@ immediate_editor: Editor,
 
 // TODO:
 // * virtual space
-//   * hold right. (then type!)
-//   * can just scroll to the right.
-//   * kind of always one more line down.
-//   * press down: virtual space will be used, rather than snapping to min
+//   * [x] hold right. (then type!)
+//   * [ ] can just scroll to the right.
+//   * [x] kind of always one more line down.
+//           Something like: you can always move to the line after one that
+//           actually exists. Doing anything in that line (including e.g.
+//           backspace from virtual space) will cause *it* to exist.
+//   * [x] press down: virtual space will be used, rather than snapping to min
+//
+// * [ ] We don't backspace from first non-whitespace to 0 -- we backspace to
+//       the last indentation point per above lines!
 
 pub fn init(allocator: Allocator, renderer: SDL.Renderer) !Kyuubey {
     const font = try Font.fromData(renderer, @embedFile("cp437.vga"));
@@ -126,27 +132,27 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
 
     var editor = &self.main_editor;
 
-    if (sym == .down and editor.cursor_y < editor.doc_lines.items.len - 1) {
+    if (sym == .down and editor.cursor_y < editor.doc_lines.items.len) {
         editor.cursor_y += 1;
-        editor.cursor_x = @min(editor.cursor_x, editor.currentDocLine().items.len);
     } else if (sym == .up and editor.cursor_y > 0) {
         editor.cursor_y -= 1;
-        editor.cursor_x = @min(editor.cursor_x, editor.currentDocLine().items.len);
     } else if (sym == .left and editor.cursor_x > 0) {
         editor.cursor_x -= 1;
     } else if (sym == .right) {
-        if (editor.cursor_x < editor.currentDocLine().items.len)
+        if (editor.cursor_x < 255)
             editor.cursor_x += 1;
     } else if (sym == .tab) {
-        var doc_line = editor.currentDocLine();
+        var doc_line = try editor.currentDocLine();
         while (doc_line.items.len < 255) {
             try doc_line.insert(editor.cursor_x, ' ');
             editor.cursor_x += 1;
             if (editor.cursor_x % 8 == 0)
                 break;
         }
-    } else if (isPrintableKey(sym) and editor.currentDocLine().items.len < 255) {
-        var doc_line = editor.currentDocLine();
+    } else if (isPrintableKey(sym) and (try editor.currentDocLine()).items.len < 255) {
+        var doc_line = try editor.currentDocLine();
+        if (doc_line.items.len < editor.cursor_x)
+            try doc_line.appendNTimes(' ', editor.cursor_x - doc_line.items.len);
         try doc_line.insert(editor.cursor_x, getCharacter(sym, mod));
         editor.cursor_x += 1;
     } else if (sym == .@"return") {
@@ -155,6 +161,9 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
         // whitespace; it'll pad the newly split line up to the leading
         // whitespace of the current one (even if the cursor was in the middle
         // of said leading whitespace).
+        //
+        // Get virtual space working correctly in general first, since they
+        // interact a bit.
         try editor.splitLine();
         editor.cursor_x = 0;
         editor.cursor_y += 1;
@@ -163,9 +172,9 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
     } else if (sym == .delete) {
         try editor.deleteAt(.delete);
     } else if (sym == .home) {
-        editor.cursor_x = editor.currentDocLineFirst();
+        editor.cursor_x = try editor.currentDocLineFirst();
     } else if (sym == .end) {
-        editor.cursor_x = @intCast(editor.currentDocLine().items.len);
+        editor.cursor_x = @intCast((try editor.currentDocLine()).items.len);
     }
 
     if (editor.cursor_y < editor.scroll_y) {
@@ -286,10 +295,10 @@ fn renderEditor(self: *Kyuubey, editor: *Editor, active: bool) void {
             for (editor.top + 2..editor.top + editor.height - 1) |y|
                 self.screen[y * 80 + 79] = 0x70b0;
 
-            if (editor.doc_lines.items.len == 1)
+            if (editor.doc_lines.items.len == 0)
                 self.screen[(editor.top + 2) * 80 + 79] = 0x0000
             else
-                self.screen[(editor.top + 2 + (editor.cursor_y * (editor.height - 4) / (editor.doc_lines.items.len - 1))) * 80 + 79] = 0x0000;
+                self.screen[(editor.top + 2 + (editor.cursor_y * (editor.height - 4) / editor.doc_lines.items.len)) * 80 + 79] = 0x0000;
 
             self.screen[(editor.top + editor.height - 1) * 80 + 79] = 0x7019;
         }
@@ -301,8 +310,6 @@ fn renderEditor(self: *Kyuubey, editor: *Editor, active: bool) void {
         self.screen[(editor.top + editor.height) * 80 + 78] = 0x701a;
     }
 }
-
-// ---
 
 fn isPrintableKey(sym: SDL.Keycode) bool {
     return @intFromEnum(sym) >= @intFromEnum(SDL.Keycode.space) and
