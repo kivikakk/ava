@@ -128,7 +128,7 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
     } else if (sym == .left and editor.cursor_x > 0) {
         editor.cursor_x -= 1;
     } else if (sym == .right) {
-        if (editor.cursor_x < 255)
+        if (editor.cursor_x < Editor.MAX_LINE)
             editor.cursor_x += 1;
     } else if (sym == .tab) {
         var line = try editor.currentLine();

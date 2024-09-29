@@ -19,6 +19,8 @@ cursor_y: usize = 0,
 scroll_x: usize = 0,
 scroll_y: usize = 0,
 
+pub const MAX_LINE = 255;
+
 pub fn init(allocator: Allocator, title: []const u8, top: usize, height: usize, active: bool, immediate: bool) !Editor {
     return .{
         .allocator = allocator,
@@ -169,13 +171,13 @@ pub fn maybeHandleClick(self: *Editor, button: SDL.MouseButton, x: usize, y: usi
                 if (x - 2 < hst) {
                     self.scroll_x = if (self.scroll_x >= 78) self.scroll_x - 78 else 0;
                 } else if (x - 2 > hst) {
-                    self.scroll_x = if (self.scroll_x <= 100) self.scroll_x + 78 else 178;
+                    self.scroll_x = if (self.scroll_x <= 100) self.scroll_x + 78 else MAX_LINE - 77;
                 } else {
-                    self.scroll_x = (hst * 178 + 74) / 75;
+                    self.scroll_x = (hst * (MAX_LINE - 77) + 74) / 75;
                 }
                 self.cursor_x = self.scroll_x;
             } else if (x == 78) {
-                if (self.scroll_x < 178) {
+                if (self.scroll_x < (MAX_LINE - 77)) {
                     self.scroll_x += 1;
                     self.cursor_x += 1;
                 }
@@ -196,7 +198,7 @@ pub fn maybeHandleClick(self: *Editor, button: SDL.MouseButton, x: usize, y: usi
 }
 
 pub fn horizontalScrollThumb(self: *const Editor) usize {
-    return self.scroll_x * 75 / 178;
+    return self.scroll_x * 75 / (MAX_LINE - 77);
 }
 
 pub fn verticalScrollThumb(self: *const Editor) usize {
