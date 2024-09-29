@@ -7,7 +7,7 @@ allocator: Allocator,
 title: []const u8,
 immediate: bool,
 
-doc_lines: std.ArrayList(std.ArrayList(u8)),
+lines: std.ArrayList(std.ArrayList(u8)),
 
 top: usize,
 height: usize,
@@ -22,7 +22,7 @@ pub fn init(allocator: Allocator, title: []const u8, top: usize, height: usize, 
         .allocator = allocator,
         .title = try allocator.dupe(u8, title),
         .immediate = immediate,
-        .doc_lines = std.ArrayList(std.ArrayList(u8)).init(allocator),
+        .lines = std.ArrayList(std.ArrayList(u8)).init(allocator),
         .top = top,
         .height = height,
     };
@@ -30,20 +30,20 @@ pub fn init(allocator: Allocator, title: []const u8, top: usize, height: usize, 
 
 pub fn deinit(self: *Editor) void {
     self.allocator.free(self.title);
-    for (self.doc_lines.items) |line|
+    for (self.lines.items) |line|
         line.deinit();
-    self.doc_lines.deinit();
+    self.lines.deinit();
 }
 
 pub fn load(self: *Editor, filename: []const u8) !void {
     self.deinit();
-    self.doc_lines = std.ArrayList(std.ArrayList(u8)).init(self.allocator);
+    self.lines = std.ArrayList(std.ArrayList(u8)).init(self.allocator);
 
     const f = try std.fs.cwd().openFile(filename, .{});
     defer f.close();
 
     while (try f.reader().readUntilDelimiterOrEofAlloc(self.allocator, '\n', 10240)) |line|
-        try self.doc_lines.append(std.ArrayList(u8).fromOwnedSlice(self.allocator, line));
+        try self.lines.append(std.ArrayList(u8).fromOwnedSlice(self.allocator, line));
 
     const index = std.mem.lastIndexOfScalar(u8, filename, '/');
     self.title = try std.ascii.allocUpperString(
@@ -52,16 +52,16 @@ pub fn load(self: *Editor, filename: []const u8) !void {
     );
 }
 
-pub fn currentDocLine(self: *Editor) !*std.ArrayList(u8) {
-    if (self.cursor_y == self.doc_lines.items.len)
-        try self.doc_lines.append(std.ArrayList(u8).init(self.allocator));
-    return &self.doc_lines.items[self.cursor_y];
+pub fn currentLine(self: *Editor) !*std.ArrayList(u8) {
+    if (self.cursor_y == self.lines.items.len)
+        try self.lines.append(std.ArrayList(u8).init(self.allocator));
+    return &self.lines.items[self.cursor_y];
 }
 
-pub fn maybeCurrentDocLine(self: *Editor) ?*std.ArrayList(u8) {
-    if (self.cursor_y == self.doc_lines.items.len)
+pub fn maybeCurrentLine(self: *Editor) ?*std.ArrayList(u8) {
+    if (self.cursor_y == self.lines.items.len)
         return null;
-    return &self.doc_lines.items[self.cursor_y];
+    return &self.lines.items[self.cursor_y];
 }
 
 pub fn lineFirst(line: []const u8) usize {
@@ -71,12 +71,17 @@ pub fn lineFirst(line: []const u8) usize {
     return 0;
 }
 
-pub fn splitLine(self: *Editor) !void {
-    var current_line = try self.currentDocLine();
-    var next_line = std.ArrayList(u8).init(self.allocator);
-    try next_line.appendSlice(current_line.items[self.cursor_x..]);
-    try current_line.replaceRange(self.cursor_x, current_line.items.len - self.cursor_x, &.{});
-    try self.doc_lines.insert(self.cursor_y + 1, next_line);
+pub fn splitLine(self: *Editor) !usize {
+    var current = try self.currentLine();
+    const first = lineFirst(current.items);
+    var next = std.ArrayList(u8).init(self.allocator);
+    try next.appendNTimes(' ', first);
+
+    const appending = current.items[self.cursor_x..];
+    try next.appendSlice(std.mem.trimLeft(u8, appending, " "));
+    try current.replaceRange(self.cursor_x, current.items.len - self.cursor_x, &.{});
+    try self.lines.insert(self.cursor_y + 1, next);
+    return first;
 }
 
 pub fn deleteAt(self: *Editor, mode: enum { backspace, delete }) !void {
@@ -88,49 +93,49 @@ pub fn deleteAt(self: *Editor, mode: enum { backspace, delete }) !void {
             return;
         }
 
-        if (self.cursor_y == self.doc_lines.items.len)
+        if (self.cursor_y == self.lines.items.len)
             self.cursor_y -= 1
         else {
-            const removed = self.doc_lines.orderedRemove(self.cursor_y);
+            const removed = self.lines.orderedRemove(self.cursor_y);
             self.cursor_y -= 1;
-            try (try self.currentDocLine()).appendSlice(removed.items);
+            try (try self.currentLine()).appendSlice(removed.items);
             removed.deinit();
         }
-        self.cursor_x = @intCast((try self.currentDocLine()).items.len);
+        self.cursor_x = @intCast((try self.currentLine()).items.len);
     } else if (mode == .backspace) {
         // self.cursor_x > 0
-        const line = try self.currentDocLine();
-        const f = lineFirst(line.items);
-        if (self.cursor_x == f) {
+        const line = try self.currentLine();
+        const first = lineFirst(line.items);
+        if (self.cursor_x == first) {
             var back_to: usize = 0;
             if (self.cursor_y > 0) {
                 var y: usize = self.cursor_y - 1;
                 while (true) : (y -= 1) {
-                    const lf = lineFirst(self.doc_lines.items[y].items);
-                    if (lf < f) {
+                    const lf = lineFirst(self.lines.items[y].items);
+                    if (lf < first) {
                         back_to = lf;
                         break;
                     }
                     if (y == 0) break;
                 }
             }
-            try line.replaceRange(0, f - back_to, &.{});
+            try line.replaceRange(0, first - back_to, &.{});
             self.cursor_x = back_to;
         } else {
             if (self.cursor_x - 1 < line.items.len)
                 _ = line.orderedRemove(self.cursor_x - 1);
             self.cursor_x -= 1;
         }
-    } else if (self.cursor_x == (try self.currentDocLine()).items.len) {
+    } else if (self.cursor_x == (try self.currentLine()).items.len) {
         // mode == .delete
-        if (self.cursor_y == self.doc_lines.items.len - 1)
+        if (self.cursor_y == self.lines.items.len - 1)
             return;
 
-        const removed = self.doc_lines.orderedRemove(self.cursor_y + 1);
-        try (try self.currentDocLine()).appendSlice(removed.items);
+        const removed = self.lines.orderedRemove(self.cursor_y + 1);
+        try (try self.currentLine()).appendSlice(removed.items);
         removed.deinit();
     } else {
-        // mode == .delete, self.cursor_x < self.currentDocLine().items.len
-        _ = (try self.currentDocLine()).orderedRemove(self.cursor_x);
+        // mode == .delete, self.cursor_x < self.currentLine().items.len
+        _ = (try self.currentLine()).orderedRemove(self.cursor_x);
     }
 }

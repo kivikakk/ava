@@ -26,19 +26,6 @@ selected_menu: usize = 0,
 main_editor: Editor,
 immediate_editor: Editor,
 
-// TODO:
-// * virtual space
-//   * [x] hold right. (then type!)
-//   * [ ] can just scroll to the right.
-//   * [x] kind of always one more line down.
-//           Something like: you can always move to the line after one that
-//           actually exists. Doing anything in that line (including e.g.
-//           backspace from virtual space) will cause *it* to exist.
-//   * [x] press down: virtual space will be used, rather than snapping to min
-//
-// * [ ] We don't backspace from first non-whitespace to 0 -- we backspace to
-//       the last indentation point per above lines!
-
 pub fn init(allocator: Allocator, renderer: SDL.Renderer, filename: ?[]const u8) !Kyuubey {
     const font = try Font.fromData(renderer, @embedFile("cp437.vga"));
     var qb = Kyuubey{
@@ -134,7 +121,7 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
 
     var editor = &self.main_editor;
 
-    if (sym == .down and editor.cursor_y < editor.doc_lines.items.len) {
+    if (sym == .down and editor.cursor_y < editor.lines.items.len) {
         editor.cursor_y += 1;
     } else if (sym == .up and editor.cursor_y > 0) {
         editor.cursor_y -= 1;
@@ -144,42 +131,33 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
         if (editor.cursor_x < 255)
             editor.cursor_x += 1;
     } else if (sym == .tab) {
-        var doc_line = try editor.currentDocLine();
-        while (doc_line.items.len < 255) {
-            try doc_line.insert(editor.cursor_x, ' ');
+        var line = try editor.currentLine();
+        while (line.items.len < 255) {
+            try line.insert(editor.cursor_x, ' ');
             editor.cursor_x += 1;
             if (editor.cursor_x % 8 == 0)
                 break;
         }
-    } else if (isPrintableKey(sym) and (try editor.currentDocLine()).items.len < 255) {
-        var doc_line = try editor.currentDocLine();
-        if (doc_line.items.len < editor.cursor_x)
-            try doc_line.appendNTimes(' ', editor.cursor_x - doc_line.items.len);
-        try doc_line.insert(editor.cursor_x, getCharacter(sym, mod));
+    } else if (isPrintableKey(sym) and (try editor.currentLine()).items.len < 255) {
+        var line = try editor.currentLine();
+        if (line.items.len < editor.cursor_x)
+            try line.appendNTimes(' ', editor.cursor_x - line.items.len);
+        try line.insert(editor.cursor_x, getCharacter(sym, mod));
         editor.cursor_x += 1;
     } else if (sym == .@"return") {
-        // TODO: QB has interesting behaviour here (to make working with
-        // indented blocks better); see what happens when there's leading
-        // whitespace; it'll pad the newly split line up to the leading
-        // whitespace of the current one (even if the cursor was in the middle
-        // of said leading whitespace).
-        //
-        // Get virtual space working correctly in general first, since they
-        // interact a bit.
-        try editor.splitLine();
-        editor.cursor_x = 0;
+        editor.cursor_x = try editor.splitLine();
         editor.cursor_y += 1;
     } else if (sym == .backspace) {
         try editor.deleteAt(.backspace);
     } else if (sym == .delete) {
         try editor.deleteAt(.delete);
     } else if (sym == .home) {
-        editor.cursor_x = if (editor.maybeCurrentDocLine()) |line|
+        editor.cursor_x = if (editor.maybeCurrentLine()) |line|
             Editor.lineFirst(line.items)
         else
             0;
     } else if (sym == .end) {
-        editor.cursor_x = if (editor.maybeCurrentDocLine()) |line|
+        editor.cursor_x = if (editor.maybeCurrentLine()) |line|
             line.items.len
         else
             0;
@@ -287,8 +265,8 @@ fn renderEditor(self: *Kyuubey, editor: *Editor, active: bool) void {
             self.screen[y * 80 + x] = 0x1700;
     }
 
-    for (0..@min(editor.height, editor.doc_lines.items.len - editor.scroll_y)) |y| {
-        const line = &editor.doc_lines.items[editor.scroll_y + y];
+    for (0..@min(editor.height, editor.lines.items.len - editor.scroll_y)) |y| {
+        const line = &editor.lines.items[editor.scroll_y + y];
         const upper =
             @min(line.items.len, 78 + editor.scroll_x);
         if (upper > editor.scroll_x) {
@@ -303,10 +281,10 @@ fn renderEditor(self: *Kyuubey, editor: *Editor, active: bool) void {
             for (editor.top + 2..editor.top + editor.height - 1) |y|
                 self.screen[y * 80 + 79] = 0x70b0;
 
-            if (editor.doc_lines.items.len == 0)
+            if (editor.lines.items.len == 0)
                 self.screen[(editor.top + 2) * 80 + 79] = 0x0000
             else
-                self.screen[(editor.top + 2 + (editor.cursor_y * (editor.height - 4) / editor.doc_lines.items.len)) * 80 + 79] = 0x0000;
+                self.screen[(editor.top + 2 + (editor.cursor_y * (editor.height - 4) / editor.lines.items.len)) * 80 + 79] = 0x0000;
 
             self.screen[(editor.top + editor.height - 1) * 80 + 79] = 0x7019;
         }
