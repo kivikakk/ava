@@ -31,6 +31,7 @@ immediate_editor: Editor,
 //   * hold right. (then type!)
 //   * can just scroll to the right.
 //   * kind of always one more line down.
+//   * press down: virtual space will be used, rather than snapping to min
 
 pub fn init(allocator: Allocator, renderer: SDL.Renderer) !Kyuubey {
     const font = try Font.fromData(renderer, @embedFile("cp437.vga"));
@@ -136,19 +137,35 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
     } else if (sym == .right) {
         if (editor.cursor_x < editor.currentDocLine().items.len)
             editor.cursor_x += 1;
+    } else if (sym == .tab) {
+        var doc_line = editor.currentDocLine();
+        while (doc_line.items.len < 255) {
+            try doc_line.insert(editor.cursor_x, ' ');
+            editor.cursor_x += 1;
+            if (editor.cursor_x % 8 == 0)
+                break;
+        }
     } else if (isPrintableKey(sym) and editor.currentDocLine().items.len < 255) {
         var doc_line = editor.currentDocLine();
         try doc_line.insert(editor.cursor_x, getCharacter(sym, mod));
         editor.cursor_x += 1;
     } else if (sym == .@"return") {
+        // TODO: QB has interesting behaviour here (to make working with
+        // indented blocks better); see what happens when there's leading
+        // whitespace; it'll pad the newly split line up to the leading
+        // whitespace of the current one (even if the cursor was in the middle
+        // of said leading whitespace).
         try editor.splitLine();
         editor.cursor_x = 0;
         editor.cursor_y += 1;
     } else if (sym == .backspace) {
+        // TODO: if at the first non-whitespace character (not before, not after), delete
+        // to start of line.
         try editor.deleteAt(.backspace);
     } else if (sym == .delete) {
         try editor.deleteAt(.delete);
     } else if (sym == .home) {
+        // TODO: go to the first non-whitespace character
         editor.cursor_x = 0;
     } else if (sym == .end) {
         editor.cursor_x = @intCast(editor.currentDocLine().items.len);
