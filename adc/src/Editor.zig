@@ -41,6 +41,14 @@ pub fn currentDocLine(self: *Editor) *std.ArrayList(u8) {
     return &self.doc_lines.items[self.cursor_y];
 }
 
+pub fn splitLine(self: *Editor) !void {
+    var current_line = self.currentDocLine();
+    var next_line = std.ArrayList(u8).init(self.allocator);
+    try next_line.appendSlice(current_line.items[self.cursor_x..]);
+    try current_line.replaceRange(self.cursor_x, current_line.items.len - self.cursor_x, &.{});
+    try self.doc_lines.insert(self.cursor_y + 1, next_line);
+}
+
 pub fn deleteAt(self: *Editor, mode: enum { backspace, delete }) !void {
     if (mode == .backspace and self.cursor_x == 0) {
         if (self.cursor_y == 0) {

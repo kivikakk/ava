@@ -141,11 +141,7 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
         try doc_line.insert(editor.cursor_x, getCharacter(sym, mod));
         editor.cursor_x += 1;
     } else if (sym == .@"return") {
-        var current_line = editor.currentDocLine();
-        var next_line = std.ArrayList(u8).init(self.allocator);
-        try next_line.appendSlice(current_line.items[editor.cursor_x..]);
-        try current_line.replaceRange(editor.cursor_x, current_line.items.len - editor.cursor_x, &.{});
-        try editor.doc_lines.insert(editor.cursor_y + 1, next_line);
+        try editor.splitLine();
         editor.cursor_x = 0;
         editor.cursor_y += 1;
     } else if (sym == .backspace) {
