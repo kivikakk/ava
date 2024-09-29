@@ -165,8 +165,14 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
     } else if (sym == .delete) {
         try editor.deleteAt(.delete);
     } else if (sym == .home) {
-        // TODO: go to the first non-whitespace character
-        editor.cursor_x = 0;
+        const line = editor.currentDocLine().items;
+        var i: usize = 0;
+        for (line, 0..) |c, j|
+            if (c != ' ') {
+                i = j;
+                break;
+            };
+        editor.cursor_x = i;
     } else if (sym == .end) {
         editor.cursor_x = @intCast(editor.currentDocLine().items.len);
     }
