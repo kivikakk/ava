@@ -89,7 +89,7 @@ fn exe(allocator: Allocator, reader: std.io.AnyReader, reader_handle: std.posix.
     try renderer.setScale(scale, scale);
     _ = try SDL.showCursor(false);
 
-    var qb = try Kyuubey.init(renderer);
+    var qb = try Kyuubey.init(allocator, renderer);
     defer qb.deinit();
 
     var until_flip: i16 = FLIP_MS;
