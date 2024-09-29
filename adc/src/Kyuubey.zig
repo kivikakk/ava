@@ -25,6 +25,7 @@ selected_menu: usize = 0,
 
 main_editor: Editor,
 immediate_editor: Editor,
+immediate_active: bool = false,
 
 pub fn init(allocator: Allocator, renderer: SDL.Renderer, filename: ?[]const u8) !Kyuubey {
     const font = try Font.fromData(renderer, @embedFile("cp437.vga"));
@@ -119,7 +120,7 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
         return;
     }
 
-    var editor = &self.main_editor;
+    var editor = self.activeEditor();
 
     if (sym == .down and editor.cursor_y < editor.lines.items.len) {
         editor.cursor_y += 1;
@@ -162,10 +163,11 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
             0;
     }
 
+    const adjust: usize = if (editor.immediate) 1 else 2;
     if (editor.cursor_y < editor.scroll_y) {
         editor.scroll_y = editor.cursor_y;
-    } else if (editor.cursor_y > editor.scroll_y + editor.height - 2) {
-        editor.scroll_y = editor.cursor_y + 2 - editor.height;
+    } else if (editor.cursor_y > editor.scroll_y + editor.height - adjust) {
+        editor.scroll_y = editor.cursor_y + adjust - editor.height;
     }
 
     if (editor.cursor_x < editor.scroll_x) {
@@ -181,8 +183,25 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
 pub fn mouseClick(self: *Kyuubey, button: SDL.MouseButton) !void {
     _ = button;
 
+    // const x = self.mouse_x / 8;
+    const y = self.mouse_y / 16;
+
+    inline for (&.{ self.main_editor, self.immediate_editor }) |*editor| {
+        if (y >= editor.top and y <= editor.top + editor.height) {
+            self.immediate_active = editor.immediate;
+            break;
+        }
+    }
+
     self.render();
     try self.textRefresh();
+}
+
+fn activeEditor(self: *Kyuubey) *Editor {
+    return if (self.immediate_active)
+        &self.immediate_editor
+    else
+        &self.main_editor;
 }
 
 pub fn render(self: *Kyuubey) void {
@@ -199,9 +218,9 @@ pub fn render(self: *Kyuubey) void {
         offset += option.len + 2;
     }
 
-    const active_editor = &self.main_editor;
-    self.renderEditor(&self.main_editor, active_editor == &self.main_editor);
-    self.renderEditor(&self.immediate_editor, active_editor == &self.immediate_editor);
+    const active_editor = self.activeEditor();
+    self.renderEditor(&self.main_editor, !self.immediate_active);
+    self.renderEditor(&self.immediate_editor, self.immediate_active);
 
     for (0..80) |x|
         self.screen[24 * 80 + x] = 0x3000;
