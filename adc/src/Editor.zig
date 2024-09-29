@@ -71,7 +71,7 @@ pub fn lineFirst(line: []const u8) usize {
     return 0;
 }
 
-pub fn splitLine(self: *Editor) !usize {
+pub fn splitLine(self: *Editor) !void {
     var current = try self.currentLine();
     const first = lineFirst(current.items);
     var next = std.ArrayList(u8).init(self.allocator);
@@ -81,7 +81,9 @@ pub fn splitLine(self: *Editor) !usize {
     try next.appendSlice(std.mem.trimLeft(u8, appending, " "));
     try current.replaceRange(self.cursor_x, current.items.len - self.cursor_x, &.{});
     try self.lines.insert(self.cursor_y + 1, next);
-    return first;
+
+    self.cursor_x = first;
+    self.cursor_y += 1;
 }
 
 pub fn deleteAt(self: *Editor, mode: enum { backspace, delete }) !void {
@@ -93,15 +95,16 @@ pub fn deleteAt(self: *Editor, mode: enum { backspace, delete }) !void {
             return;
         }
 
-        if (self.cursor_y == self.lines.items.len)
-            self.cursor_y -= 1
-        else {
+        if (self.cursor_y == self.lines.items.len) {
+            self.cursor_y -= 1;
+            self.cursor_x = @intCast((try self.currentLine()).items.len);
+        } else {
             const removed = self.lines.orderedRemove(self.cursor_y);
             self.cursor_y -= 1;
+            self.cursor_x = @intCast((try self.currentLine()).items.len);
             try (try self.currentLine()).appendSlice(removed.items);
             removed.deinit();
         }
-        self.cursor_x = @intCast((try self.currentLine()).items.len);
     } else if (mode == .backspace) {
         // self.cursor_x > 0
         const line = try self.currentLine();

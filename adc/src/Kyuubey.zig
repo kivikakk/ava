@@ -145,8 +145,7 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
         try line.insert(editor.cursor_x, getCharacter(sym, mod));
         editor.cursor_x += 1;
     } else if (sym == .@"return") {
-        editor.cursor_x = try editor.splitLine();
-        editor.cursor_y += 1;
+        try editor.splitLine();
     } else if (sym == .backspace) {
         try editor.deleteAt(.backspace);
     } else if (sym == .delete) {
