@@ -18,6 +18,8 @@ cursor_y: u16 = 0,
 cursor_inhibit: bool = false,
 
 alt_held: bool = false,
+menubar_focus: bool = false,
+selected_menu: usize = 0,
 
 pub fn init(renderer: SDL.Renderer) !Kyuubey {
     const font = try Font.fromData(renderer, @embedFile("cp437.vga"));
@@ -71,6 +73,15 @@ pub fn keyUp(self: *Kyuubey, sym: SDL.Keycode) !void {
     if ((sym == .left_alt or sym == .right_alt) and self.alt_held) {
         self.alt_held = false;
 
+        if (!self.menubar_focus) {
+            self.cursor_inhibit = true;
+            self.menubar_focus = true;
+            self.selected_menu = 0;
+        } else {
+            self.cursor_inhibit = false;
+            self.menubar_focus = false;
+        }
+
         // menubar focus ...
 
         self.render();
@@ -79,9 +90,23 @@ pub fn keyUp(self: *Kyuubey, sym: SDL.Keycode) !void {
 }
 
 pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void {
-    _ = self;
-    _ = sym;
     _ = mod;
+
+    if (self.menubar_focus) {
+        switch (sym) {
+            .left => self.selected_menu = if (self.selected_menu == 0) 8 else self.selected_menu - 1,
+            .right => self.selected_menu = if (self.selected_menu == 8) 0 else self.selected_menu + 1,
+            .escape => {
+                self.cursor_inhibit = false;
+                self.menubar_focus = false;
+            },
+            else => {},
+        }
+
+        self.render();
+        try self.textRefresh();
+        return;
+    }
 }
 
 pub fn mouseClick(self: *Kyuubey, button: SDL.MouseButton) !void {
@@ -101,17 +126,16 @@ pub fn render(self: *Kyuubey) void {
     inline for (&.{ "File", "Edit", "View", "Search", "Run", "Debug", "Calls", "Options", "Help" }, 0..) |option, i| {
         if (std.mem.eql(u8, option, "Help"))
             offset = 73;
-        self.render_menu_option(option, offset, i);
+        self.renderMenuOption(option, offset, i);
         offset += option.len + 2;
     }
 }
 
-fn render_menu_option(self: *Kyuubey, title: []const u8, start: usize, index: usize) void {
-    _ = index;
-    const back: u16 = 0x7000;
+fn renderMenuOption(self: *Kyuubey, title: []const u8, start: usize, index: usize) void {
+    const back: u16 = if (self.menubar_focus and self.selected_menu == index) 0x0700 else 0x7000;
 
     self.screen[start + 0] = back;
-    self.screen[start + 1] = back | @as(u16, if (self.alt_held) 0x0f00 else 0x0000) | title[0];
+    self.screen[start + 1] = back | @as(u16, if (self.alt_held or self.menubar_focus) 0x0f00 else 0x0000) | title[0];
     for (title[1..], 1..) |c, j|
         self.screen[start + 1 + j] = back | c;
     self.screen[start + 1 + title.len] = back;
