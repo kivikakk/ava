@@ -12,11 +12,11 @@ renderer: SDL.Renderer,
 font: Font,
 
 screen: [80 * 25]u16 = [_]u16{0} ** (80 * 25),
-mouse_x: u16 = 100,
-mouse_y: u16 = 100,
+mouse_x: usize = 100,
+mouse_y: usize = 100,
 cursor_on: bool = true,
-cursor_x: u16 = 0,
-cursor_y: u16 = 0,
+cursor_x: usize = 0,
+cursor_y: usize = 0,
 cursor_inhibit: bool = false,
 
 alt_held: bool = false,
@@ -25,6 +25,12 @@ selected_menu: usize = 0,
 
 main_editor: Editor,
 immediate_editor: Editor,
+
+// TODO:
+// * virtual space
+//   * hold right. (then type!)
+//   * can just scroll to the right.
+//   * kind of always one more line down.
 
 pub fn init(allocator: Allocator, renderer: SDL.Renderer) !Kyuubey {
     const font = try Font.fromData(renderer, @embedFile("cp437.vga"));
@@ -53,7 +59,7 @@ pub fn textRefresh(self: *Kyuubey) !void {
             var pair = self.screen[y * 80 + x];
             if (self.mouse_x / 8 == x and self.mouse_y / 16 == y)
                 pair = ((7 - (pair >> 12)) << 12) |
-                    ((7 - ((pair >> 8) & 0xF)) << 8) |
+                    ((7 - ((pair >> 8) & 0x7)) << 8) |
                     (pair & 0xFF);
             try self.font.render(self.renderer, pair, x, y);
         };
@@ -152,7 +158,18 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
         editor.cursor_x = @intCast(editor.currentDocLine().items.len);
     }
 
-    // check scroll
+    if (editor.cursor_y < editor.scroll_y) {
+        editor.scroll_y = editor.cursor_y;
+    } else if (editor.cursor_y > editor.scroll_y + editor.height - 2) {
+        editor.scroll_y = editor.cursor_y + 2 - editor.height;
+    }
+
+    if (editor.cursor_x < editor.scroll_x) {
+        editor.scroll_x = editor.cursor_x;
+    } else if (editor.cursor_x > editor.scroll_x + 77) {
+        editor.scroll_x = editor.cursor_x - 77;
+    }
+
     self.render();
     try self.textRefresh();
 }
@@ -245,8 +262,12 @@ fn renderEditor(self: *Kyuubey, editor: *Editor, active: bool) void {
 
     for (0..@min(editor.height, editor.doc_lines.items.len - editor.scroll_y)) |y| {
         const line = &editor.doc_lines.items[editor.scroll_y + y];
-        for (editor.scroll_x..@min(line.items.len, 78 + editor.scroll_x)) |x|
-            self.screen[(y + editor.top + 1) * 80 + 1 + x - editor.scroll_x] |= line.items[x];
+        const upper =
+            @min(line.items.len, 78 + editor.scroll_x);
+        if (upper > editor.scroll_x) {
+            for (editor.scroll_x..upper) |x|
+                self.screen[(y + editor.top + 1) * 80 + 1 + x - editor.scroll_x] |= line.items[x];
+        }
     }
 
     if (active and !editor.immediate) {
@@ -255,9 +276,10 @@ fn renderEditor(self: *Kyuubey, editor: *Editor, active: bool) void {
             for (editor.top + 2..editor.top + editor.height - 1) |y|
                 self.screen[y * 80 + 79] = 0x70b0;
 
-            // TODO: there was a div by zero in the original here.
-            if (editor.doc_lines.items.len > 1)
-                self.screen[(editor.top + 2 + (editor.cursor_y / (editor.doc_lines.items.len - 1) * (editor.height - 4))) * 80 + 79] = 0x0000;
+            if (editor.doc_lines.items.len == 1)
+                self.screen[(editor.top + 2) * 80 + 79] = 0x0000
+            else
+                self.screen[(editor.top + 2 + (editor.cursor_y * (editor.height - 4) / (editor.doc_lines.items.len - 1))) * 80 + 79] = 0x0000;
 
             self.screen[(editor.top + editor.height - 1) * 80 + 79] = 0x7019;
         }

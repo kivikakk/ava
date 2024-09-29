@@ -9,15 +9,15 @@ immediate: bool,
 
 doc_lines: std.ArrayList(std.ArrayList(u8)),
 
-top: u16,
+top: usize,
 height: usize,
 
-cursor_x: u16 = 0,
-cursor_y: u16 = 0,
-scroll_x: u16 = 0,
-scroll_y: u16 = 0,
+cursor_x: usize = 0,
+cursor_y: usize = 0,
+scroll_x: usize = 0,
+scroll_y: usize = 0,
 
-pub fn init(allocator: Allocator, title: []const u8, top: u16, height: usize, immediate: bool) !Editor {
+pub fn init(allocator: Allocator, title: []const u8, top: usize, height: usize, immediate: bool) !Editor {
     var doc_lines = std.ArrayList(std.ArrayList(u8)).init(allocator);
     try doc_lines.append(std.ArrayList(u8).init(allocator));
     return .{
@@ -42,9 +42,7 @@ pub fn currentDocLine(self: *Editor) *std.ArrayList(u8) {
 }
 
 pub fn deleteAt(self: *Editor, mode: enum { backspace, delete }) !void {
-    const offset = self.cursor_x;
-
-    if (mode == .backspace and offset == 0) {
+    if (mode == .backspace and self.cursor_x == 0) {
         if (self.cursor_y == 0) {
             //  WRONG  //
             //   WAY   //
@@ -57,5 +55,20 @@ pub fn deleteAt(self: *Editor, mode: enum { backspace, delete }) !void {
         self.cursor_x = @intCast(self.currentDocLine().items.len);
         try self.currentDocLine().appendSlice(removed.items);
         removed.deinit();
+    } else if (mode == .backspace) {
+        // self.cursor_x > 0
+        _ = self.currentDocLine().orderedRemove(self.cursor_x - 1);
+        self.cursor_x -= 1;
+    } else if (self.cursor_x == self.currentDocLine().items.len) {
+        // mode == .delete
+        if (self.cursor_y == self.doc_lines.items.len - 1)
+            return;
+
+        const removed = self.doc_lines.orderedRemove(self.cursor_y + 1);
+        try self.currentDocLine().appendSlice(removed.items);
+        removed.deinit();
+    } else {
+        // mode == .delete, self.cursor_x < self.currentDocLine().items.len
+        _ = self.currentDocLine().orderedRemove(self.cursor_x);
     }
 }
