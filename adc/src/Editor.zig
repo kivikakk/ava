@@ -1,10 +1,12 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const SDL = @import("sdl2");
 
 const Editor = @This();
 
 allocator: Allocator,
 title: []const u8,
+active: bool,
 immediate: bool,
 
 lines: std.ArrayList(std.ArrayList(u8)),
@@ -17,10 +19,11 @@ cursor_y: usize = 0,
 scroll_x: usize = 0,
 scroll_y: usize = 0,
 
-pub fn init(allocator: Allocator, title: []const u8, top: usize, height: usize, immediate: bool) !Editor {
+pub fn init(allocator: Allocator, title: []const u8, top: usize, height: usize, active: bool, immediate: bool) !Editor {
     return .{
         .allocator = allocator,
         .title = try allocator.dupe(u8, title),
+        .active = active,
         .immediate = immediate,
         .lines = std.ArrayList(std.ArrayList(u8)).init(allocator),
         .top = top,
@@ -77,7 +80,7 @@ pub fn splitLine(self: *Editor) !void {
     var next = std.ArrayList(u8).init(self.allocator);
     try next.appendNTimes(' ', first);
 
-    const appending = current.items[self.cursor_x..];
+    const appending = if (self.cursor_x < current.items.len) current.items[self.cursor_x..] else "";
     try next.appendSlice(std.mem.trimLeft(u8, appending, " "));
     try current.replaceRange(self.cursor_x, current.items.len - self.cursor_x, &.{});
     try self.lines.insert(self.cursor_y + 1, next);
@@ -141,4 +144,39 @@ pub fn deleteAt(self: *Editor, mode: enum { backspace, delete }) !void {
         // mode == .delete, self.cursor_x < self.currentLine().items.len
         _ = (try self.currentLine()).orderedRemove(self.cursor_x);
     }
+}
+
+pub fn maybeHandleClick(self: *Editor, button: SDL.MouseButton, x: usize, y: usize) bool {
+    _ = button;
+
+    if (y == self.top) {
+        // TODO: full-screen control on non-imm windows (also double-click
+        // on header -- this works on immediate too).
+        self.active = true;
+        return true;
+    }
+
+    if (y > self.top and y <= self.top + self.height and x > 0 and x < 79) {
+        const scrollbar = !self.immediate and y == self.top + self.height;
+        if (scrollbar and self.active) {
+            if (x == 1) {
+                self.scroll_x = if (self.scroll_x == 0) 0 else self.scroll_x - 1;
+            } else if (x > 1 and x < 78) {
+                // TODO: determine which side of the scroll thumb, do the thing
+            } else if (x == 78) {
+                self.scroll_x = @min(self.scroll_x + 1, 255 - 77);
+            }
+            if (self.cursor_x < self.scroll_x)
+                self.cursor_x = self.scroll_x
+            else if (self.cursor_x > self.scroll_x + 77)
+                self.cursor_x = self.scroll_x + 77;
+        } else {
+            const eff_y = if (scrollbar) y - 1 else y;
+            self.cursor_x = self.scroll_x + x - 1;
+            self.cursor_y = @min(self.scroll_y + eff_y - self.top - 1, self.lines.items.len);
+            self.active = true;
+        }
+        return true;
+    }
+    return false;
 }

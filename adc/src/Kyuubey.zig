@@ -25,7 +25,6 @@ selected_menu: usize = 0,
 
 main_editor: Editor,
 immediate_editor: Editor,
-immediate_active: bool = false,
 
 pub fn init(allocator: Allocator, renderer: SDL.Renderer, filename: ?[]const u8) !Kyuubey {
     const font = try Font.fromData(renderer, @embedFile("cp437.vga"));
@@ -33,8 +32,8 @@ pub fn init(allocator: Allocator, renderer: SDL.Renderer, filename: ?[]const u8)
         .allocator = allocator,
         .renderer = renderer,
         .font = font,
-        .main_editor = try Editor.init(allocator, "Untitled", 1, 19, false),
-        .immediate_editor = try Editor.init(allocator, "Immediate", 21, 2, true),
+        .main_editor = try Editor.init(allocator, "Untitled", 1, 19, true, false),
+        .immediate_editor = try Editor.init(allocator, "Immediate", 21, 2, false, true),
     };
     if (filename) |f|
         try qb.main_editor.load(f);
@@ -133,13 +132,13 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
             editor.cursor_x += 1;
     } else if (sym == .tab) {
         var line = try editor.currentLine();
-        while (line.items.len < 255) {
+        while (line.items.len < 254) {
             try line.insert(editor.cursor_x, ' ');
             editor.cursor_x += 1;
             if (editor.cursor_x % 8 == 0)
                 break;
         }
-    } else if (isPrintableKey(sym) and (try editor.currentLine()).items.len < 255) {
+    } else if (isPrintableKey(sym) and (try editor.currentLine()).items.len < 254) {
         var line = try editor.currentLine();
         if (line.items.len < editor.cursor_x)
             try line.appendNTimes(' ', editor.cursor_x - line.items.len);
@@ -181,16 +180,13 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
 }
 
 pub fn mouseClick(self: *Kyuubey, button: SDL.MouseButton) !void {
-    _ = button;
-
-    // const x = self.mouse_x / 8;
+    const x = self.mouse_x / 8;
     const y = self.mouse_y / 16;
 
-    inline for (&.{ self.main_editor, self.immediate_editor }) |*editor| {
-        if (y >= editor.top and y <= editor.top + editor.height) {
-            self.immediate_active = editor.immediate;
-            break;
-        }
+    if (self.main_editor.maybeHandleClick(button, x, y)) {
+        self.immediate_editor.active = false;
+    } else if (self.immediate_editor.maybeHandleClick(button, x, y)) {
+        self.main_editor.active = false;
     }
 
     self.render();
@@ -198,10 +194,12 @@ pub fn mouseClick(self: *Kyuubey, button: SDL.MouseButton) !void {
 }
 
 fn activeEditor(self: *Kyuubey) *Editor {
-    return if (self.immediate_active)
+    return if (self.main_editor.active)
+        &self.main_editor
+    else if (self.immediate_editor.active)
         &self.immediate_editor
     else
-        &self.main_editor;
+        unreachable;
 }
 
 pub fn render(self: *Kyuubey) void {
@@ -219,8 +217,8 @@ pub fn render(self: *Kyuubey) void {
     }
 
     const active_editor = self.activeEditor();
-    self.renderEditor(&self.main_editor, !self.immediate_active);
-    self.renderEditor(&self.immediate_editor, self.immediate_active);
+    self.renderEditor(&self.main_editor);
+    self.renderEditor(&self.immediate_editor);
 
     for (0..80) |x|
         self.screen[24 * 80 + x] = 0x3000;
@@ -256,13 +254,13 @@ fn renderHelpItem(self: *Kyuubey, item: []const u8, start: usize) void {
         self.screen[24 * 80 + start + j] |= c;
 }
 
-fn renderEditor(self: *Kyuubey, editor: *Editor, active: bool) void {
+fn renderEditor(self: *Kyuubey, editor: *Editor) void {
     self.screen[editor.top * 80 + 0] = if (editor.top == 1) 0x17da else 0x17c3;
     for (1..79) |x|
         self.screen[editor.top * 80 + x] = 0x17c4;
 
     const start = 40 - editor.title.len / 2;
-    const color: u16 = if (active) 0x7100 else 0x1700;
+    const color: u16 = if (editor.active) 0x7100 else 0x1700;
     self.screen[editor.top * 80 + start - 1] = color;
     for (editor.title, 0..) |c, j|
         self.screen[editor.top * 80 + start + j] = color | c;
@@ -293,7 +291,7 @@ fn renderEditor(self: *Kyuubey, editor: *Editor, active: bool) void {
         }
     }
 
-    if (active and !editor.immediate) {
+    if (editor.active and !editor.immediate) {
         if (editor.height > 3) {
             self.screen[(editor.top + 1) * 80 + 79] = 0x7018;
             for (editor.top + 2..editor.top + editor.height - 1) |y|
