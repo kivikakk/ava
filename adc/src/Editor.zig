@@ -168,13 +168,12 @@ pub fn maybeHandleClick(self: *Editor, button: SDL.MouseButton, x: usize, y: usi
                 }
             } else if (x > 1 and x < 78) {
                 const hst = self.horizontalScrollThumb();
-                if (x - 2 < hst) {
-                    self.scroll_x = if (self.scroll_x >= 78) self.scroll_x - 78 else 0;
-                } else if (x - 2 > hst) {
-                    self.scroll_x = if (self.scroll_x <= 100) self.scroll_x + 78 else MAX_LINE - 77;
-                } else {
+                if (x - 2 < hst)
+                    self.scroll_x = if (self.scroll_x >= 78) self.scroll_x - 78 else 0
+                else if (x - 2 > hst)
+                    self.scroll_x = if (self.scroll_x <= MAX_LINE - 77 - 78) self.scroll_x + 78 else MAX_LINE - 77
+                else
                     self.scroll_x = (hst * (MAX_LINE - 77) + 74) / 75;
-                }
                 self.cursor_x = self.scroll_x;
             } else if (x == 78) {
                 if (self.scroll_x < (MAX_LINE - 77)) {
@@ -194,7 +193,61 @@ pub fn maybeHandleClick(self: *Editor, button: SDL.MouseButton, x: usize, y: usi
         }
         return true;
     }
+
+    if (self.active and !self.immediate and y > self.top and y < self.top + self.height and x == 79) {
+        if (y == self.top + 1) {
+            std.debug.print("^\n", .{});
+        } else if (y > self.top + 1 and y < self.top + self.height - 1) {
+            // TODO: Vertical scrollbar behaviour has a knack to it I don't
+            // quite understand yet.  The horizontal scrollbar strictly relates
+            // to the actual scroll of the window (scroll_x) --- it has nothing
+            // to do with the cursor position itself (cursor_x) --- so it's
+            // easy and predictable.
+            //     The vertical scrollbar is totally different --- it shows the
+            // cursor's position in the (virtual) document.  Thus, when using the
+            // pgup/pgdn feature of it, we don't expect the thumb to go all
+            // the way to the top or bottom most of the time, since that'd only
+            // happen if cursor_y happened to land on 0 or self.lines.items.len.
+            //
+            // Let's make some observations:
+            //
+            // Scrolled to the very top, cursor on line 1. 1-18 are visible. (19
+            //     under HSB.)
+            // Clicking pgdn.
+            // Now 19-36 are visible, cursor on 19.
+            //
+            // Scrolled to very top, cursor on line 3. 1-18 visible.
+            // pgdn
+            // 19-36 visible, cursor now on line 21. (not moved.)
+            //
+            // Actual pgup/pgdn seem to do the exact same thing.
+            const vst = self.verticalScrollThumb();
+            if (y - self.top - 2 < vst)
+                self.pageUp()
+            else if (y - self.top - 2 > vst)
+                self.pageDown()
+            else {
+                // TODO: the thing, zhu li
+            }
+        } else if (y == self.top + self.height - 1) {
+            std.debug.print("v\n", .{});
+        }
+        return true;
+    }
+
     return false;
+}
+
+pub fn pageUp(self: *Editor) void {
+    _ = self;
+    // self.scroll_y = if (self.scroll_y >=
+    // std.debug.print("pgup\n", .{})
+}
+
+pub fn pageDown(self: *Editor) void {
+    _ = self;
+    // self.scroll_y = if (self.scroll_y >=
+    // std.debug.print("pgup\n", .{})
 }
 
 pub fn horizontalScrollThumb(self: *const Editor) usize {

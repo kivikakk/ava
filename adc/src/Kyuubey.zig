@@ -160,6 +160,10 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
             line.items.len
         else
             0;
+    } else if (sym == .page_up) {
+        editor.pageUp();
+    } else if (sym == .page_down) {
+        editor.pageDown();
     }
 
     const adjust: usize = if (editor.immediate or editor.height == 1) 1 else 2;
