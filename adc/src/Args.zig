@@ -8,7 +8,9 @@ const Port = union(enum) {
 };
 
 allocator: std.mem.Allocator,
+
 port: Port,
+filename: ?[]const u8,
 
 pub fn parse(allocator: std.mem.Allocator) !Args {
     var argv = try std.process.argsWithAllocator(allocator);
@@ -17,6 +19,7 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
     const argv0 = argv.next().?;
 
     var port: ?Port = null;
+    var filename: ?[]const u8 = null;
 
     var state: enum { root, serial, socket } = .root;
     while (argv.next()) |arg| {
@@ -26,6 +29,8 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
                     state = .serial
                 else if (std.mem.eql(u8, arg, "--socket"))
                     state = .socket
+                else if (filename == null)
+                    filename = try allocator.dupe(u8, arg)
                 else {
                     std.debug.print("unknown argument: \"{s}\"\n", .{arg});
                     usage(argv0);
@@ -48,6 +53,7 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
     return .{
         .allocator = allocator,
         .port = port.?,
+        .filename = filename,
     };
 }
 
@@ -55,6 +61,7 @@ pub fn deinit(self: Args) void {
     switch (self.port) {
         .serial, .socket => |s| self.allocator.free(s),
     }
+    if (self.filename) |f| self.allocator.free(f);
 }
 
 fn usage(argv0: []const u8) noreturn {

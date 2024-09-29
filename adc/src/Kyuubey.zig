@@ -39,7 +39,7 @@ immediate_editor: Editor,
 // * [ ] We don't backspace from first non-whitespace to 0 -- we backspace to
 //       the last indentation point per above lines!
 
-pub fn init(allocator: Allocator, renderer: SDL.Renderer) !Kyuubey {
+pub fn init(allocator: Allocator, renderer: SDL.Renderer, filename: ?[]const u8) !Kyuubey {
     const font = try Font.fromData(renderer, @embedFile("cp437.vga"));
     var qb = Kyuubey{
         .allocator = allocator,
@@ -48,6 +48,8 @@ pub fn init(allocator: Allocator, renderer: SDL.Renderer) !Kyuubey {
         .main_editor = try Editor.init(allocator, "Untitled", 1, 19, false),
         .immediate_editor = try Editor.init(allocator, "Immediate", 21, 2, true),
     };
+    if (filename) |f|
+        try qb.main_editor.load(f);
     qb.render();
     return qb;
 }

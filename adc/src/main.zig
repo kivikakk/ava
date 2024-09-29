@@ -18,6 +18,10 @@ pub fn main() !void {
     var args = try Args.parse(allocator);
     defer args.deinit();
 
+    var handle: std.posix.fd_t = undefined;
+    var reader: std.io.AnyReader = undefined;
+    var writer: std.io.AnyWriter = undefined;
+
     switch (args.port) {
         .serial => |path| {
             const port = std.fs.cwd().openFile(path, .{ .mode = .read_write }) catch |err| switch (err) {
@@ -30,7 +34,9 @@ pub fn main() !void {
                 .baud_rate = 1_500_000,
             });
 
-            return exe(allocator, port.reader().any(), port.handle, port.writer().any());
+            handle = port.handle;
+            reader = port.reader().any();
+            writer = port.writer().any();
         },
         .socket => |path| {
             const port = std.net.connectUnixSocket(path) catch |err| switch (err) {
@@ -39,9 +45,13 @@ pub fn main() !void {
                 else => return err,
             };
 
-            return exe(allocator, port.reader().any(), port.handle, port.writer().any());
+            handle = port.handle;
+            reader = port.reader().any();
+            writer = port.writer().any();
         },
     }
+
+    return exe(allocator, args.filename, handle, reader, writer);
 }
 
 // https://retrocomputing.stackexchange.com/a/27805/20624
@@ -51,8 +61,14 @@ const FLIP_MS = 266;
 const TYPEMATIC_DELAY = 500;
 const TYPEMATIC_REPEAT = 1000 / 25;
 
-fn exe(allocator: Allocator, reader: std.io.AnyReader, reader_handle: std.posix.fd_t, writer: std.io.AnyWriter) !void {
-    var et = try EventThread.init(allocator, reader, reader_handle);
+fn exe(
+    allocator: Allocator,
+    filename: ?[]const u8,
+    handle: std.posix.fd_t,
+    reader: std.io.AnyReader,
+    writer: std.io.AnyWriter,
+) !void {
+    var et = try EventThread.init(allocator, reader, handle);
     defer et.deinit();
 
     {
@@ -89,7 +105,7 @@ fn exe(allocator: Allocator, reader: std.io.AnyReader, reader_handle: std.posix.
     try renderer.setScale(scale, scale);
     _ = try SDL.showCursor(false);
 
-    var qb = try Kyuubey.init(allocator, renderer);
+    var qb = try Kyuubey.init(allocator, renderer, filename);
     defer qb.deinit();
 
     var until_flip: i16 = FLIP_MS;

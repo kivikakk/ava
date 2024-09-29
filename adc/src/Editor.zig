@@ -18,12 +18,11 @@ scroll_x: usize = 0,
 scroll_y: usize = 0,
 
 pub fn init(allocator: Allocator, title: []const u8, top: usize, height: usize, immediate: bool) !Editor {
-    const doc_lines = std.ArrayList(std.ArrayList(u8)).init(allocator);
     return .{
         .allocator = allocator,
         .title = try allocator.dupe(u8, title),
         .immediate = immediate,
-        .doc_lines = doc_lines,
+        .doc_lines = std.ArrayList(std.ArrayList(u8)).init(allocator),
         .top = top,
         .height = height,
     };
@@ -34,6 +33,23 @@ pub fn deinit(self: *Editor) void {
     for (self.doc_lines.items) |line|
         line.deinit();
     self.doc_lines.deinit();
+}
+
+pub fn load(self: *Editor, filename: []const u8) !void {
+    self.deinit();
+    self.doc_lines = std.ArrayList(std.ArrayList(u8)).init(self.allocator);
+
+    const f = try std.fs.cwd().openFile(filename, .{});
+    defer f.close();
+
+    while (try f.reader().readUntilDelimiterOrEofAlloc(self.allocator, '\n', 10240)) |line|
+        try self.doc_lines.append(std.ArrayList(u8).fromOwnedSlice(self.allocator, line));
+
+    const index = std.mem.lastIndexOfScalar(u8, filename, '/');
+    self.title = try std.ascii.allocUpperString(
+        self.allocator,
+        if (index) |ix| filename[ix + 1 ..] else filename,
+    );
 }
 
 pub fn currentDocLine(self: *Editor) !*std.ArrayList(u8) {
