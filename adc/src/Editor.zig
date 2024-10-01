@@ -13,6 +13,10 @@ lines: std.ArrayList(std.ArrayList(u8)),
 
 top: usize,
 height: usize,
+fullscreened: ?struct {
+    old_top: usize,
+    old_height: usize,
+} = null,
 
 cursor_x: usize = 0,
 cursor_y: usize = 0,
@@ -148,13 +152,32 @@ pub fn deleteAt(self: *Editor, mode: enum { backspace, delete }) !void {
     }
 }
 
-pub fn maybeHandleClick(self: *Editor, button: SDL.MouseButton, x: usize, y: usize) bool {
+pub fn toggleFullscreen(self: *Editor) void {
+    if (self.fullscreened) |pre| {
+        self.top = pre.old_top;
+        self.height = pre.old_height;
+        self.fullscreened = null;
+    } else {
+        self.fullscreened = .{
+            .old_top = self.top,
+            .old_height = self.height,
+        };
+        self.top = 1;
+        self.height = 22;
+    }
+}
+
+pub fn handleClick(self: *Editor, button: SDL.MouseButton, x: usize, y: usize) bool {
     _ = button;
 
     if (y == self.top) {
-        // TODO: full-screen control on non-imm windows (also double-click
-        // on header -- this works on immediate too).
         self.active = true;
+        if (!self.immediate and x == 76) {
+            self.toggleFullscreen();
+            return true;
+        }
+
+        // TODO: double-click top to full-screen.
         return true;
     }
 
