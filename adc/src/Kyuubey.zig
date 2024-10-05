@@ -35,16 +35,16 @@ pub fn init(allocator: Allocator, renderer: SDL.Renderer, filename: ?[]const u8)
         .renderer = renderer,
         .font = font,
         .editors = .{
-            try Editor.init(allocator, "Untitled", 1, 9, true, .primary),
+            try Editor.init(allocator, "Untitled", 1, 19, true, .primary),
             try Editor.init(allocator, "Untitled", 11, 9, false, .secondary),
             try Editor.init(allocator, "Immediate", 21, 2, false, .immediate),
         },
         .editor_active = 0,
-        .split_active = true,
+        .split_active = false,
     };
     if (filename) |f| {
         try qb.editors[0].load(f);
-        try qb.editors[1].load(f);
+        // try qb.editors[1].load(f);
     }
     qb.render();
     return qb;
@@ -229,6 +229,8 @@ pub fn mouseClick(self: *Kyuubey, button: SDL.MouseButton) !void {
         var found = false;
         for (&self.editors, 0..) |*e, i| {
             e.active = false;
+            if (!self.split_active and e.kind == .secondary)
+                continue;
             if (!found and e.handleClick(button, x, y)) {
                 found = true;
                 e.active = true;
@@ -258,8 +260,11 @@ pub fn render(self: *Kyuubey) void {
     const active_editor = self.activeEditor();
     if (active_editor.fullscreened != null) {
         self.renderEditor(active_editor);
-    } else for (&self.editors) |*e|
+    } else for (&self.editors) |*e| {
+        if (!self.split_active and e.kind == .secondary)
+            continue;
         self.renderEditor(e);
+    }
 
     for (0..80) |x|
         self.screen[24 * 80 + x] = 0x3000;
