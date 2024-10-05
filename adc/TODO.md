@@ -9,8 +9,8 @@
 * [ ] mouse wheel scrolling
 * [x] fullscreen
 * [x] F6 cycles windows; when one is fullscreen, cycles them through in turn.
-* [ ] split either splits main in 2, or unsplits. (always un-fullscreens.)
-* [ ] click and drag to resize middle/imm editor.
+* [x] split either splits main in 2, or unsplits. (always un-fullscreens.)
+> * [-] click and drag to resize middle/imm editor.
 * [ ] menus
 * [ ] typematic but for click&hold on scrollbar
 * [x] no actual 255 character limit; QB reallocates on save

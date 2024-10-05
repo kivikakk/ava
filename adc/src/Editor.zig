@@ -67,6 +67,19 @@ pub fn load(self: *Editor, filename: []const u8) !void {
     );
 }
 
+pub fn loadFrom(self: *Editor, other: *const Editor) !void {
+    self.deinit();
+    self.lines = std.ArrayList(std.ArrayList(u8)).init(self.allocator);
+
+    for (other.lines.items) |*ol|
+        try self.lines.append(std.ArrayList(u8).fromOwnedSlice(
+            self.allocator,
+            try self.allocator.dupe(u8, ol.items),
+        ));
+
+    self.title = try self.allocator.dupe(u8, other.title);
+}
+
 pub fn currentLine(self: *Editor) !*std.ArrayList(u8) {
     if (self.cursor_y == self.lines.items.len)
         try self.lines.append(std.ArrayList(u8).init(self.allocator));
@@ -173,17 +186,12 @@ pub fn toggleFullscreen(self: *Editor) void {
     }
 }
 
-pub fn handleClick(self: *Editor, button: SDL.MouseButton, x: usize, y: usize) bool {
+pub fn handleClick(self: *Editor, button: SDL.MouseButton, clicks: u8, x: usize, y: usize) bool {
     _ = button;
 
     if (y == self.top) {
-        self.active = true;
-        if (self.kind != .immediate and x == 76) {
+        if ((self.kind != .immediate and x == 76) or clicks == 2)
             self.toggleFullscreen();
-            return true;
-        }
-
-        // TODO: double-click top to full-screen.
         return true;
     }
 
@@ -218,7 +226,6 @@ pub fn handleClick(self: *Editor, button: SDL.MouseButton, x: usize, y: usize) b
             const eff_y = if (scrollbar) y - 1 else y;
             self.cursor_x = self.scroll_x + x - 1;
             self.cursor_y = @min(self.scroll_y + eff_y - self.top - 1, self.lines.items.len);
-            self.active = true;
         }
         return true;
     }

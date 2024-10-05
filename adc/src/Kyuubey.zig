@@ -154,6 +154,14 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
         return;
     }
 
+    if (sym == .f7) {
+        // XXX: this doesn't belong on F7, I just don't have menus yet.
+        try self.toggleSplit();
+        self.render();
+        try self.textRefresh();
+        return;
+    }
+
     var editor = self.activeEditor();
 
     if (sym == .down and editor.cursor_y < editor.lines.items.len) {
@@ -218,20 +226,20 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
     try self.textRefresh();
 }
 
-pub fn mouseClick(self: *Kyuubey, button: SDL.MouseButton) !void {
+pub fn mouseClick(self: *Kyuubey, button: SDL.MouseButton, clicks: u8) !void {
     const x = self.mouse_x / 8;
     const y = self.mouse_y / 16;
 
     const active_editor = self.activeEditor();
     if (active_editor.fullscreened != null) {
-        _ = active_editor.handleClick(button, x, y);
+        _ = active_editor.handleClick(button, clicks, x, y);
     } else {
         var found = false;
         for (&self.editors, 0..) |*e, i| {
             e.active = false;
             if (!self.split_active and e.kind == .secondary)
                 continue;
-            if (!found and e.handleClick(button, x, y)) {
+            if (!found and e.handleClick(button, clicks, x, y)) {
                 found = true;
                 e.active = true;
                 self.editor_active = i;
@@ -241,6 +249,37 @@ pub fn mouseClick(self: *Kyuubey, button: SDL.MouseButton) !void {
 
     self.render();
     try self.textRefresh();
+}
+
+fn toggleSplit(self: *Kyuubey) !void {
+    // TODO: does QB do anything fancy with differently-sized immediates? For now
+    // we just reset to the default view.
+    //
+    // Immediate window max height is 10.
+    // Means there's always room to split with 5+5. Uneven split favours bottom.
+
+    // QB always leaves the view in non-fullscreen, with primary editor selected.
+
+    for (&self.editors) |*e| {
+        e.active = false;
+        if (e.fullscreened != null)
+            e.toggleFullscreen();
+    }
+
+    self.editors[0].active = true;
+    self.editor_active = 0;
+
+    if (!self.split_active) {
+        std.debug.assert(self.editors[0].height >= 11);
+        try self.editors[1].loadFrom(&self.editors[0]);
+        self.editors[0].height = 9;
+        self.editors[1].height = 9;
+        self.editors[1].top = 11;
+        self.split_active = true;
+    } else {
+        self.editors[0].height += self.editors[1].height + 1;
+        self.split_active = false;
+    }
 }
 
 pub fn render(self: *Kyuubey) void {

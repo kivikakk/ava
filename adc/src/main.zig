@@ -162,8 +162,10 @@ fn exe(
                     if (qb.mouse_x != old_x or qb.mouse_y != old_y)
                         try qb.textRefresh();
 
-                    try qb.mouseClick(button.button);
+                    try qb.mouseClick(button.button, button.clicks);
                 },
+                // .mouse_button_up => |button| {
+                // },
                 .quit => running = false,
                 else => {},
             };
