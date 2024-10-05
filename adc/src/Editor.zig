@@ -4,10 +4,16 @@ const SDL = @import("sdl2");
 
 const Editor = @This();
 
+pub const Kind = enum {
+    primary,
+    secondary,
+    immediate,
+};
+
 allocator: Allocator,
 title: []const u8,
 active: bool,
-immediate: bool,
+kind: Kind,
 
 lines: std.ArrayList(std.ArrayList(u8)),
 
@@ -25,12 +31,12 @@ scroll_y: usize = 0,
 
 pub const MAX_LINE = 255;
 
-pub fn init(allocator: Allocator, title: []const u8, top: usize, height: usize, active: bool, immediate: bool) !Editor {
+pub fn init(allocator: Allocator, title: []const u8, top: usize, height: usize, active: bool, kind: Kind) !Editor {
     return .{
         .allocator = allocator,
         .title = try allocator.dupe(u8, title),
         .active = active,
-        .immediate = immediate,
+        .kind = kind,
         .lines = std.ArrayList(std.ArrayList(u8)).init(allocator),
         .top = top,
         .height = height,
@@ -172,7 +178,7 @@ pub fn handleClick(self: *Editor, button: SDL.MouseButton, x: usize, y: usize) b
 
     if (y == self.top) {
         self.active = true;
-        if (!self.immediate and x == 76) {
+        if (self.kind != .immediate and x == 76) {
             self.toggleFullscreen();
             return true;
         }
@@ -182,7 +188,7 @@ pub fn handleClick(self: *Editor, button: SDL.MouseButton, x: usize, y: usize) b
     }
 
     if (y > self.top and y <= self.top + self.height and x > 0 and x < 79) {
-        const scrollbar = !self.immediate and y == self.top + self.height;
+        const scrollbar = self.kind != .immediate and y == self.top + self.height;
         if (scrollbar and self.active) {
             if (x == 1) {
                 if (self.scroll_x > 0) {
@@ -217,7 +223,7 @@ pub fn handleClick(self: *Editor, button: SDL.MouseButton, x: usize, y: usize) b
         return true;
     }
 
-    if (self.active and !self.immediate and y > self.top and y < self.top + self.height and x == 79) {
+    if (self.active and self.kind != .immediate and y > self.top and y < self.top + self.height and x == 79) {
         if (y == self.top + 1) {
             std.debug.print("^\n", .{});
         } else if (y > self.top + 1 and y < self.top + self.height - 1) {

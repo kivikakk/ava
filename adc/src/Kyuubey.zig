@@ -23,28 +23,43 @@ alt_held: bool = false,
 menubar_focus: bool = false,
 selected_menu: usize = 0,
 
-main_editor: Editor,
-immediate_editor: Editor,
+editors: [3]Editor,
+editor_active: usize,
+split_active: bool,
 
-pub fn init(allocator: Allocator, renderer: SDL.Renderer, filename: ?[]const u8) !Kyuubey {
+pub fn init(allocator: Allocator, renderer: SDL.Renderer, filename: ?[]const u8) !*Kyuubey {
     const font = try Font.fromData(renderer, @embedFile("cp437.vga"));
-    var qb = Kyuubey{
+    const qb = try allocator.create(Kyuubey);
+    qb.* = Kyuubey{
         .allocator = allocator,
         .renderer = renderer,
         .font = font,
-        .main_editor = try Editor.init(allocator, "Untitled", 1, 19, true, false),
-        .immediate_editor = try Editor.init(allocator, "Immediate", 21, 2, false, true),
+        .editors = .{
+            try Editor.init(allocator, "Untitled", 1, 9, true, .primary),
+            try Editor.init(allocator, "Untitled", 11, 9, false, .secondary),
+            try Editor.init(allocator, "Immediate", 21, 2, false, .immediate),
+        },
+        .editor_active = 0,
+        .split_active = true,
     };
-    if (filename) |f|
-        try qb.main_editor.load(f);
+    if (filename) |f| {
+        try qb.editors[0].load(f);
+        try qb.editors[1].load(f);
+    }
     qb.render();
     return qb;
 }
 
 pub fn deinit(self: *Kyuubey) void {
-    self.main_editor.deinit();
-    self.immediate_editor.deinit();
+    for (&self.editors) |*e| e.deinit();
     self.font.deinit();
+    self.allocator.destroy(self);
+}
+
+fn activeEditor(self: *Kyuubey) *Editor {
+    const editor = &self.editors[self.editor_active];
+    std.debug.assert(editor.active);
+    return editor;
 }
 
 pub fn textRefresh(self: *Kyuubey) !void {
@@ -120,20 +135,19 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
     }
 
     if (sym == .f6) {
-        if (self.main_editor.active) {
-            self.main_editor.active = false;
-            self.immediate_editor.active = true;
-            if (self.main_editor.fullscreened != null) {
-                self.main_editor.toggleFullscreen();
-                self.immediate_editor.toggleFullscreen();
-            }
-        } else {
-            self.main_editor.active = true;
-            self.immediate_editor.active = false;
-            if (self.immediate_editor.fullscreened != null) {
-                self.main_editor.toggleFullscreen();
-                self.immediate_editor.toggleFullscreen();
-            }
+        const prev = self.activeEditor();
+        var next_index = (self.editor_active + 1) % self.editors.len;
+        if (self.editors[next_index].kind == .secondary and !self.split_active)
+            next_index += 1;
+        const next = &self.editors[next_index];
+
+        prev.active = false;
+        next.active = true;
+        self.editor_active = next_index;
+
+        if (prev.fullscreened != null) {
+            prev.toggleFullscreen();
+            next.toggleFullscreen();
         }
         self.render();
         try self.textRefresh();
@@ -187,7 +201,7 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
         editor.pageDown();
     }
 
-    const adjust: usize = if (editor.immediate or editor.height == 1) 1 else 2;
+    const adjust: usize = if (editor.kind == .immediate or editor.height == 1) 1 else 2;
     if (editor.cursor_y < editor.scroll_y) {
         editor.scroll_y = editor.cursor_y;
     } else if (editor.cursor_y > editor.scroll_y + editor.height - adjust) {
@@ -212,24 +226,19 @@ pub fn mouseClick(self: *Kyuubey, button: SDL.MouseButton) !void {
     if (active_editor.fullscreened != null) {
         _ = active_editor.handleClick(button, x, y);
     } else {
-        if (self.main_editor.handleClick(button, x, y)) {
-            self.immediate_editor.active = false;
-        } else if (self.immediate_editor.handleClick(button, x, y)) {
-            self.main_editor.active = false;
+        var found = false;
+        for (&self.editors, 0..) |*e, i| {
+            e.active = false;
+            if (!found and e.handleClick(button, x, y)) {
+                found = true;
+                e.active = true;
+                self.editor_active = i;
+            }
         }
     }
 
     self.render();
     try self.textRefresh();
-}
-
-fn activeEditor(self: *Kyuubey) *Editor {
-    return if (self.main_editor.active)
-        &self.main_editor
-    else if (self.immediate_editor.active)
-        &self.immediate_editor
-    else
-        unreachable;
 }
 
 pub fn render(self: *Kyuubey) void {
@@ -249,10 +258,8 @@ pub fn render(self: *Kyuubey) void {
     const active_editor = self.activeEditor();
     if (active_editor.fullscreened != null) {
         self.renderEditor(active_editor);
-    } else {
-        self.renderEditor(&self.main_editor);
-        self.renderEditor(&self.immediate_editor);
-    }
+    } else for (&self.editors) |*e|
+        self.renderEditor(e);
 
     for (0..80) |x|
         self.screen[24 * 80 + x] = 0x3000;
@@ -301,7 +308,7 @@ fn renderEditor(self: *Kyuubey, editor: *Editor) void {
     self.screen[editor.top * 80 + start + editor.title.len] = color;
     self.screen[editor.top * 80 + 79] = if (editor.top == 1) 0x17bf else 0x17b4;
 
-    if (!editor.immediate) {
+    if (editor.kind != .immediate) {
         self.screen[editor.top * 80 + 75] = 0x17b4;
         self.screen[editor.top * 80 + 76] = if (editor.fullscreened != null) 0x7112 else 0x7118;
         self.screen[editor.top * 80 + 77] = 0x17c3;
@@ -323,7 +330,7 @@ fn renderEditor(self: *Kyuubey, editor: *Editor) void {
         }
     }
 
-    if (editor.active and !editor.immediate) {
+    if (editor.active and editor.kind != .immediate) {
         if (editor.height > 3) {
             self.screen[(editor.top + 1) * 80 + 79] = 0x7018;
             for (editor.top + 2..editor.top + editor.height - 1) |y|
