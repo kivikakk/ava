@@ -12,7 +12,6 @@ pub const Kind = enum {
 
 allocator: Allocator,
 title: []const u8,
-active: bool,
 kind: Kind,
 
 lines: std.ArrayList(std.ArrayList(u8)),
@@ -31,11 +30,10 @@ scroll_y: usize = 0,
 
 pub const MAX_LINE = 255;
 
-pub fn init(allocator: Allocator, title: []const u8, top: usize, height: usize, active: bool, kind: Kind) !Editor {
+pub fn init(allocator: Allocator, title: []const u8, top: usize, height: usize, kind: Kind) !Editor {
     return .{
         .allocator = allocator,
         .title = try allocator.dupe(u8, title),
-        .active = active,
         .kind = kind,
         .lines = std.ArrayList(std.ArrayList(u8)).init(allocator),
         .top = top,
@@ -186,18 +184,16 @@ pub fn toggleFullscreen(self: *Editor) void {
     }
 }
 
-pub fn handleClick(self: *Editor, button: SDL.MouseButton, clicks: u8, x: usize, y: usize) bool {
+pub fn handleMouseDown(self: *Editor, active: bool, button: SDL.MouseButton, clicks: u8, x: usize, y: usize) bool {
     _ = button;
+    _ = clicks;
 
-    if (y == self.top) {
-        if ((self.kind != .immediate and x == 76) or clicks == 2)
-            self.toggleFullscreen();
+    if (y == self.top)
         return true;
-    }
 
     if (y > self.top and y <= self.top + self.height and x > 0 and x < 79) {
         const scrollbar = self.kind != .immediate and y == self.top + self.height;
-        if (scrollbar and self.active) {
+        if (scrollbar and active) {
             if (x == 1) {
                 if (self.scroll_x > 0) {
                     self.scroll_x -= 1;
@@ -230,7 +226,7 @@ pub fn handleClick(self: *Editor, button: SDL.MouseButton, clicks: u8, x: usize,
         return true;
     }
 
-    if (self.active and self.kind != .immediate and y > self.top and y < self.top + self.height and x == 79) {
+    if (active and self.kind != .immediate and y > self.top and y < self.top + self.height and x == 79) {
         if (y == self.top + 1) {
             std.debug.print("^\n", .{});
         } else if (y > self.top + 1 and y < self.top + self.height - 1) {
@@ -272,6 +268,16 @@ pub fn handleClick(self: *Editor, button: SDL.MouseButton, clicks: u8, x: usize,
     }
 
     return false;
+}
+
+pub fn handleMouseUp(self: *Editor, button: SDL.MouseButton, clicks: u8, x: usize, y: usize) void {
+    _ = button;
+
+    if (y == self.top) {
+        if ((self.kind != .immediate and x == 76) or clicks == 2)
+            self.toggleFullscreen();
+        return;
+    }
 }
 
 pub fn pageUp(self: *Editor) void {

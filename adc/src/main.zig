@@ -116,6 +116,10 @@ fn exe(
     var keydown_mod: SDL.KeyModifierSet = undefined;
     var typematic_on = false;
 
+    var old_x: usize = 0;
+    var old_y: usize = 0;
+    var mouse_down: ?SDL.MouseButton = null;
+
     var running = true;
     while (running) {
         if (keydown_tick > 0 and !typematic_on and last_tick >= keydown_tick + TYPEMATIC_DELAY) {
@@ -144,28 +148,46 @@ fn exe(
                     keydown_tick = 0;
                 },
                 .mouse_motion => |motion| {
-                    const old_x = qb.mouse_x;
-                    const old_y = qb.mouse_y;
-
                     qb.mouse_x = @intFromFloat(@as(f32, @floatFromInt(motion.x)) / scale);
                     qb.mouse_y = @intFromFloat(@as(f32, @floatFromInt(motion.y)) / scale);
 
-                    if (qb.mouse_x != old_x or qb.mouse_y != old_y)
+                    if (qb.mouse_x != old_x or qb.mouse_y != old_y) {
+                        if (mouse_down) |button|
+                            try qb.mouseDrag(button, old_x, old_y);
                         try qb.textRefresh();
+                    }
+
+                    old_x = qb.mouse_x;
+                    old_y = qb.mouse_y;
                 },
                 .mouse_button_down => |button| {
-                    const old_x = qb.mouse_x;
-                    const old_y = qb.mouse_y;
                     qb.mouse_x = @intFromFloat(@as(f32, @floatFromInt(button.x)) / scale);
                     qb.mouse_y = @intFromFloat(@as(f32, @floatFromInt(button.y)) / scale);
 
                     if (qb.mouse_x != old_x or qb.mouse_y != old_y)
                         try qb.textRefresh();
 
-                    try qb.mouseClick(button.button, button.clicks);
+                    try qb.mouseDown(button.button, button.clicks);
+
+                    mouse_down = button.button;
+
+                    old_x = qb.mouse_x;
+                    old_y = qb.mouse_y;
                 },
-                // .mouse_button_up => |button| {
-                // },
+                .mouse_button_up => |button| {
+                    qb.mouse_x = @intFromFloat(@as(f32, @floatFromInt(button.x)) / scale);
+                    qb.mouse_y = @intFromFloat(@as(f32, @floatFromInt(button.y)) / scale);
+
+                    if (qb.mouse_x != old_x or qb.mouse_y != old_y)
+                        try qb.textRefresh();
+
+                    try qb.mouseUp(button.button, button.clicks);
+
+                    mouse_down = null;
+
+                    old_x = qb.mouse_x;
+                    old_y = qb.mouse_y;
+                },
                 .quit => running = false,
                 else => {},
             };

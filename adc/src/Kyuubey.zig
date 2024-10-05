@@ -35,9 +35,9 @@ pub fn init(allocator: Allocator, renderer: SDL.Renderer, filename: ?[]const u8)
         .renderer = renderer,
         .font = font,
         .editors = .{
-            try Editor.init(allocator, "Untitled", 1, 19, true, .primary),
-            try Editor.init(allocator, "Untitled", 11, 9, false, .secondary),
-            try Editor.init(allocator, "Immediate", 21, 2, false, .immediate),
+            try Editor.init(allocator, "Untitled", 1, 19, .primary),
+            try Editor.init(allocator, "Untitled", 11, 9, .secondary),
+            try Editor.init(allocator, "Immediate", 21, 2, .immediate),
         },
         .editor_active = 0,
         .split_active = false,
@@ -57,9 +57,7 @@ pub fn deinit(self: *Kyuubey) void {
 }
 
 fn activeEditor(self: *Kyuubey) *Editor {
-    const editor = &self.editors[self.editor_active];
-    std.debug.assert(editor.active);
-    return editor;
+    return &self.editors[self.editor_active];
 }
 
 pub fn textRefresh(self: *Kyuubey) !void {
@@ -140,9 +138,6 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
         if (self.editors[next_index].kind == .secondary and !self.split_active)
             next_index += 1;
         const next = &self.editors[next_index];
-
-        prev.active = false;
-        next.active = true;
         self.editor_active = next_index;
 
         if (prev.fullscreened != null) {
@@ -226,29 +221,48 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
     try self.textRefresh();
 }
 
-pub fn mouseClick(self: *Kyuubey, button: SDL.MouseButton, clicks: u8) !void {
+pub fn mouseDown(self: *Kyuubey, button: SDL.MouseButton, clicks: u8) !void {
     const x = self.mouse_x / 8;
     const y = self.mouse_y / 16;
 
     const active_editor = self.activeEditor();
     if (active_editor.fullscreened != null) {
-        _ = active_editor.handleClick(button, clicks, x, y);
-    } else {
-        var found = false;
-        for (&self.editors, 0..) |*e, i| {
-            e.active = false;
-            if (!self.split_active and e.kind == .secondary)
-                continue;
-            if (!found and e.handleClick(button, clicks, x, y)) {
-                found = true;
-                e.active = true;
-                self.editor_active = i;
-            }
+        _ = active_editor.handleMouseDown(true, button, clicks, x, y);
+    } else for (&self.editors, 0..) |*e, i| {
+        if (!self.split_active and e.kind == .secondary)
+            continue;
+        if (e.handleMouseDown(self.editor_active == i, button, clicks, x, y)) {
+            self.editor_active = i;
+            break;
         }
     }
 
     self.render();
     try self.textRefresh();
+}
+
+pub fn mouseUp(self: *Kyuubey, button: SDL.MouseButton, clicks: u8) !void {
+    const x = self.mouse_x / 8;
+    const y = self.mouse_y / 16;
+
+    self.activeEditor().handleMouseUp(button, clicks, x, y);
+
+    self.render();
+    try self.textRefresh();
+}
+
+pub fn mouseDrag(self: *Kyuubey, button: SDL.MouseButton, old_x_px: usize, old_y_px: usize) !void {
+    const old_x = old_x_px / 8;
+    const old_y = old_y_px / 16;
+
+    const x = self.mouse_x / 8;
+    const y = self.mouse_y / 16;
+
+    if (old_x == x and old_y == y)
+        return;
+
+    // const active_editor = self.active_editor();
+    _ = button;
 }
 
 fn toggleSplit(self: *Kyuubey) !void {
@@ -260,13 +274,10 @@ fn toggleSplit(self: *Kyuubey) !void {
 
     // QB always leaves the view in non-fullscreen, with primary editor selected.
 
-    for (&self.editors) |*e| {
-        e.active = false;
+    for (&self.editors) |*e|
         if (e.fullscreened != null)
             e.toggleFullscreen();
-    }
 
-    self.editors[0].active = true;
     self.editor_active = 0;
 
     if (!self.split_active) {
@@ -298,11 +309,11 @@ pub fn render(self: *Kyuubey) void {
 
     const active_editor = self.activeEditor();
     if (active_editor.fullscreened != null) {
-        self.renderEditor(active_editor);
-    } else for (&self.editors) |*e| {
+        self.renderEditor(active_editor, true);
+    } else for (&self.editors, 0..) |*e, i| {
         if (!self.split_active and e.kind == .secondary)
             continue;
-        self.renderEditor(e);
+        self.renderEditor(e, self.editor_active == i);
     }
 
     for (0..80) |x|
@@ -339,13 +350,13 @@ fn renderHelpItem(self: *Kyuubey, item: []const u8, start: usize) void {
         self.screen[24 * 80 + start + j] |= c;
 }
 
-fn renderEditor(self: *Kyuubey, editor: *Editor) void {
+fn renderEditor(self: *Kyuubey, editor: *Editor, active: bool) void {
     self.screen[editor.top * 80 + 0] = if (editor.top == 1) 0x17da else 0x17c3;
     for (1..79) |x|
         self.screen[editor.top * 80 + x] = 0x17c4;
 
     const start = 40 - editor.title.len / 2;
-    const color: u16 = if (editor.active) 0x7100 else 0x1700;
+    const color: u16 = if (active) 0x7100 else 0x1700;
     self.screen[editor.top * 80 + start - 1] = color;
     for (editor.title, 0..) |c, j|
         self.screen[editor.top * 80 + start + j] = color | c;
@@ -374,7 +385,7 @@ fn renderEditor(self: *Kyuubey, editor: *Editor) void {
         }
     }
 
-    if (editor.active and editor.kind != .immediate) {
+    if (active and editor.kind != .immediate) {
         if (editor.height > 3) {
             self.screen[(editor.top + 1) * 80 + 79] = 0x7018;
             for (editor.top + 2..editor.top + editor.height - 1) |y|
