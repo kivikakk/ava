@@ -11,6 +11,7 @@ allocator: std.mem.Allocator,
 
 port: Port,
 filename: ?[]const u8,
+scale: f32,
 
 pub fn parse(allocator: std.mem.Allocator) !Args {
     var argv = try std.process.argsWithAllocator(allocator);
@@ -20,8 +21,9 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
 
     var port: ?Port = null;
     var filename: ?[]const u8 = null;
+    var scale: f32 = 1;
 
-    var state: enum { root, serial, socket } = .root;
+    var state: enum { root, serial, socket, scale } = .root;
     while (argv.next()) |arg| {
         switch (state) {
             .root => {
@@ -29,6 +31,8 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
                     state = .serial
                 else if (std.mem.eql(u8, arg, "--socket"))
                     state = .socket
+                else if (std.mem.eql(u8, arg, "--scale"))
+                    state = .scale
                 else if (filename == null)
                     filename = try allocator.dupe(u8, arg)
                 else {
@@ -44,6 +48,10 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
                 port = .{ .socket = try allocator.dupe(u8, arg) };
                 state = .root;
             },
+            .scale => {
+                scale = try std.fmt.parseFloat(f32, arg);
+                state = .root;
+            },
         }
     }
 
@@ -54,6 +62,7 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
         .allocator = allocator,
         .port = port.?,
         .filename = filename,
+        .scale = scale,
     };
 }
 

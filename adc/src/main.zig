@@ -51,7 +51,7 @@ pub fn main() !void {
         },
     }
 
-    return exe(allocator, args.filename, handle, reader, writer);
+    return exe(allocator, args.filename, args.scale, handle, reader, writer);
 }
 
 // https://retrocomputing.stackexchange.com/a/27805/20624
@@ -64,6 +64,7 @@ const TYPEMATIC_REPEAT = 1000 / 25;
 fn exe(
     allocator: Allocator,
     filename: ?[]const u8,
+    scale: f32,
     handle: std.posix.fd_t,
     reader: std.io.AnyReader,
     writer: std.io.AnyWriter,
@@ -94,9 +95,14 @@ fn exe(
     try SDL.init(.{ .video = true, .events = true });
     defer SDL.quit();
 
-    const scale = 2;
-
-    var window = try SDL.createWindow("Ava BASIC ADC", .default, .default, 640 * scale, 400 * scale, .{});
+    var window = try SDL.createWindow(
+        "Ava BASIC ADC",
+        .default,
+        .default,
+        @intFromFloat(640 * scale),
+        @intFromFloat(400 * scale),
+        .{},
+    );
     defer window.destroy();
 
     var renderer = try SDL.createRenderer(window, null, .{ .accelerated = true, .target_texture = true, .present_vsync = true });
