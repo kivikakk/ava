@@ -26,7 +26,7 @@ const Tick = union(enum) {
 };
 
 pub fn init(allocator: Allocator, cxxrtl: Cxxrtl) UartConnector {
-    const tx = cxxrtl.get(bool, "uart_rx");
+    const tx = cxxrtl.getInit(bool, "uart_rx", true);
     const rx = Cxxrtl.Sample(bool).init(cxxrtl, "uart_tx", true);
 
     return .{

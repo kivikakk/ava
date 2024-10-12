@@ -4,8 +4,8 @@
 
     .dependencies = .{
         .zxxrtl = .{
-            .url = "https://github.com/kivikakk/zxxrtl/archive/a140e58b8f486e3d7cda9a02853c77239fa8056a.tar.gz",
-            .hash = "1220653eb5e3ad69ef73c8a40e3a7b91189ae35520d22019cb84872b2a6095fe092f",
+            .url = "https://github.com/kivikakk/zxxrtl/archive/a9dfe2654400daccfd056c44a5b860844a2ecfbf.tar.gz",
+            .hash = "12209704c63d872ef0c1eec79614c2e0858356c4691f4f035520f8f19b1f17b95609",
         },
         .avacore = .{
             .path = "../../core",
