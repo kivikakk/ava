@@ -17,4 +17,5 @@
   * mitigated this Enough for now.
 * [ ] consider redoing this with 'controls' instead of manually drawing and
       checking click coordinates etc.
+  * Actually: make an immediate mode-type thing? Could be nicer and more fun.
 * [ ] split view of same document: updates other on changing line

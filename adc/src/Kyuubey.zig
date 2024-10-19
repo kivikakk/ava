@@ -261,7 +261,15 @@ pub fn mouseDrag(self: *Kyuubey, button: SDL.MouseButton, old_x_px: usize, old_y
     if (old_x == x and old_y == y)
         return;
 
-    // const active_editor = self.active_editor();
+    const active_editor = self.activeEditor();
+    if (active_editor.top != 1 and old_y == active_editor.top and y != old_y) {
+        // Resizing a window. Constraints:
+        // * Immediate can be at most 10 high.
+        // * Any window can be as small as 0 high.
+        // * Pulling a window across another one moves that one along with it.
+
+    }
+
     _ = button;
 }
 
