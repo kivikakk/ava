@@ -1,28 +1,16 @@
-Ava BASIC
-=========
+# Ava BASIC SoC
 
-https://sr.ht/~kivikakk/ava
-    git: https://git.sr.ht/~kivikakk/ava
-   todo: https://todo.sr.ht/~kivikakk/ava
-  lists: https://sr.ht/~kivikakk/ava/lists
+`python -m avasoc build -p` will build for iCEBreaker and program.
 
-basic/
-  Compiler and stack machine interpreter.
+`python -m avasoc flash` will flash `avasoc.bin` built in `/core` to SPI flash.
 
-core/
-  RISC-V stack machine core.
+`python -m avasoc cxxrtl` will build and run the CXXRTL/Zig simulation.
 
-soc/
-  SoC in Amaranth integrating VexRiscv.
-
-adc/
-  Amateur Development Client.
+`python -m avasoc` for usage.
 
 
-Legal
------
+## Legal
 
-Ava BASIC
 Copyright (C) 2024  Asherah Erin Connor
 
 This program is free software: you can redistribute it and/or modify it under

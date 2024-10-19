@@ -1,21 +1,13 @@
-Ava BASIC compiler and stack-machine interpreter
-================================================
+# Ava BASIC
 
-`zig build` will produce:
-  zig-out/bin/avabasic
-
-`avabasic repl` will run the interactive (CLI) interpreter.
-`avabasic --help` will show other modes of execution.
-
-A `flake.nix` is provided -- you can directly run:
-
-  nix run 'git+https://git.sr.ht/~kivikakk/ava#avabasic'
+* [`basic/`](basic/) — Compiler and stack machine interpreter.
+* [`core/`](core/) — RISC-V stack machine core.
+* [`soc/`](soc/) — SoC in Amaranth integrating VexRiscv.
+* [`adc/`](adc/) — Amateur Development Client.
 
 
-Legal
------
+## Legal
 
-Ava BASIC
 Copyright (C) 2024  Asherah Erin Connor
 
 This program is free software: you can redistribute it and/or modify it under

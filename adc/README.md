@@ -1,19 +1,18 @@
-Ava BASIC SoC
-=============
+# Ava BASIC Amateur Development Client
 
-`python -m avasoc build -p` will build for iCEBreaker and program.
+`zig build` will produce:
 
-`python -m avasoc flash` will flash `avasoc.bin` built in `/core` to SPI flash.
+* `zig-out/bin/adc`
 
-`python -m avasoc cxxrtl` will build and run the CXXRTL/Zig simulation.
+`adc --serial /dev/cu.usbserial-ibU1IGlC1` will connect to Ava BASIC running on
+an iCEBreaker connected to a macOS host.
 
-`python -m avasoc` for usage.
+`adc --socket ../soc/cxxrtl-uart` will connect to a running CXXRTL simulation of
+the SoC.
 
 
-Legal
------
+## Legal
 
-Ava BASIC
 Copyright (C) 2024  Asherah Erin Connor
 
 This program is free software: you can redistribute it and/or modify it under

@@ -1,20 +1,21 @@
-Ava BASIC Amateur Development Client
-====================================
+# Ava BASIC compiler and stack-machine interpreter
 
 `zig build` will produce:
-  zig-out/bin/adc
 
-`adc --serial /dev/cu.usbserial-ibU1IGlC1` will connect to Ava BASIC running on
-an iCEBreaker connected to a macOS host.
+* `zig-out/bin/avabasic`
 
-`adc --socket ../soc/cxxrtl-uart` will connect to a running CXXRTL simulation of
-the SoC.
+`avabasic repl` will run the interactive (CLI) interpreter.  
+`avabasic --help` will show other modes of execution.
+
+A `flake.nix` is provided -- you can directly run:
+
+```shell
+nix run 'git+https://github.com/kivikakk/ava#avabasic'
+```
 
 
-Legal
------
+## Legal
 
-Ava BASIC
 Copyright (C) 2024  Asherah Erin Connor
 
 This program is free software: you can redistribute it and/or modify it under
