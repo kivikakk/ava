@@ -10,5 +10,5 @@
 A `flake.nix` is provided -- you can directly run:
 
 ```shell
-nix run 'git+https://github.com/charlottia/ava#avabasic'
+nix run 'github:charlottia/ava#avabasic'
 ```
