@@ -6,8 +6,8 @@ authors = [
     {name = "Charlotte", email = "charlotte@lottia.net"},
 ]
 dependencies = [
-    "niar @ git+https://github.com/charlottia/niar@56234604d0914245e7a7d4504a042820adae9b1b",
-    "amaranth @ git+https://github.com/charlottia/amaranth@f8ea807a9108a99ec801d1f1e4b8e63019ec82ec",
+    "niar @ git+https://github.com/charlottia/niar@e1c078f4a30e96222d0a0527f65c6753b164bb4c",
+    "amaranth @ git+https://github.com/charlottia/amaranth@e5644486fdae47c1372ef2a672b0249857694d66",
     "amaranth-boards @ git+https://github.com/amaranth-lang/amaranth-boards@19b97324ecf9111c5d16377af79f82aad761c476",
     "amaranth-stdio @ git+https://github.com/charlottia/amaranth-stdio@ca4fac262a2290495c82d76aa785bd8707afa781",
     "amaranth-soc @ git+https://github.com/charlottia/amaranth-soc@619521679eaa4a40e089bd29a97e2573b293877f",

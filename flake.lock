@@ -66,7 +66,7 @@
         "url": "https://raw.githubusercontent.com/ziglang/zig/0fb2015fd3422fc1df364995f9782dfe7255eccd/doc/langref.html.in"
       }
     },
-    "niar-flake": {
+    "niar": {
       "inputs": {
         "flake-utils": [
           "flake-utils"
@@ -109,10 +109,10 @@
       "inputs": {
         "flake-utils": "flake-utils",
         "gitignore": "gitignore",
-        "niar-flake": "niar-flake",
+        "niar": "niar",
         "nixpkgs": "nixpkgs",
         "zig-overlay": "zig-overlay",
-        "zls-flake": "zls-flake"
+        "zls": "zls"
       }
     },
     "systems": {
@@ -154,7 +154,7 @@
         "type": "github"
       }
     },
-    "zls-flake": {
+    "zls": {
       "inputs": {
         "flake-utils": [
           "flake-utils"

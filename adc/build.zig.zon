@@ -1,5 +1,5 @@
 .{
-    .name = "avasoc-adc",
+    .name = "adc",
     .version = "0.0.0",
 
     .dependencies = .{
@@ -19,7 +19,7 @@
         },
     },
     .paths = .{
-        "README",
+        "README.md",
         "build.zig",
         "build.zig.zon",
         "src",

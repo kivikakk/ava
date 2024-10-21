@@ -58,11 +58,6 @@ const helpText =
     \\
     \\  -h, --help     Show command-specific usage
     \\
-    \\Ava BASIC  Copyright (C) 2024  Asherah Erin Connor
-    \\This program comes with ABSOLUTELY NO WARRANTY; for details type `LICENCE
-    \\WARRANTY'. This is free software, and you are welcome to redistribute it
-    \\under certain conditions; type `LICENCE CONDITIONS' for details.
-    \\
 ;
 
 pub fn usageFor(status: u8, comptime command: []const u8, comptime argsPart: []const u8, comptime body: []const u8) noreturn {
