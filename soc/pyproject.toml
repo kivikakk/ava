@@ -13,7 +13,7 @@ dependencies = [
     "amaranth-soc @ git+https://github.com/charlottia/amaranth-soc@619521679eaa4a40e089bd29a97e2573b293877f",
 ]
 requires-python = ">=3.8"
-license = {text = "GPL-3.0-or-later"}
+license = {text = "BSD-2-clause"}
 
 [project.urls]
 Homepage = "https://github.com/charlottia/ava"
