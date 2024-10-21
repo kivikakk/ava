@@ -3,20 +3,20 @@ name = "avasoc"
 version = "0.0"
 description = ""
 authors = [
-    {name = "Asherah Connor", email = "ashe@kivikakk.ee"},
+    {name = "Charlotte", email = "charlotte@lottia.net"},
 ]
 dependencies = [
-    "niar @ git+https://git.sr.ht/~kivikakk/niar@56234604d0914245e7a7d4504a042820adae9b1b",
-    "amaranth @ git+https://github.com/kivikakk/amaranth@f8ea807a9108a99ec801d1f1e4b8e63019ec82ec",
+    "niar @ git+https://github.com/charlottia/niar@56234604d0914245e7a7d4504a042820adae9b1b",
+    "amaranth @ git+https://github.com/charlottia/amaranth@f8ea807a9108a99ec801d1f1e4b8e63019ec82ec",
     "amaranth-boards @ git+https://github.com/amaranth-lang/amaranth-boards@19b97324ecf9111c5d16377af79f82aad761c476",
-    "amaranth-stdio @ git+https://github.com/kivikakk/amaranth-stdio@ca4fac262a2290495c82d76aa785bd8707afa781",
-    "amaranth-soc @ git+https://github.com/kivikakk/amaranth-soc@619521679eaa4a40e089bd29a97e2573b293877f",
+    "amaranth-stdio @ git+https://github.com/charlottia/amaranth-stdio@ca4fac262a2290495c82d76aa785bd8707afa781",
+    "amaranth-soc @ git+https://github.com/charlottia/amaranth-soc@619521679eaa4a40e089bd29a97e2573b293877f",
 ]
 requires-python = ">=3.8"
 license = {text = "GPL-3.0-or-later"}
 
 [project.urls]
-Homepage = "https://github.com/kivikakk/ava"
+Homepage = "https://github.com/charlottia/ava"
 
 [build-system]
 requires = ["pdm-backend"]

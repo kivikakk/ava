@@ -24,7 +24,7 @@
     pname = "amaranth-stdio";
     version = "0.1.dev34+g${pkgs.lib.substring 0 7 src.rev}";
     src = pkgs.fetchFromGitHub {
-      owner = "kivikakk";
+      owner = "charlottia";
       repo = "amaranth-stdio";
       rev = "ca4fac262a2290495c82d76aa785bd8707afa781";
       # hash = "sha256-75CSOTCo0D4TV5GKob5Uw3CZR3tfLoaT2xbH2I3JYA8=";   # <-- from NixOS

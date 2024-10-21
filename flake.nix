@@ -19,7 +19,7 @@
     gitignore.inputs.nixpkgs.follows = "nixpkgs";
 
     niar-flake = {
-      url = git+https://git.sr.ht/~kivikakk/niar;
+      url = github:charlottia/niar;
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
@@ -109,7 +109,7 @@
           # adc
           pkgs.libiconv
           pkgs.SDL2
-          pkgs.pkg-config  # See shellHook.
+          pkgs.pkg-config # See shellHook.
         ];
 
         shellHook = ''
