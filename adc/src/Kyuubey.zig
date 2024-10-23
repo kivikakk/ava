@@ -328,9 +328,16 @@ pub fn render(self: *Kyuubey) void {
         self.screen[24 * 80 + x] = 0x3000;
 
     offset = 1;
-    inline for (&.{ "<Shift+F1=Help>", "<F6=Window>", "<F2=Subs>", "<F5=Run>", "<F8=Step>" }) |item| {
-        self.renderHelpItem(item, offset);
-        offset += item.len + 1;
+    if (self.menubar_focus) {
+        inline for (&.{ "F1=Help", "Enter=Display Menu", "Esc=Cancel", "Arrow=Next Item" }) |item| {
+            self.renderHelpItem(item, offset);
+            offset += item.len + 3;
+        }
+    } else {
+        inline for (&.{ "<Shift+F1=Help>", "<F6=Window>", "<F2=Subs>", "<F5=Run>", "<F8=Step>" }) |item| {
+            self.renderHelpItem(item, offset);
+            offset += item.len + 1;
+        }
     }
 
     self.screen[24 * 80 + 62] |= 0xb3;
