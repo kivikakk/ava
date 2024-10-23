@@ -27,8 +27,7 @@ editors: [3]Editor,
 editor_active: usize,
 split_active: bool,
 
-pub fn init(allocator: Allocator, renderer: SDL.Renderer, filename: ?[]const u8) !*Kyuubey {
-    const font = try Font.fromData(renderer, @embedFile("cp437.vga"));
+pub fn init(allocator: Allocator, renderer: SDL.Renderer, font: Font, filename: ?[]const u8) !*Kyuubey {
     const qb = try allocator.create(Kyuubey);
     qb.* = Kyuubey{
         .allocator = allocator,
@@ -52,7 +51,6 @@ pub fn init(allocator: Allocator, renderer: SDL.Renderer, filename: ?[]const u8)
 
 pub fn deinit(self: *Kyuubey) void {
     for (&self.editors) |*e| e.deinit();
-    self.font.deinit();
     self.allocator.destroy(self);
 }
 
@@ -66,7 +64,7 @@ pub fn textRefresh(self: *Kyuubey) !void {
     for (0..25) |y|
         for (0..80) |x| {
             var pair = self.screen[y * 80 + x];
-            if (self.mouse_x / 8 == x and self.mouse_y / 16 == y)
+            if (self.mouse_x / self.font.char_width == x and self.mouse_y / self.font.char_height == y)
                 pair = ((7 - (pair >> 12)) << 12) |
                     ((7 - ((pair >> 8) & 0x7)) << 8) |
                     (pair & 0xFF);
@@ -78,9 +76,9 @@ pub fn textRefresh(self: *Kyuubey) !void {
         const fg = Font.CgaColors[(pair >> 8) & 0xF];
         try self.renderer.setColorRGBA(@intCast(fg >> 16), @intCast((fg >> 8) & 0xFF), @intCast(fg & 0xFF), 255);
         try self.renderer.fillRect(.{
-            .x = @intCast(self.cursor_x * 8),
-            .y = @intCast(self.cursor_y * 16 + 16 - 3),
-            .width = 8,
+            .x = @intCast(self.cursor_x * self.font.char_width),
+            .y = @intCast(self.cursor_y * self.font.char_height + self.font.char_height - 3),
+            .width = @intCast(self.font.char_width - 1),
             .height = 2,
         });
     }
@@ -222,8 +220,8 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
 }
 
 pub fn mouseDown(self: *Kyuubey, button: SDL.MouseButton, clicks: u8) !void {
-    const x = self.mouse_x / 8;
-    const y = self.mouse_y / 16;
+    const x = self.mouse_x / self.font.char_width;
+    const y = self.mouse_y / self.font.char_height;
 
     const active_editor = self.activeEditor();
     if (active_editor.fullscreened != null) {
@@ -242,8 +240,8 @@ pub fn mouseDown(self: *Kyuubey, button: SDL.MouseButton, clicks: u8) !void {
 }
 
 pub fn mouseUp(self: *Kyuubey, button: SDL.MouseButton, clicks: u8) !void {
-    const x = self.mouse_x / 8;
-    const y = self.mouse_y / 16;
+    const x = self.mouse_x / self.font.char_width;
+    const y = self.mouse_y / self.font.char_height;
 
     self.activeEditor().handleMouseUp(button, clicks, x, y);
 
@@ -252,11 +250,11 @@ pub fn mouseUp(self: *Kyuubey, button: SDL.MouseButton, clicks: u8) !void {
 }
 
 pub fn mouseDrag(self: *Kyuubey, button: SDL.MouseButton, old_x_px: usize, old_y_px: usize) !void {
-    const old_x = old_x_px / 8;
-    const old_y = old_y_px / 16;
+    const old_x = old_x_px / self.font.char_width;
+    const old_y = old_y_px / self.font.char_height;
 
-    const x = self.mouse_x / 8;
-    const y = self.mouse_y / 16;
+    const x = self.mouse_x / self.font.char_width;
+    const y = self.mouse_y / self.font.char_height;
 
     if (old_x == x and old_y == y)
         return;

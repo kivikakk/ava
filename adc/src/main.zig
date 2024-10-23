@@ -9,6 +9,7 @@ const Compiler = @import("avabasic").Compiler;
 const Args = @import("./Args.zig");
 const EventThread = @import("./EventThread.zig");
 const Kyuubey = @import("./Kyuubey.zig");
+const Font = @import("./Font.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -64,7 +65,7 @@ const TYPEMATIC_REPEAT = 1000 / 25;
 fn exe(
     allocator: Allocator,
     filename: ?[]const u8,
-    requested_scale: f32,
+    scale: f32,
     handle: std.posix.fd_t,
     reader: std.io.AnyReader,
     writer: std.io.AnyWriter,
@@ -95,8 +96,11 @@ fn exe(
     try SDL.init(.{ .video = true, .events = true });
     defer SDL.quit();
 
-    const request_width: usize = @intFromFloat(640 * requested_scale);
-    const request_height: usize = @intFromFloat(400 * requested_scale);
+    var font = try Font.fromGlyphTxt(allocator, @embedFile("fonts/8x16.txt"));
+    defer font.deinit();
+
+    const request_width: usize = @intFromFloat(@as(f32, @floatFromInt(80 * font.char_width)) * scale);
+    const request_height: usize = @intFromFloat(@as(f32, @floatFromInt(25 * font.char_height)) * scale);
 
     var window = try SDL.createWindow(
         "Ava BASIC ADC",
@@ -111,14 +115,16 @@ fn exe(
     var renderer = try SDL.createRenderer(window, null, .{ .accelerated = true, .target_texture = true, .present_vsync = true });
     defer renderer.destroy();
 
-    var scale = requested_scale;
     if ((try renderer.getOutputSize()).width_pixels == request_width * 2)
-        scale *= 2;
+        try renderer.setScale(scale * 2, scale * 2)
+    else
+        try renderer.setScale(scale, scale);
 
-    try renderer.setScale(scale, scale);
     _ = try SDL.showCursor(false);
 
-    var qb = try Kyuubey.init(allocator, renderer, filename);
+    try font.prepare(renderer);
+
+    var qb = try Kyuubey.init(allocator, renderer, font, filename);
     defer qb.deinit();
 
     var until_flip: i16 = FLIP_MS;
