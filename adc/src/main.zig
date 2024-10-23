@@ -96,7 +96,7 @@ fn exe(
     try SDL.init(.{ .video = true, .events = true });
     defer SDL.quit();
 
-    var font = try Font.fromGlyphTxt(allocator, @embedFile("fonts/8x16.txt"));
+    var font = try Font.fromGlyphTxt(allocator, @embedFile("fonts/9x16.txt"));
     defer font.deinit();
 
     const request_width: usize = @intFromFloat(@as(f32, @floatFromInt(80 * font.char_width)) * scale);

@@ -22,6 +22,8 @@ cursor_inhibit: bool = false,
 alt_held: bool = false,
 menubar_focus: bool = false,
 selected_menu: usize = 0,
+menu_open: bool = false,
+selected_menu_item: usize = 0,
 
 editors: [3]Editor,
 editor_active: usize,
@@ -118,9 +120,27 @@ pub fn keyPress(self: *Kyuubey, sym: SDL.Keycode, mod: SDL.KeyModifierSet) !void
         switch (sym) {
             .left => self.selected_menu = if (self.selected_menu == 0) 8 else self.selected_menu - 1,
             .right => self.selected_menu = if (self.selected_menu == 8) 0 else self.selected_menu + 1,
+            .up => {
+                if (!self.menu_open) {
+                    self.menu_open = true;
+                    self.selected_menu_item = 0;
+                } else {
+                    // TODO: needs to know about the menu to wrap!!
+                    self.selected_menu_item -= 1;
+                }
+            },
+            .down => {
+                if (!self.menu_open) {
+                    self.menu_open = true;
+                    self.selected_menu_item = 0;
+                } else {
+                    self.selected_menu_item += 1;
+                }
+            },
             .escape => {
                 self.cursor_inhibit = false;
                 self.menubar_focus = false;
+                self.menu_open = false;
             },
             else => {},
         }
@@ -299,6 +319,37 @@ fn toggleSplit(self: *Kyuubey) !void {
     }
 }
 
+const MENUS = .{
+    .@"&File" = .{
+        .width = 16,
+        .items = .{
+            "&New Program",
+            "&Open Program...",
+            "&Merge...",
+            "&Save",
+            "Save &As...",
+            "Sa&ve All",
+            "-",
+            "&Create File...",
+            "&Load File...",
+            "&Unload File...",
+            "-",
+            "&Print...",
+            "&DOS Shell",
+            "-",
+            "E&xit",
+        },
+    },
+    .@"&Edit" = .{ .width = 20, .items = .{} },
+    .@"&View" = .{ .width = 21, .items = .{} },
+    .@"&Search" = .{ .width = 24, .items = .{} },
+    .@"&Run" = .{ .width = 19, .items = .{} },
+    .@"&Debug" = .{ .width = 27, .items = .{} },
+    .@"&Calls" = .{ .width = 10, .items = .{} }, // ???
+    .@"&Options" = .{ .width = 15, .items = .{} },
+    .@"&Help" = .{ .width = 25, .items = .{} },
+};
+
 pub fn render(self: *Kyuubey) void {
     @memset(&self.screen, 0x1700);
 
@@ -306,11 +357,11 @@ pub fn render(self: *Kyuubey) void {
         self.screen[x] = 0x7000;
 
     var offset: usize = 2;
-    inline for (&.{ "File", "Edit", "View", "Search", "Run", "Debug", "Calls", "Options", "Help" }, 0..) |option, i| {
-        if (std.mem.eql(u8, option, "Help"))
+    inline for (std.meta.fields(@TypeOf(MENUS)), 0..) |option, i| {
+        if (std.mem.eql(u8, option.name, "&Help"))
             offset = 73;
-        self.renderMenuOption(option, offset, i);
-        offset += option.len + 2;
+        self.renderMenuOption(option.name, offset, i);
+        offset += option.name.len + 1;
     }
 
     const active_editor = self.activeEditor();
@@ -346,16 +397,94 @@ pub fn render(self: *Kyuubey) void {
 
     self.cursor_x = active_editor.cursor_x + 1 - active_editor.scroll_x;
     self.cursor_y = active_editor.cursor_y + 1 - active_editor.scroll_y + active_editor.top;
+
+    // Draw open menus on top of anything else.
+    if (self.menu_open) {
+        // Note duplication with menubar drawing.
+        offset = 1;
+        inline for (std.meta.fields(@TypeOf(MENUS)), 0..) |option, i| {
+            if (std.mem.eql(u8, option.name, "&Help"))
+                offset = 73;
+            if (i == self.selected_menu) {
+                const menu = @field(MENUS, option.name);
+                self.screen[80 + offset] = 0x70da;
+                for (0..menu.width + 2) |j|
+                    self.screen[80 + offset + 1 + j] = 0x70c4;
+                self.screen[80 + offset + menu.width + 3] = 0x70bf;
+                var row: usize = 2;
+                var option_number: usize = 0;
+                inline for (menu.items) |o| {
+                    if (std.mem.eql(u8, o, "-")) {
+                        self.screen[80 * row + offset] = 0x70c3;
+                        for (1..menu.width + 3) |j|
+                            self.screen[80 * row + offset + j] = 0x70c4;
+                        self.screen[80 * row + offset + menu.width + 3] = 0x70b4;
+                    } else {
+                        self.screen[80 * row + offset] = 0x70b3;
+                        for (1..menu.width + 3) |j|
+                            self.screen[80 * row + offset + j] = if (self.selected_menu_item == option_number) 0x0700 else 0x7000;
+                        var next_highlight = false;
+                        var j: usize = 2;
+                        for (o) |c| {
+                            if (c == '&')
+                                next_highlight = true
+                            else {
+                                self.screen[80 * row + offset + j] |= c;
+                                if (next_highlight) {
+                                    self.screen[80 * row + offset + j] |= 0x0f00;
+                                    next_highlight = false;
+                                }
+                                j += 1;
+                            }
+                        }
+                        self.screen[80 * row + offset + menu.width + 3] = 0x70b3;
+                        option_number += 1;
+                    }
+                    self.screen[80 * row + offset + menu.width + 4] &= 0x00ff;
+                    self.screen[80 * row + offset + menu.width + 4] |= 0x0800;
+                    self.screen[80 * row + offset + menu.width + 5] &= 0x00ff;
+                    self.screen[80 * row + offset + menu.width + 5] |= 0x0800;
+                    row += 1;
+                }
+                self.screen[80 * row + offset] = 0x70c0;
+                for (0..menu.width + 2) |j|
+                    self.screen[80 * row + offset + 1 + j] = 0x70c4;
+                self.screen[80 * row + offset + menu.width + 3] = 0x70d9;
+                self.screen[80 * row + offset + menu.width + 4] &= 0x00ff;
+                self.screen[80 * row + offset + menu.width + 4] |= 0x0800;
+                self.screen[80 * row + offset + menu.width + 5] &= 0x00ff;
+                self.screen[80 * row + offset + menu.width + 5] |= 0x0800;
+                row += 1;
+                for (2..menu.width + 6) |j| {
+                    self.screen[80 * row + offset + j] &= 0x00ff;
+                    self.screen[80 * row + offset + j] |= 0x0800;
+                }
+            }
+            offset += option.name.len + 1;
+        }
+    }
 }
 
 fn renderMenuOption(self: *Kyuubey, title: []const u8, start: usize, index: usize) void {
     const back: u16 = if (self.menubar_focus and self.selected_menu == index) 0x0700 else 0x7000;
 
     self.screen[start + 0] = back;
-    self.screen[start + 1] = back | @as(u16, if (self.alt_held or self.menubar_focus) 0x0f00 else 0x0000) | title[0];
-    for (title[1..], 1..) |c, j|
-        self.screen[start + 1 + j] = back | c;
-    self.screen[start + 1 + title.len] = back;
+
+    var next_highlight = false;
+    var j: usize = 0;
+    for (title) |c| {
+        if (c == '&')
+            next_highlight = true
+        else {
+            self.screen[start + 1 + j] = back | c;
+            if (next_highlight) {
+                self.screen[start + 1 + j] |= @as(u16, if (!self.menu_open and (self.alt_held or self.menubar_focus)) 0x0f00 else 0x0000);
+                next_highlight = false;
+            }
+            j += 1;
+        }
+    }
+    self.screen[start + 1 + j] = back;
 }
 
 fn renderHelpItem(self: *Kyuubey, item: []const u8, start: usize) void {
